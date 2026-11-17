@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matt's Learning Library (Boox Go 10.3 Edition)</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #111111;
+      --border: #222222;
+      --border-thick: 2px solid #111111;
+      --border-thin: 1px solid #444444;
+      --card-bg: #fafafa;
+      --highlight-bg: #eaeaea;
+      --active-bg: #111111;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: var(--font-size);
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1.5rem 1rem;
+      background: #ffffff;
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .font-controls button {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thin);
+      padding: 6px 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      min-height: 40px;
+      min-width: 40px;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      line-height: 1.2;
+      margin-top: 0;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.4rem;
+    }
+
+    .article-card {
+      border: var(--border-thick);
+      padding: 1.5rem;
+      margin: 1.8rem 0;
+      background: #ffffff;
+      box-shadow: 3px 3px 0px #000;
+    }
+
+    .article-card h3 {
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+      font-size: 1.35rem;
+    }
+
+    .article-card a.read-btn {
+      display: inline-block;
+      background: #000;
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 18px;
+      font-weight: bold;
+      border-radius: 2px;
+      margin-top: 1rem;
+    }
+
+    .article-card a.read-btn:active {
+      background: #555;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid #000;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    code, pre {
+      font-family: var(--font-mono);
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+    }
+
+    pre {
+      padding: 12px;
+      border: var(--border-thin);
+      overflow-x: auto;
+    }
+
+    .callout {
+      border: 2px solid #000;
+      background: #fafafa;
+      padding: 1.2rem;
+      margin: 1.5rem 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div>
+        <strong>matt-learning</strong> (Boox Go 10.3 Edition)
+      </div>
+      <div class="font-controls">
+        <button id="font-dec">A-</button>
+        <button id="font-inc">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <h1>Interactive Machine Learning Explainers</h1>
+    <p>
+      High-contrast, zero-flicker interactive explainer articles designed specifically for the <strong>Boox Go 10.3 E-ink display</strong> (Carta 1200, 300 PPI). Every article features worked-out math, clickable concept popovers, interactive calculators, collapsible derivations, and comprehension check quizzes.
+    </p>
+
+    <!-- ARTICLE 1 -->
+    <div class="article-card">
+      <div>
+        <span class="tag">Architecture</span>
+        <span class="tag">Transformers</span>
+        <span class="tag">Interactive Calculator</span>
+      </div>
+      <h3>1. How Attention Works: From First Principles to Multi-Head Math</h3>
+      <p>
+        An exhaustive, intuitive guide to the Scaled Dot-Product and Multi-Head Attention mechanisms that power modern LLMs. Includes full step-by-step vector/matrix calculations for a 3-token sentence, interactive attention matrix heatmap inspector, and PyTorch implementations.
+      </p>
+      <a href="attention.html" class="read-btn">Read Attention Guide →</a>
+    </div>
+
+    <!-- ARTICLE 2 -->
+    <div class="article-card">
+      <div>
+        <span class="tag">Alignment</span>
+        <span class="tag">Distillation</span>
+        <span class="tag">Divergence Math</span>
+      </div>
+      <h3>2. Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</h3>
+      <p>
+        A deep breakdown of the DeepMind GKD paper. Explains why classical supervised distillation fails in autoregressive language generation due to exposure bias, the crucial difference between Forward KL (mode-covering) and Reverse KL (mode-seeking), and on-policy student trajectory rollouts.
+      </p>
+      <a href="gkd.html" class="read-btn">Read GKD Guide →</a>
+    </div>
+
+    <!-- HOW TO VIEW ON BOOX GO 10.3 -->
+    <h2>Viewing Options on Your Boox Go 10.3</h2>
+    <div class="callout">
+      <h3 style="margin-top:0;">Direct & Easy Methods to Read These Files:</h3>
+
+      <p><strong>Method 1: Direct System Browser (Fastest)</strong><br>
+        In your Termux terminal, run:
+      </p>
+      <pre><code>termux-open ~/matt-learning/index.html</code></pre>
+      <p>
+        This will immediately trigger the Android app picker or open your tablet's browser (e.g. NeoBrowser or Chrome) with the file.
+      </p>
+
+      <p><strong>Method 2: Local HTTP Server (Best for tabbed browsing)</strong><br>
+        Run this in Termux to launch a lightweight offline server:
+      </p>
+      <pre><code>./serve.sh</code></pre>
+      <p>
+        Then open <code>http://localhost:8080</code> in any browser on your Boox Go 10.3 (or <code>http://10.0.0.179:8080</code> from another device on your Wi-Fi).
+      </p>
+
+      <p><strong>Method 3: Copy to Device Documents Storage</strong><br>
+        If you prefer opening files from the Onyx Boox native <strong>Storage / Documents</strong> or <strong>NeoReader</strong> app:
+      </p>
+      <pre><code>cp ~/matt-learning/*.html /sdcard/Documents/</code></pre>
+      <p>
+        You can then open the files directly inside your Boox Library or Document viewer.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    let currentFontSize = 18;
+    document.getElementById('font-inc').addEventListener('click', () => {
+      if (currentFontSize < 28) {
+        currentFontSize += 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+    document.getElementById('font-dec').addEventListener('click', () => {
+      if (currentFontSize > 14) {
+        currentFontSize -= 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+  </script>
+</body>
+</html>

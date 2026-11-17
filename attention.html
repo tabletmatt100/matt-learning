@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Understanding Attention: From Intuition to Multi-Head Math</title>
+  <style>
+    /* E-INK OPTIMIZED STYLESHEET */
+    :root {
+      --bg: #ffffff;
+      --text: #111111;
+      --border: #222222;
+      --border-thick: 2px solid #111111;
+      --border-thin: 1px solid #444444;
+      --card-bg: #fafafa;
+      --highlight-bg: #eaeaea;
+      --active-bg: #111111;
+      --active-text: #ffffff;
+      --accent: #222222;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      /* E-ink optimization: zero transition animations to eliminate ghosting */
+      transition: none !important;
+      animation: none !important;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: var(--font-size);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1.5rem 1rem;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+    }
+
+    .font-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thin);
+      padding: 6px 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 40px;
+      min-width: 40px;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      line-height: 1.25;
+      margin-top: 0;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.6rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.3rem;
+    }
+
+    h3 {
+      font-size: 1.25rem;
+      margin-top: 1.8rem;
+    }
+
+    p, li {
+      margin-bottom: 1.2rem;
+    }
+
+    /* Popover trigger terms */
+    .term {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-decoration-thickness: 2px;
+      cursor: pointer;
+      font-weight: 600;
+      background: var(--highlight-bg);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .term:hover, .term:active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    /* Popover Modal */
+    #popover-backdrop {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 999;
+    }
+
+    #popover-box {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #ffffff;
+      border: 3px solid #000000;
+      padding: 1.5rem;
+      max-width: 520px;
+      width: 90%;
+      z-index: 1000;
+      box-shadow: 4px 4px 0px #000000;
+    }
+
+    #popover-title {
+      font-size: 1.3rem;
+      font-weight: bold;
+      margin-top: 0;
+      margin-bottom: 0.6rem;
+      border-bottom: 2px solid #000;
+      padding-bottom: 0.4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #popover-close {
+      cursor: pointer;
+      font-size: 1.5rem;
+      background: none;
+      border: none;
+      padding: 0 6px;
+      font-weight: bold;
+    }
+
+    #popover-body {
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    /* Math and Code blocks */
+    .math-block {
+      background: var(--card-bg);
+      border: var(--border-thick);
+      padding: 1rem;
+      margin: 1.5rem 0;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      text-align: center;
+    }
+
+    pre, code {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+      border-radius: 2px;
+    }
+
+    pre {
+      padding: 1rem;
+      border: var(--border-thin);
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* Interactive Box Containers */
+    .interactive-card {
+      background: #ffffff;
+      border: var(--border-thick);
+      padding: 1.5rem;
+      margin: 2rem 0;
+      box-shadow: 3px 3px 0px #000000;
+    }
+
+    .interactive-card h3 {
+      margin-top: 0;
+      border-bottom: 1px solid #000;
+      padding-bottom: 0.4rem;
+    }
+
+    /* Tables */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.2rem 0;
+      font-size: 15px;
+    }
+
+    table.data-table th, table.data-table td {
+      border: 1px solid #000000;
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    table.data-table th {
+      background: var(--highlight-bg);
+      font-weight: bold;
+    }
+
+    /* Details styling */
+    details {
+      border: var(--border-thin);
+      background: var(--card-bg);
+      margin: 1.5rem 0;
+      padding: 0.5rem 1rem;
+      border-radius: 2px;
+    }
+
+    details[open] {
+      border: var(--border-thick);
+      background: #ffffff;
+    }
+
+    summary {
+      font-weight: bold;
+      cursor: pointer;
+      padding: 0.5rem 0;
+      outline: none;
+    }
+
+    summary:hover {
+      text-decoration: underline;
+    }
+
+    /* Multiple Choice Questions */
+    .mcq-box {
+      border: 2px solid #000000;
+      background: #ffffff;
+      padding: 1.2rem;
+      margin: 2rem 0;
+    }
+
+    .mcq-title {
+      font-weight: bold;
+      font-size: 1.1rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: 1px solid #444;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+
+    .mcq-option:hover {
+      background: var(--highlight-bg);
+    }
+
+    .mcq-option input[type="radio"] {
+      margin-right: 10px;
+      transform: scale(1.2);
+    }
+
+    .mcq-feedback {
+      display: none;
+      padding: 10px 12px;
+      margin-top: 10px;
+      border: 2px solid #000;
+      font-size: 15px;
+    }
+
+    .mcq-feedback.correct {
+      background: #f0f0f0;
+      border-color: #000;
+    }
+
+    .mcq-feedback.incorrect {
+      background: #e6e6e6;
+      border-color: #000;
+    }
+
+    /* Interactive Matrix Heatmap */
+    .matrix-grid {
+      display: inline-grid;
+      gap: 3px;
+      margin: 10px 0;
+      background: #000;
+      padding: 2px;
+    }
+
+    .matrix-cell {
+      width: 65px;
+      height: 48px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .matrix-cell:hover, .matrix-cell.selected {
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .diagram-svg {
+      width: 100%;
+      max-width: 650px;
+      height: auto;
+      display: block;
+      margin: 1.5rem auto;
+      border: 1px solid #000;
+      background: #fff;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid #000;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">← All Guides</a>
+        <a href="gkd.html">Next: GKD Guide →</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">Deep Dive</span>
+      <span class="tag">Transformer Architecture</span>
+      <span class="tag">Interactive Math</span>
+    </div>
+
+    <h1>How Attention Works: From First Principles to Multi-Head Math</h1>
+
+    <p>
+      At the center of modern artificial intelligence—from large language models like Gemini to vision transformers—lies a single elegant mathematical mechanism: <strong>Attention</strong>.
+    </p>
+    <p>
+      Before the 2017 landmark paper <em>"Attention Is All You Need"</em> (Vaswani et al.), natural language was predominantly processed using <span class="term" data-term="rnn">Recurrent Neural Networks (RNNs)</span> and <span class="term" data-term="lstm">LSTMs</span>. While functional, these sequential architectures suffered from a critical flaw: the <strong>information bottleneck</strong>.
+    </p>
+
+    <!-- SECTION 1 -->
+    <h2>1. The Problem: Sequential Bottlenecks</h2>
+    <p>
+      In an RNN, tokens are ingested one after another. At step <code>t</code>, the hidden state $h_t$ must compress everything learned from tokens $1, 2, \dots, t-1$:
+    </p>
+
+    <div class="math-block">
+      h_t = \tanh(W_{hh} h_{t-1} + W_{xh} x_t)
+    </div>
+
+    <p>
+      If a sentence is 50 words long, information from word 1 must survive 49 successive matrix multiplications. Inevitably, gradients vanish or explode, and long-range dependencies are lost. Moreover, sequential processing prevents <strong>parallel hardware execution</strong> on GPUs.
+    </p>
+
+    <p>
+      <strong>The Attention Breakthrough:</strong> Instead of forcing a single vector to remember everything, what if every token could directly look back at every other token in the sequence and dynamically decide how much to "attend" to it?
+    </p>
+
+    <!-- CHECKPOINT 1 -->
+    <div class="mcq-box" id="mcq-1">
+      <div class="mcq-title">Checkpoint 1: The RNN Bottleneck</div>
+      <p>Why did traditional RNNs and LSTMs struggle with paragraphs and long documents?</p>
+      <label class="mcq-option">
+        <input type="radio" name="q1" value="A"> A) They could not represent numbers larger than 1.0.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q1" value="B"> B) The entire history had to be squashed into a single fixed-size hidden vector, causing long-range information loss.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q1" value="C"> C) They required attention matrices that were too large to compute.
+      </label>
+      <button class="btn" onclick="checkMCQ('mcq-1', 'B', 'Correct! RNNs compress the entire history into a single vector h_t. In long sequences, early tokens are overwritten or diluted by vanishing gradients.')">Check Answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2>2. The Core Metaphor: The Soft Database Lookup</h2>
+    <p>
+      To understand attention mathematically, imagine a database retrieval query:
+    </p>
+    <ul>
+      <li><span class="term" data-term="query">Query ($Q$)</span>: What I am currently looking for (e.g., search text).</li>
+      <li><span class="term" data-term="key">Key ($K$)</span>: The index or tags describing what each entry contains.</li>
+      <li><span class="term" data-term="value">Value ($V$)</span>: The actual content or payload stored in the database.</li>
+    </ul>
+
+    <p>
+      In a classical database (like SQL), lookup is <em>hard</em>: if <code>Query == Key</code>, you retrieve 100% of the Value; otherwise 0%.
+    </p>
+    <p>
+      In neural attention, lookup is <strong>soft and continuous</strong>:
+      We take the dot product between the Query and all Keys. If the dot product is high, the Query and Key point in similar directions in embedding space. We then pass these scores through a <span class="term" data-term="softmax">Softmax</span> function to produce a probability distribution that sums to 1.0. Finally, we take a <strong>weighted sum of the Values</strong>.
+    </p>
+
+    <!-- DIAGRAM -->
+    <svg class="diagram-svg" viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background grid lines -->
+      <line x1="20" y1="20" x2="580" y2="20" stroke="#eee" />
+      <line x1="20" y1="220" x2="580" y2="220" stroke="#eee" />
+      
+      <!-- Inputs -->
+      <rect x="50" y="30" width="80" height="40" fill="#fff" stroke="#000" stroke-width="2"/>
+      <text x="90" y="55" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Queries (Q)</text>
+
+      <rect x="50" y="100" width="80" height="40" fill="#fff" stroke="#000" stroke-width="2"/>
+      <text x="90" y="125" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Keys (K)</text>
+
+      <rect x="50" y="170" width="80" height="40" fill="#fff" stroke="#000" stroke-width="2"/>
+      <text x="90" y="195" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Values (V)</text>
+
+      <!-- Dot Product Box -->
+      <rect x="180" y="60" width="100" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
+      <text x="230" y="85" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">MatMul (Q K^T)</text>
+      <text x="230" y="100" font-family="sans-serif" font-size="11" text-anchor="middle">Raw Similarity</text>
+
+      <!-- Scale & Mask -->
+      <rect x="315" y="60" width="90" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
+      <text x="360" y="85" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">Scale / √d_k</text>
+      <text x="360" y="100" font-family="sans-serif" font-size="11" text-anchor="middle">+ Softmax</text>
+
+      <!-- Weight Multiplier -->
+      <rect x="440" y="115" width="100" height="50" fill="#000" stroke="#000" stroke-width="2"/>
+      <text x="490" y="140" fill="#fff" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">MatMul (A · V)</text>
+      <text x="490" y="155" fill="#fff" font-family="sans-serif" font-size="11" text-anchor="middle">Context Output</text>
+
+      <!-- Connecting arrows -->
+      <path d="M 130 50 L 180 75" stroke="#000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+      <path d="M 130 120 L 180 95" stroke="#000" stroke-width="2" fill="none"/>
+      <path d="M 280 85 L 315 85" stroke="#000" stroke-width="2" fill="none"/>
+      <path d="M 405 85 L 450 85 L 450 115" stroke="#000" stroke-width="2" fill="none"/>
+      <path d="M 130 190 L 440 150" stroke="#000" stroke-width="2" fill="none"/>
+    </svg>
+
+    <!-- SECTION 3 -->
+    <h2>3. The Exact Mathematical Formula</h2>
+    <div class="math-block">
+      \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V
+    </div>
+
+    <p>Let's break down each component step-by-step:</p>
+    <ol>
+      <li><strong>Linear Projections</strong>: We take the input token embeddings $X \in \mathbb{R}^{N \times d_{\text{model}}}$ and project them with learned weights:
+        $$Q = X W_Q, \quad K = X W_K, \quad V = X W_V$$
+      </li>
+      <li><strong>Dot-Product Similarity ($Q K^T$)</strong>: For each query token $i$ and key token $j$, computes their dot product $q_i \cdot k_j$. The result is an $N \times N$ matrix of raw scores.</li>
+      <li><strong>Scaling by $\sqrt{d_k}$</strong>: We divide by the square root of the key dimension $d_k$. (Why? See the details dropdown below).</li>
+      <li><strong>Softmax Normalization</strong>: Computed row-wise:
+        $$A_{ij} = \frac{\exp(S_{ij})}{\sum_{k=1}^N \exp(S_{ik})}$$
+        Each row now forms a valid probability distribution summing to 1.</li>
+      <li><strong>Weighted Blend ($A V$)</strong>: We multiply the attention weight matrix $A$ by $V$. The resulting vector for token $i$ is a linear mixture of all token values weighted by how relevant token $j$ was to token $i$.</li>
+    </ol>
+
+    <details>
+      <summary>Deep Math: Why scale by exactly $\sqrt{d_k}$? (Click to expand)</summary>
+      <div style="padding-top: 0.8rem;">
+        <p>Suppose the components of $q \in \mathbb{R}^{d_k}$ and $k \in \mathbb{R}^{d_k}$ are independent random variables with zero mean and unit variance: $\mathbb{E}[q_i] = \mathbb{E}[k_i] = 0$ and $\text{Var}(q_i) = \text{Var}(k_i) = 1$.</p>
+        <p>The dot product is $q \cdot k = \sum_{i=1}^{d_k} q_i k_i$.</p>
+        <p>The mean of each product term is $\mathbb{E}[q_i k_i] = \mathbb{E}[q_i]\mathbb{E}[k_i] = 0$.</p>
+        <p>The variance of each product term is:</p>
+        <div class="math-block">\text{Var}(q_i k_i) = \mathbb{E}[q_i^2 k_i^2] - (\mathbb{E}[q_i k_i])^2 = \text{Var}(q_i)\text{Var}(k_i) = 1 \cdot 1 = 1</div>
+        <p>Since the terms are independent, the variance of the sum is the sum of the variances:</p>
+        <div class="math-block">\text{Var}\left(\sum_{i=1}^{d_k} q_i k_i\right) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k</div>
+        <p>Thus, the standard deviation is $\sqrt{d_k}$. For large $d_k$ (e.g., $d_k = 64$ or $128$), the dot products grow very large in magnitude. When input values to softmax are large, the softmax function saturates, yielding gradients near zero (<span class="term" data-term="vanishing-gradient">vanishing gradient problem</span>). Dividing by $\sqrt{d_k}$ normalizes the variance back to 1.0!</p>
+      </div>
+    </details>
+
+    <!-- SECTION 4 -->
+    <h2>4. Fully Worked-Out Numerical Example</h2>
+    <p>
+      Let's work through an actual example by hand with small numbers.
+    </p>
+    <p>
+      Imagine a sequence of 3 tokens: <code>["The", "dog", "barked"]</code> ($N=3$).<br>
+      Let key dimension $d_k = 2$ and value dimension $d_v = 2$.
+    </p>
+
+    <h3>Step 4.1: The Computed Q, K, and V Matrices</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Token</th>
+          <th>Query $Q$ ($d_k=2$)</th>
+          <th>Key $K$ ($d_k=2$)</th>
+          <th>Value $V$ ($d_v=2$)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1: "The"</strong></td>
+          <td>[1.0, 0.0]</td>
+          <td>[1.0, 0.0]</td>
+          <td>[2.0, 1.0]</td>
+        </tr>
+        <tr>
+          <td><strong>2: "dog"</strong></td>
+          <td>[0.0, 2.0]</td>
+          <td>[1.0, 1.0]</td>
+          <td>[0.0, 3.0]</td>
+        </tr>
+        <tr>
+          <td><strong>3: "barked"</strong></td>
+          <td>[1.0, 1.0]</td>
+          <td>[0.0, 2.0]</td>
+          <td>[1.0, 0.0]</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Step 4.2: Compute Raw Dot Products ($Q K^T$)</h3>
+    <p>Let's calculate the score matrix $S_{raw} = Q K^T$ entry-by-entry:</p>
+    <ul>
+      <li>Row 1 ("The", $q_1=[1.0, 0.0]$):
+        <ul>
+          <li>vs $k_1=[1.0, 0.0]$: $(1.0 \times 1.0) + (0.0 \times 0.0) = \mathbf{1.0}$</li>
+          <li>vs $k_2=[1.0, 1.0]$: $(1.0 \times 1.0) + (0.0 \times 1.0) = \mathbf{1.0}$</li>
+          <li>vs $k_3=[0.0, 2.0]$: $(1.0 \times 0.0) + (0.0 \times 2.0) = \mathbf{0.0}$</li>
+        </ul>
+      </li>
+      <li>Row 2 ("dog", $q_2=[0.0, 2.0]$):
+        <ul>
+          <li>vs $k_1$: $(0.0 \times 1.0) + (2.0 \times 0.0) = \mathbf{0.0}$</li>
+          <li>vs $k_2$: $(0.0 \times 1.0) + (2.0 \times 1.0) = \mathbf{2.0}$</li>
+          <li>vs $k_3$: $(0.0 \times 0.0) + (2.0 \times 2.0) = \mathbf{4.0}$</li>
+        </ul>
+      </li>
+      <li>Row 3 ("barked", $q_3=[1.0, 1.0]$):
+        <ul>
+          <li>vs $k_1$: $(1.0 \times 1.0) + (1.0 \times 0.0) = \mathbf{1.0}$</li>
+          <li>vs $k_2$: $(1.0 \times 1.0) + (1.0 \times 1.0) = \mathbf{2.0}$</li>
+          <li>vs $k_3$: $(1.0 \times 0.0) + (1.0 \times 2.0) = \mathbf{2.0}$</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Step 4.3: Scale by $\sqrt{d_k} = \sqrt{2} \approx 1.414$</h3>
+    <table class="data-table">
+      <thead>
+        <tr><th>Query \ Key</th><th>1: "The"</th><th>2: "dog"</th><th>3: "barked"</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>1: "The"</strong></td><td>1.0 / 1.414 = <strong>0.707</strong></td><td>1.0 / 1.414 = <strong>0.707</strong></td><td>0.0 / 1.414 = <strong>0.000</strong></td></tr>
+        <tr><td><strong>2: "dog"</strong></td><td>0.0 / 1.414 = <strong>0.000</strong></td><td>2.0 / 1.414 = <strong>1.414</strong></td><td>4.0 / 1.414 = <strong>2.828</strong></td></tr>
+        <tr><td><strong>3: "barked"</strong></td><td>1.0 / 1.414 = <strong>0.707</strong></td><td>2.0 / 1.414 = <strong>1.414</strong></td><td>2.0 / 1.414 = <strong>1.414</strong></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Step 4.4: Row-Wise Softmax to get Attention Weights $A$</h3>
+    <p>Let's calculate Row 2 ("dog", scores $[0.000, 1.414, 2.828]$):</p>
+    <ul>
+      <li>$e^{0.000} = 1.000$</li>
+      <li>$e^{1.414} \approx 4.112$</li>
+      <li>$e^{2.828} \approx 16.912$</li>
+      <li>$\sum = 1.000 + 4.112 + 16.912 = \mathbf{22.024}$</li>
+      <li>Weights:
+        $A_{2,1} = 1.000 / 22.024 = \mathbf{0.045}$ (4.5%)<br>
+        $A_{2,2} = 4.112 / 22.024 = \mathbf{0.187}$ (18.7%)<br>
+        $A_{2,3} = 16.912 / 22.024 = \mathbf{0.768}$ (76.8%)
+      </li>
+    </ul>
+    <p>Notice how strongly "dog" is paying attention to "barked" (76.8%)!</p>
+
+    <h3>Step 4.5: Multiply Weights by Values ($Z = A V$)</h3>
+    <p>For Token 2 ("dog"), its new contextual representation is:</p>
+    <div class="math-block">
+      z_2 = 0.045 \cdot v_1 + 0.187 \cdot v_2 + 0.768 \cdot v_3 \\
+      z_2 = 0.045 \begin{bmatrix}2.0 \\ 1.0\end{bmatrix} + 0.187 \begin{bmatrix}0.0 \\ 3.0\end{bmatrix} + 0.768 \begin{bmatrix}1.0 \\ 0.0\end{bmatrix} \\
+      z_2 = \begin{bmatrix}0.090 \\ 0.045\end{bmatrix} + \begin{bmatrix}0.000 \\ 0.561\end{bmatrix} + \begin{bmatrix}0.768 \\ 0.000\end{bmatrix} = \mathbf{\begin{bmatrix}0.858 \\ 0.606\end{bmatrix}}
+    </div>
+    <p>The new vector for "dog" now contains information from "The", "dog", and especially "barked"!</p>
+
+    <!-- INTERACTIVE SECTION: ATTENTION CALCULATOR -->
+    <div class="interactive-card">
+      <h3>Interactive Scaled Dot-Product Playground</h3>
+      <p>Test how changing parameters changes the attention matrix in real-time:</p>
+      
+      <div style="margin-bottom: 1rem; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+        <label>
+          <strong>Causal Masking (Decoder Mode):</strong>
+          <input type="checkbox" id="calc-mask-toggle" onchange="updateInteractiveCalc()">
+        </label>
+        <label>
+          <strong>Temperature Scaling ($\tau$):</strong>
+          <input type="range" id="calc-temp" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateInteractiveCalc()" style="vertical-align: middle;">
+          <span id="calc-temp-val" style="font-family: monospace;">1.0</span>
+        </label>
+      </div>
+
+      <p style="font-size: 14px;">Tap any cell in the attention matrix below to inspect its exact calculation:</p>
+      <div id="interactive-matrix-container" style="text-align: center;"></div>
+      
+      <div id="cell-detail-box" style="margin-top: 15px; padding: 12px; border: 1px solid #000; background: #fafafa; font-size: 15px; font-family: monospace;">
+        Tap a cell above to view detailed math breakdown.
+      </div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <h2>5. Multi-Head Attention: Why One Head is Not Enough</h2>
+    <p>
+      In a sentence like:
+      <em>"The animal didn't cross the street because <strong>it</strong> was too tired."</em>
+    </p>
+    <p>
+      A single attention head might focus on resolving what <em>"it"</em> refers to (attending to <em>"animal"</em>). But what if another head needs to focus on syntax (verbs, prepositions), and another head needs to focus on relative position?
+    </p>
+    <p>
+      <strong>Multi-Head Attention (MHA)</strong> runs $h$ attention heads in parallel, each with its own projection matrices $W_Q^i, W_K^i, W_V^i$:
+    </p>
+    <div class="math-block">
+      \text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W_O \\
+      \text{where } \text{head}_i = \text{Attention}(Q W_Q^i, K W_K^i, V W_V^i)
+    </div>
+
+    <!-- INTERACTIVE HEAD EXPLORER -->
+    <div class="interactive-card">
+      <h3>Interactive Multi-Head Pattern Inspector</h3>
+      <p>Select different attention heads to see the distinct linguistic relationships they specialize in:</p>
+      
+      <div style="display:flex; gap:8px; margin-bottom: 12px; flex-wrap: wrap;">
+        <button class="btn active" id="btn-head-1" onclick="selectHead(1)">Head 1: Coreference</button>
+        <button class="btn" id="btn-head-2" onclick="selectHead(2)">Head 2: Syntactic (Verb-Object)</button>
+        <button class="btn" id="btn-head-3" onclick="selectHead(3)">Head 3: Positional / Local</button>
+      </div>
+
+      <div id="head-description" style="margin-bottom: 10px; font-weight: bold;"></div>
+
+      <div id="head-sentence-vis" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px;"></div>
+    </div>
+
+    <!-- CHECKPOINT 2 -->
+    <div class="mcq-box" id="mcq-2">
+      <div class="mcq-title">Checkpoint 2: Multi-Head Attention Capacity</div>
+      <p>If model embedding dimension $d_{model} = 512$ and we use $h = 8$ attention heads, what is the typical dimension of each key/query head $d_k$?</p>
+      <label class="mcq-option">
+        <input type="radio" name="q2" value="A"> A) 512
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q2" value="B"> B) 64 ($512 / 8$)
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q2" value="C"> C) 4096 ($512 \times 8$)
+      </label>
+      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Correct! In standard Transformers, each head operates on d_k = d_model / h = 512 / 8 = 64. This ensures total computation cost remains comparable to a single full-dimensional head.')">Check Answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 6 -->
+    <h2>6. Self-Attention vs. Cross-Attention vs. Causal Masking</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variant</th>
+          <th>Where Q Comes From</th>
+          <th>Where K & V Come From</th>
+          <th>Use Case</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Self-Attention</strong></td>
+          <td>Sequence $X$</td>
+          <td>Same sequence $X$</td>
+          <td>Encoder layers, understanding relationships inside a prompt.</td>
+        </tr>
+        <tr>
+          <td><strong>Causal Self-Attention</strong></td>
+          <td>Decoder sequence $Y$</td>
+          <td>Same sequence $Y$ (with future tokens masked with $-\infty$)</td>
+          <td>Autoregressive generation (GPT-style LLMs).</td>
+        </tr>
+        <tr>
+          <td><strong>Cross-Attention</strong></td>
+          <td>Decoder sequence $Y$</td>
+          <td>Encoder representation $H_{enc}$</td>
+          <td>Translation, summarization, multimodal vision-language models.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <details>
+      <summary>PyTorch Implementation: Minimal Multi-Head Self-Attention (Click to expand)</summary>
+      <div style="padding-top: 0.8rem;">
+<pre><code>import torch
+import torch.nn as nn
+import math
+
+class SelfAttention(nn.Module):
+    def __init__(self, d_model=512, n_heads=8):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.d_k = d_model // n_heads
+
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
+        self.w_o = nn.Linear(d_model, d_model)
+
+    def forward(self, x, mask=None):
+        batch_size, seq_len, _ = x.shape
+        
+        # 1. Project and split into heads: [B, L, H, d_k] -> transpose to [B, H, L, d_k]
+        Q = self.w_q(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+        K = self.w_k(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+        V = self.w_v(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+
+        # 2. Scaled Dot-Product: [B, H, L, L]
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
+
+        # 3. Softmax & weighted blend
+        attn_weights = torch.softmax(scores, dim=-1)
+        out = torch.matmul(attn_weights, V) # [B, H, L, d_k]
+
+        # 4. Concatenate heads and project output
+        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
+        return self.w_o(out)
+</code></pre>
+      </div>
+    </details>
+
+    <!-- FINAL CHECKPOINT -->
+    <div class="mcq-box" id="mcq-3">
+      <div class="mcq-title">Final Checkpoint: Causal Masking Mechanics</div>
+      <p>In causal (autoregressive) self-attention, how is future information prevented from leaking backwards?</p>
+      <label class="mcq-option">
+        <input type="radio" name="q3" value="A"> A) Setting the attention weights of future tokens to 0.0 before softmax.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q3" value="B"> B) Adding $-\infty$ to the future dot-product scores before softmax so $\exp(-\infty) = 0$.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q3" value="C"> C) Deleting the future tokens from memory during the forward pass.
+      </label>
+      <button class="btn" onclick="checkMCQ('mcq-3', 'B', 'Correct! Adding -infinity to future scores before softmax causes exp(-inf) to evaluate to exactly 0.0, ensuring no probability weight is allocated to future tokens.')">Check Answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
+      <p style="font-weight: bold;">Next recommended reading:</p>
+      <a href="gkd.html" class="btn" style="text-decoration: none; display: inline-block;">Continue to: Generalized Knowledge Distillation (GKD) →</a>
+    </div>
+  </main>
+
+  <!-- POPOVER MODAL CONTAINER -->
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()">×</button>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    // FONT SIZE CONTROLS
+    let currentFontSize = 18;
+    document.getElementById('font-inc').addEventListener('click', () => {
+      if (currentFontSize < 28) {
+        currentFontSize += 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+    document.getElementById('font-dec').addEventListener('click', () => {
+      if (currentFontSize > 14) {
+        currentFontSize -= 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+
+    // POPOVER GLOSSARY DICTIONARY
+    const glossary = {
+      "rnn": {
+        title: "Recurrent Neural Network (RNN)",
+        body: "A neural network that maintains a persistent hidden state vector updated sequentially at each time step. Vulnerable to vanishing gradients across long time horizons."
+      },
+      "lstm": {
+        title: "Long Short-Term Memory (LSTM)",
+        body: "A specialized RNN with input, forget, and output gates designed to regulate gradient flow and retain long-term memories better than standard vanilla RNNs."
+      },
+      "query": {
+        title: "Query Vector (Q)",
+        body: "Represents the current token's perspective asking: 'What features or related information am I seeking from context?' Derived via linear projection: Q = X · W_Q."
+      },
+      "key": {
+        title: "Key Vector (K)",
+        body: "Represents an index or catalog tag: 'What kind of information do I contain?' Dot-producted with queries to determine mutual relevance."
+      },
+      "value": {
+        title: "Value Vector (V)",
+        body: "The actual semantic payload that gets aggregated once attention weights are established: 'What information do I transmit if attended to?'"
+      },
+      "softmax": {
+        title: "Softmax Function",
+        body: "An activation function that turns a vector of arbitrary real numbers into a probability distribution where every value is between 0 and 1, and all values sum to 1.0."
+      },
+      "vanishing-gradient": {
+        title: "Vanishing Gradient",
+        body: "A phenomenon where backpropagated error gradients shrink exponentially towards zero as they pass through saturating non-linearities (like extreme softmax or tanh), halting learning."
+      }
+    };
+
+    // POPOVER HANDLERS
+    document.querySelectorAll('.term').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const key = el.getAttribute('data-term');
+        if (glossary[key]) {
+          document.getElementById('popover-term-name').innerText = glossary[key].title;
+          document.getElementById('popover-body').innerText = glossary[key].body;
+          document.getElementById('popover-backdrop').style.display = 'block';
+          document.getElementById('popover-box').style.display = 'block';
+        }
+      });
+    });
+
+    function closePopover() {
+      document.getElementById('popover-backdrop').style.display = 'none';
+      document.getElementById('popover-box').style.display = 'none';
+    }
+
+    // MCQ CHECKER
+    function checkMCQ(boxId, correctAnswer, explanation) {
+      const box = document.getElementById(boxId);
+      const selected = box.querySelector('input[type="radio"]:checked');
+      const feedback = box.querySelector('.mcq-feedback');
+      
+      if (!selected) {
+        feedback.className = 'mcq-feedback incorrect';
+        feedback.style.display = 'block';
+        feedback.innerText = 'Please select an option before checking.';
+        return;
+      }
+
+      if (selected.value === correctAnswer) {
+        feedback.className = 'mcq-feedback correct';
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<strong>✓ Correct!</strong> ' + explanation;
+      } else {
+        feedback.className = 'mcq-feedback incorrect';
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<strong>✗ Not quite.</strong> ' + explanation;
+      }
+    }
+
+    // INTERACTIVE CALCULATOR
+    const tokens = ["The", "dog", "barked"];
+    const baseScores = [
+      [1.0, 1.0, 0.0],
+      [0.0, 2.0, 4.0],
+      [1.0, 2.0, 2.0]
+    ];
+    let selectedCell = { r: 1, c: 2 };
+
+    function updateInteractiveCalc() {
+      const isCausal = document.getElementById('calc-mask-toggle').checked;
+      const tau = parseFloat(document.getElementById('calc-temp').value);
+      document.getElementById('calc-temp-val').innerText = tau.toFixed(1);
+
+      const d_k_scale = Math.sqrt(2);
+      let html = '<div class="matrix-grid" style="grid-template-columns: repeat(4, 75px);">';
+      
+      // Header row
+      html += '<div class="matrix-cell" style="background:#eee; font-weight:bold;">Q \\ K</div>';
+      tokens.forEach(t => html += `<div class="matrix-cell" style="background:#eee; font-weight:bold;">${t}</div>`);
+
+      for (let r = 0; r < 3; r++) {
+        html += `<div class="matrix-cell" style="background:#eee; font-weight:bold;">${tokens[r]}</div>`;
+        
+        // Compute softmax for row
+        let expScores = [];
+        let sumExp = 0;
+        for (let c = 0; c < 3; c++) {
+          if (isCausal && c > r) {
+            expScores.push(0);
+          } else {
+            let s = (baseScores[r][c] / (d_k_scale * tau));
+            let e = Math.exp(s);
+            expScores.push(e);
+            sumExp += e;
+          }
+        }
+
+        for (let c = 0; c < 3; c++) {
+          let prob = sumExp > 0 ? (expScores[c] / sumExp) : 0;
+          let isSel = (selectedCell.r === r && selectedCell.c === c);
+          let cellStyle = isSel ? 'background:#000; color:#fff;' : '';
+          html += `<div class="matrix-cell" style="${cellStyle}" onclick="selectCell(${r}, ${c})">
+            <span>${(prob * 100).toFixed(0)}%</span>
+            <span style="font-size:10px; opacity:0.8;">${prob.toFixed(2)}</span>
+          </div>`;
+        }
+      }
+      html += '</div>';
+      document.getElementById('interactive-matrix-container').innerHTML = html;
+      renderCellDetail();
+    }
+
+    function selectCell(r, c) {
+      selectedCell = { r, c };
+      updateInteractiveCalc();
+    }
+
+    function renderCellDetail() {
+      const r = selectedCell.r;
+      const c = selectedCell.c;
+      const isCausal = document.getElementById('calc-mask-toggle').checked;
+      const tau = parseFloat(document.getElementById('calc-temp').value);
+
+      if (isCausal && c > r) {
+        document.getElementById('cell-detail-box').innerHTML = 
+          `<strong>Query: "${tokens[r]}" → Key: "${tokens[c]}"</strong><br>` +
+          `[MASKED] Future token attention is masked with -∞.<br>` +
+          `Softmax weight: exp(-∞) / sum = <strong>0.00 (0%)</strong>.`;
+        return;
+      }
+
+      let rawDot = baseScores[r][c];
+      let scaled = rawDot / (Math.sqrt(2) * tau);
+      document.getElementById('cell-detail-box').innerHTML = 
+        `<strong>Query: "${tokens[r]}" [Row ${r+1}] → Key: "${tokens[c]}" [Col ${c+1}]</strong><br>` +
+        `Raw Dot-Product (Q · K^T): ${rawDot.toFixed(1)}<br>` +
+        `Scaled (Score / (√2 × τ)): ${rawDot.toFixed(1)} / ${(Math.sqrt(2)*tau).toFixed(3)} = <strong>${scaled.toFixed(3)}</strong><br>` +
+        `Exponent exp(${scaled.toFixed(3)}) = ${Math.exp(scaled).toFixed(3)} (Normalized across row to produce softmax weight).`;
+    }
+
+    // MULTI-HEAD EXPLORER
+    const headData = {
+      1: {
+        name: "Head 1: Coreference Resolution",
+        desc: "Focuses on linking pronouns to the antecedent nouns they reference (e.g., 'it' points to 'animal').",
+        sentence: [
+          { word: "The", score: 0.05 },
+          { word: "animal", score: 0.82 },
+          { word: "didn't", score: 0.01 },
+          { word: "cross", score: 0.02 },
+          { word: "the", score: 0.01 },
+          { word: "street", score: 0.04 },
+          { word: "because", score: 0.01 },
+          { word: "[IT]", score: 1.0, isQuery: true },
+          { word: "was", score: 0.01 },
+          { word: "tired", score: 0.03 }
+        ]
+      },
+      2: {
+        name: "Head 2: Syntactic (Verb-Object Structure)",
+        desc: "Focuses on linking actions to their direct objects (e.g., 'cross' attends heavily to 'street').",
+        sentence: [
+          { word: "The", score: 0.02 },
+          { word: "animal", score: 0.04 },
+          { word: "didn't", score: 0.12 },
+          { word: "[CROSS]", score: 1.0, isQuery: true },
+          { word: "the", score: 0.04 },
+          { word: "street", score: 0.74 },
+          { word: "because", score: 0.01 },
+          { word: "it", score: 0.01 },
+          { word: "was", score: 0.01 },
+          { word: "tired", score: 0.01 }
+        ]
+      },
+      3: {
+        name: "Head 3: Positional / Local Context",
+        desc: "Attends primarily to immediate neighbor tokens (unigram and bigram continuity).",
+        sentence: [
+          { word: "The", score: 0.05 },
+          { word: "animal", score: 0.10 },
+          { word: "didn't", score: 0.05 },
+          { word: "cross", score: 0.05 },
+          { word: "the", score: 0.05 },
+          { word: "street", score: 0.10 },
+          { word: "[BECAUSE]", score: 1.0, isQuery: true },
+          { word: "it", score: 0.55 },
+          { word: "was", score: 0.05 },
+          { word: "tired", score: 0.00 }
+        ]
+      }
+    };
+
+    function selectHead(id) {
+      document.querySelectorAll('.interactive-card button').forEach(b => b.classList.remove('active'));
+      const activeBtn = document.getElementById('btn-head-' + id);
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const data = headData[id];
+      document.getElementById('head-description').innerHTML = 
+        `<em>${data.name}</em>: ${data.desc}`;
+
+      let visHtml = '';
+      data.sentence.forEach(item => {
+        let isQ = item.isQuery;
+        let borderStyle = isQ ? '3px solid #000' : '1px solid #444';
+        let bg = isQ ? '#000' : (item.score > 0.4 ? '#bbb' : (item.score > 0.1 ? '#eee' : '#fff'));
+        let textColor = isQ ? '#fff' : '#000';
+        
+        visHtml += `<div style="border:${borderStyle}; background:${bg}; color:${textColor}; padding: 8px 12px; text-align:center; min-width: 65px; border-radius: 2px;">
+          <div style="font-weight:bold; font-size:14px;">${item.word}</div>
+          <div style="font-size:11px; font-family:monospace;">${isQ ? 'QUERY' : (item.score * 100).toFixed(0) + '%'}</div>
+        </div>`;
+      });
+      document.getElementById('head-sentence-vis').innerHTML = visHtml;
+    }
+
+    // Initialize
+    updateInteractiveCalc();
+    selectHead(1);
+  </script>
+</body>
+</html>

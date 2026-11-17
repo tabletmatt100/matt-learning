@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generalized Knowledge Distillation (GKD): Solving Exposure Bias in LLMs</title>
+  <style>
+    /* E-INK OPTIMIZED STYLESHEET */
+    :root {
+      --bg: #ffffff;
+      --text: #111111;
+      --border: #222222;
+      --border-thick: 2px solid #111111;
+      --border-thin: 1px solid #444444;
+      --card-bg: #fafafa;
+      --highlight-bg: #eaeaea;
+      --active-bg: #111111;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      /* E-ink optimization: zero transition animations to eliminate ghosting */
+      transition: none !important;
+      animation: none !important;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: var(--font-size);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1.5rem 1rem;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+    }
+
+    .font-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thin);
+      padding: 6px 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 40px;
+      min-width: 40px;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      line-height: 1.25;
+      margin-top: 0;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.6rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.3rem;
+    }
+
+    h3 {
+      font-size: 1.25rem;
+      margin-top: 1.8rem;
+    }
+
+    p, li {
+      margin-bottom: 1.2rem;
+    }
+
+    /* Popover trigger terms */
+    .term {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-decoration-thickness: 2px;
+      cursor: pointer;
+      font-weight: 600;
+      background: var(--highlight-bg);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .term:hover, .term:active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    /* Popover Modal */
+    #popover-backdrop {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 999;
+    }
+
+    #popover-box {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #ffffff;
+      border: 3px solid #000000;
+      padding: 1.5rem;
+      max-width: 520px;
+      width: 90%;
+      z-index: 1000;
+      box-shadow: 4px 4px 0px #000000;
+    }
+
+    #popover-title {
+      font-size: 1.3rem;
+      font-weight: bold;
+      margin-top: 0;
+      margin-bottom: 0.6rem;
+      border-bottom: 2px solid #000;
+      padding-bottom: 0.4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #popover-close {
+      cursor: pointer;
+      font-size: 1.5rem;
+      background: none;
+      border: none;
+      padding: 0 6px;
+      font-weight: bold;
+    }
+
+    #popover-body {
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    /* Math and Code blocks */
+    .math-block {
+      background: var(--card-bg);
+      border: var(--border-thick);
+      padding: 1rem;
+      margin: 1.5rem 0;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      text-align: center;
+    }
+
+    pre, code {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+      border-radius: 2px;
+    }
+
+    pre {
+      padding: 1rem;
+      border: var(--border-thin);
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* Interactive Box Containers */
+    .interactive-card {
+      background: #ffffff;
+      border: var(--border-thick);
+      padding: 1.5rem;
+      margin: 2rem 0;
+      box-shadow: 3px 3px 0px #000000;
+    }
+
+    .interactive-card h3 {
+      margin-top: 0;
+      border-bottom: 1px solid #000;
+      padding-bottom: 0.4rem;
+    }
+
+    /* Tables */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.2rem 0;
+      font-size: 15px;
+    }
+
+    table.data-table th, table.data-table td {
+      border: 1px solid #000000;
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    table.data-table th {
+      background: var(--highlight-bg);
+      font-weight: bold;
+    }
+
+    /* Details styling */
+    details {
+      border: var(--border-thin);
+      background: var(--card-bg);
+      margin: 1.5rem 0;
+      padding: 0.5rem 1rem;
+      border-radius: 2px;
+    }
+
+    details[open] {
+      border: var(--border-thick);
+      background: #ffffff;
+    }
+
+    summary {
+      font-weight: bold;
+      cursor: pointer;
+      padding: 0.5rem 0;
+      outline: none;
+    }
+
+    summary:hover {
+      text-decoration: underline;
+    }
+
+    /* Multiple Choice Questions */
+    .mcq-box {
+      border: 2px solid #000000;
+      background: #ffffff;
+      padding: 1.2rem;
+      margin: 2rem 0;
+    }
+
+    .mcq-title {
+      font-weight: bold;
+      font-size: 1.1rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: 1px solid #444;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+
+    .mcq-option:hover {
+      background: var(--highlight-bg);
+    }
+
+    .mcq-option input[type="radio"] {
+      margin-right: 10px;
+      transform: scale(1.2);
+    }
+
+    .mcq-feedback {
+      display: none;
+      padding: 10px 12px;
+      margin-top: 10px;
+      border: 2px solid #000;
+      font-size: 15px;
+    }
+
+    .mcq-feedback.correct {
+      background: #f0f0f0;
+      border-color: #000;
+    }
+
+    .mcq-feedback.incorrect {
+      background: #e6e6e6;
+      border-color: #000;
+    }
+
+    .diagram-svg {
+      width: 100%;
+      max-width: 650px;
+      height: auto;
+      display: block;
+      margin: 1.5rem auto;
+      border: 1px solid #000;
+      background: #fff;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid #000;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      text-transform: uppercase;
+    }
+
+    .bar-chart-container {
+      display: flex;
+      align-items: flex-end;
+      height: 160px;
+      gap: 20px;
+      border-bottom: 2px solid #000;
+      padding-bottom: 5px;
+      margin: 20px 0;
+    }
+
+    .bar-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+    }
+
+    .bar {
+      width: 100%;
+      max-width: 45px;
+      border: 1px solid #000;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">← All Guides</a>
+        <a href="attention.html">← Attention Guide</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">LLM Alignment</span>
+      <span class="tag">Model Compression</span>
+      <span class="tag">DeepMind Research</span>
+    </div>
+
+    <h1>Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</h1>
+
+    <p>
+      As frontier language models grow to hundreds of billions of parameters, compressing them into fast, edge-friendly student models (e.g., 2B to 8B models) is essential. The canonical approach has long been <strong>Knowledge Distillation (KD)</strong>.
+    </p>
+    <p>
+      However, applying classical knowledge distillation directly to autoregressive text generation introduces a severe, debilitating failure mode: <span class="term" data-term="exposure-bias">Exposure Bias</span>.
+    </p>
+    <p>
+      Introduced by Agarwal et al. (DeepMind, 2023), <strong>Generalized Knowledge Distillation (GKD)</strong> solves this crisis by re-architecting distillation along two foundational dimensions: <em>data distribution sampling</em> and <em>generalized divergence metrics</em>.
+    </p>
+
+    <!-- SECTION 1 -->
+    <h2>1. The Fatal Flaw of Supervised Distillation: Exposure Bias</h2>
+    <p>
+      In classical supervised knowledge distillation (Hinton et al., 2015), the student model is trained on a static offline dataset $\mathcal{D}$:
+    </p>
+    <div class="math-block">
+      \mathcal{L}_{\text{KD}}(\theta) = \mathbb{E}_{(x, y) \sim \mathcal{D}} \left[ \sum_{t=1}^T \mathbb{D}_{\text{KL}}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]
+    </div>
+
+    <p>
+      Notice the prefix: $y_{<t}$ comes from the <strong>ground-truth teacher dataset</strong> (known as <em>teacher forcing</em>).
+    </p>
+    <p>
+      At training time, the student is gently led down the golden teacher path. But at inference time, there is no teacher! The student generates its own prefixes autoregressively: $\hat{y}_t \sim P_{\text{student}}(\cdot \mid x, \hat{y}_{<t})$.
+    </p>
+    <p>
+      <strong>The compounding error:</strong> If the student makes an unfamiliar prediction at token 4, it enters a state space it was <em>never trained on</em>. The student panics, hallucinates, or loops repetitively.
+    </p>
+
+    <!-- DIAGRAM -->
+    <svg class="diagram-svg" viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg">
+      <text x="300" y="25" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Train vs Inference Trajectory Divergence</text>
+      
+      <!-- Training Trajectory (Straight) -->
+      <path d="M 50 80 L 550 80" stroke="#000" stroke-width="2" stroke-dasharray="none"/>
+      <circle cx="50" cy="80" r="5" fill="#000"/>
+      <circle cx="200" cy="80" r="5" fill="#000"/>
+      <circle cx="350" cy="80" r="5" fill="#000"/>
+      <circle cx="500" cy="80" r="5" fill="#000"/>
+      <text x="50" y="105" font-size="12" font-family="monospace">x (Prompt)</text>
+      <text x="200" y="105" font-size="12" font-family="monospace">y_1 (Gold)</text>
+      <text x="350" y="105" font-size="12" font-family="monospace">y_2 (Gold)</text>
+      <text x="500" y="105" font-size="12" font-family="monospace">y_3 (Gold)</text>
+      <text x="555" y="85" font-size="11" font-weight="bold">Teacher Trajectory</text>
+
+      <!-- Inference Trajectory (Drifting) -->
+      <path d="M 50 160 L 200 160 Q 280 180 350 200 L 500 210" stroke="#444" stroke-width="2" stroke-dasharray="4,4"/>
+      <circle cx="50" cy="160" r="5" fill="#000"/>
+      <circle cx="200" cy="160" r="5" fill="#000"/>
+      <circle cx="350" cy="200" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
+      <circle cx="500" cy="210" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
+      <text x="200" y="150" font-size="12" font-family="monospace">y_1 (Match)</text>
+      <text x="350" y="185" font-size="12" font-family="monospace">y_2 (Slight Error!)</text>
+      <text x="500" y="195" font-size="12" font-family="monospace">y_3 (Hallucination!)</text>
+      <text x="555" y="210" font-size="11" font-weight="bold">Student In Wild</text>
+
+      <!-- Warning bracket -->
+      <line x1="350" y1="90" x2="350" y2="185" stroke="#999" stroke-width="1" stroke-dasharray="2,2"/>
+      <text x="360" y="140" font-size="11" fill="#444">Exposure Bias Gap</text>
+    </svg>
+
+    <!-- CHECKPOINT 1 -->
+    <div class="mcq-box" id="mcq-1">
+      <div class="mcq-title">Checkpoint 1: The Root of Exposure Bias</div>
+      <p>Why does standard supervised distillation fail to train robust autoregressive models?</p>
+      <label class="mcq-option">
+        <input type="radio" name="q1" value="A"> A) The teacher model runs out of GPU memory during token generation.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q1" value="B"> B) The student only trains on golden teacher prefixes, so it never learns how to recover when it makes its own mistakes during free generation.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q1" value="C"> C) Softmax cannot be calculated over large vocabularies.
+      </label>
+      <button class="btn" onclick="checkMCQ('mcq-1', 'B', 'Spot on! Under standard teacher-forcing, the student is always conditioned on clean prefixes. When generating autonomously, errors compound because the student has never seen its own flawed prefixes.')">Check Answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2>2. The GKD Framework: Two Levers of Generalization</h2>
+    <p>
+      GKD formalizes knowledge distillation under a generalized loss objective:
+    </p>
+    <div class="math-block">
+      \mathcal{L}_{\text{GKD}}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, \, y \sim \mu(\cdot \mid x)} \left[ \sum_{t=1}^{|y|} \mathbb{D}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]
+    </div>
+
+    <p>Notice the two decisive levers:</p>
+    <ol>
+      <li><strong>Generation Distribution $\mu(\cdot \mid x)$</strong>:
+        We interpolate between off-policy dataset/teacher samples and <strong>on-policy student rollouts</strong> using mixture parameter $\lambda \in [0, 1]$:
+        <div class="math-block">
+          \mu(y \mid x) = \lambda P_{\text{student}}(y \mid x) + (1 - \lambda) P_{\text{data}}(y \mid x)
+        </div>
+        When $\lambda > 0$, the student generates its own candidate trajectories, and the teacher evaluates the student's *actual* generated outputs!
+      </li>
+      <li><strong>Divergence Metric $\mathbb{D}(P_T \,\|\, P_S)$</strong>:
+        Instead of being locked into forward KL, GKD explores generalized divergences, crucially including <span class="term" data-term="reverse-kl">Reverse KL Divergence</span> and Jensen-Shannon Divergence.
+      </li>
+    </ol>
+
+    <!-- SECTION 3 -->
+    <h2>3. Forward KL vs. Reverse KL: Mode-Covering vs. Mode-Seeking</h2>
+    <p>
+      The choice of divergence metric fundamentally changes the student's personality:
+    </p>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Divergence</th>
+          <th>Formula</th>
+          <th>Behavioral Tendency</th>
+          <th>Consequence in Text Generation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Forward KL</strong><br>$\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$</td>
+          <td>$\sum_k P_T(k) \ln \frac{P_T(k)}{P_S(k)}$</td>
+          <td><span class="term" data-term="mode-covering">Mode-Covering (Zero-Avoiding)</span></td>
+          <td>Forces student to assign $P_S > 0$ anywhere $P_T > 0$. Yields blurry, high-entropy distributions; student hallucinates unlikely tokens.</td>
+        </tr>
+        <tr>
+          <td><strong>Reverse KL</strong><br>$\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$</td>
+          <td>$\sum_k P_S(k) \ln \frac{P_S(k)}{P_T(k)}$</td>
+          <td><span class="term" data-term="mode-seeking">Mode-Seeking (Zero-Forcing)</span></td>
+          <td>Heavily punishes student if $P_S > 0$ when $P_T \approx 0$. Forces student to focus exclusively on high-probability modes of the teacher.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- INTERACTIVE SECTION 1: KL DIVERGENCE CALCULATOR -->
+    <div class="interactive-card">
+      <h3>Interactive Divergence Visualizer: Mode-Covering vs Mode-Seeking</h3>
+      <p>Adjust student probability allocations across 3 vocabulary tokens to see how Forward KL and Reverse KL react differently:</p>
+
+      <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 1rem;">
+        <div style="flex: 1; min-width: 250px;">
+          <strong>Student Probabilities:</strong>
+          <div style="margin: 8px 0;">
+            Token 1 ("sunny"): <span id="s-p1-label">0.40</span>
+            <input type="range" id="s-p1" min="0.05" max="0.90" step="0.05" value="0.40" oninput="updateDistSimulator()">
+          </div>
+          <div style="margin: 8px 0;">
+            Token 2 ("cloudy"): <span id="s-p2-label">0.30</span>
+            <input type="range" id="s-p2" min="0.05" max="0.90" step="0.05" value="0.30" oninput="updateDistSimulator()">
+          </div>
+          <div style="margin: 8px 0;">
+            Token 3 ("rainy"): <span id="s-p3-label">0.30</span> (auto-normalized)
+          </div>
+        </div>
+
+        <div style="flex: 1; min-width: 250px; background: #fafafa; border: 1px solid #444; padding: 12px;">
+          <strong>Fixed Teacher Target $P_T$:</strong>
+          <div>"sunny": <strong>0.70</strong> (dominant mode)</div>
+          <div>"cloudy": <strong>0.25</strong> (secondary mode)</div>
+          <div>"rainy": <strong>0.05</strong> (improbable outlier)</div>
+        </div>
+      </div>
+
+      <div class="bar-chart-container" id="bar-chart-vis"></div>
+
+      <div style="background: #eee; border: 2px solid #000; padding: 12px; margin-top: 15px; font-family: monospace;">
+        <div><strong>Forward KL $\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$:</strong> <span id="val-fwd-kl">--</span></div>
+        <div><strong>Reverse KL $\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$:</strong> <span id="val-rev-kl">--</span></div>
+        <div id="kl-analysis" style="margin-top: 8px; font-size: 14px; font-family: var(--font-main);"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <h2>4. Fully Worked-Out Numerical Example</h2>
+    <p>
+      Let's trace the exact mathematics of why Reverse KL brutally punishes hallucinations compared to Forward KL.
+    </p>
+    <p>
+      Consider the single token prediction given prompt: <em>"Today's forecast is..."</em><br>
+      Vocabulary: $V = \{\text{"sunny"}, \text{"cloudy"}, \text{"rainy"}\}$.
+    </p>
+
+    <h3>Given Probabilities</h3>
+    <ul>
+      <li>Teacher: $P_T = [0.70, 0.25, 0.05]$</li>
+      <li>Student (untrained): $P_S = [0.40, 0.30, 0.30]$</li>
+    </ul>
+
+    <h3>Calculation A: Forward KL $\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$</h3>
+    <div class="math-block">
+      \mathbb{D}_{\text{KL}}(P_T \,\|\, P_S) = \sum_{k} P_T(k) \ln\left(\frac{P_T(k)}{P_S(k)}\right)
+    </div>
+    <ol>
+      <li>For "sunny": $0.70 \times \ln(0.70 / 0.40) = 0.70 \times \ln(1.750) = 0.70 \times 0.5596 = \mathbf{+0.3917}$</li>
+      <li>For "cloudy": $0.25 \times \ln(0.25 / 0.30) = 0.25 \times \ln(0.8333) = 0.25 \times (-0.1823) = \mathbf{-0.0456}$</li>
+      <li>For "rainy": $0.05 \times \ln(0.05 / 0.30) = 0.05 \times \ln(0.1667) = 0.05 \times (-1.7918) = \mathbf{-0.0896}$</li>
+      <li><strong>Total Forward KL:</strong> $0.3917 - 0.0456 - 0.0896 = \mathbf{0.2565}$ nats.</li>
+    </ol>
+    <p>
+      Notice that the student allocated 30% probability to "rainy" (when the teacher only gives 5%), yet the penalty from "rainy" in Forward KL is tiny ($-0.0896$) because $P_T(\text{"rainy"})$ is small ($0.05$)! Forward KL barely cares that the student is hallucinating bad tokens.
+    </p>
+
+    <h3>Calculation B: Reverse KL $\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$</h3>
+    <div class="math-block">
+      \mathbb{D}_{\text{KL}}(P_S \,\|\, P_T) = \sum_{k} P_S(k) \ln\left(\frac{P_S(k)}{P_T(k)}\right)
+    </div>
+    <ol>
+      <li>For "sunny": $0.40 \times \ln(0.40 / 0.70) = 0.40 \times \ln(0.5714) = 0.40 \times (-0.5596) = \mathbf{-0.2238}$</li>
+      <li>For "cloudy": $0.30 \times \ln(0.30 / 0.25) = 0.30 \times \ln(1.200) = 0.30 \times 0.1823 = \mathbf{+0.0547}$</li>
+      <li>For "rainy": $0.30 \times \ln(0.30 / 0.05) = 0.30 \times \ln(6.000) = 0.30 \times 1.7918 = \mathbf{+0.5375}$</li>
+      <li><strong>Total Reverse KL:</strong> $-0.2238 + 0.0547 + 0.5375 = \mathbf{0.3684}$ nats.</li>
+    </ol>
+    <p>
+      <strong>Look at the difference:</strong> For "rainy", Reverse KL produces a massive positive loss penalty of <strong>$+0.5375$</strong>! Because the weighting term is $P_S(\text{"rainy"}) = 0.30$, any mass the student places where the teacher has low probability is punished aggressively. This forces the student to eliminate hallucinatory tail probabilities.
+    </p>
+
+    <!-- CHECKPOINT 2 -->
+    <div class="mcq-box" id="mcq-2">
+      <div class="mcq-title">Checkpoint 2: The Mathematical Asymmetry</div>
+      <p>If teacher probability $P_T(k) \to 0$ for a token, but student assigns $P_S(k) = 0.2$, what happens to Reverse KL?</p>
+      <label class="mcq-option">
+        <input type="radio" name="q2" value="A"> A) It approaches zero because $P_T$ cancels out.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q2" value="B"> B) The term $0.2 \times \ln(0.2 / P_T(k))$ blows up to $+\infty$, forcing the student to set $P_S(k) \to 0$.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q2" value="C"> C) It turns negative and rewards the student.
+      </label>
+      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Exact! In Reverse KL, dividing by P_T(k) inside the logarithm causes the loss to explode to +infinity if the student puts mass where the teacher has zero mass. This is the definition of zero-forcing/mode-seeking!')">Check Answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 5: ON-POLICY TRAINING -->
+    <h2>5. The GKD Training Algorithm: On-Policy Rollouts</h2>
+    <p>
+      How do we practically train with on-policy generation? The GKD training loop proceeds as follows:
+    </p>
+
+    <div class="math-block" style="text-align: left; font-size: 15px;">
+      1. Sample prompt: x ~ D_prompt<br>
+      2. With probability λ: Sample student rollout y ~ P_student(· | x)<br>
+      &nbsp;&nbsp;&nbsp;With probability (1-λ): Take reference sequence y ~ D_data<br>
+      3. Run teacher forward pass on sequence (x, y) to obtain P_teacher(· | x, y_{&lt;t})<br>
+      4. Run student forward pass on sequence (x, y) to obtain P_student(· | x, y_{&lt;t})<br>
+      5. Compute divergence D(P_teacher || P_student) at each generated step t<br>
+      6. Backpropagate gradients into student weights θ
+    </div>
+
+    <!-- INTERACTIVE SECTION 2: LAMBDA MIXING EXPLORER -->
+    <div class="interactive-card">
+      <h3>Interactive Policy Mixing Simulator ($\lambda$)</h3>
+      <p>Slide $\lambda$ to see how data generation shifts between off-policy supervision and on-policy self-correction:</p>
+
+      <div style="margin: 15px 0;">
+        <label>
+          <strong>Mix Ratio $\lambda$ (On-Policy Weight):</strong>
+          <input type="range" id="mix-lambda" min="0" max="1" step="0.1" value="0.5" oninput="updateLambdaMix()">
+          <span id="lambda-val" style="font-family: monospace; font-weight: bold;">0.5</span>
+        </label>
+      </div>
+
+      <div id="lambda-description" style="border: 1px solid #000; padding: 12px; background: #fafafa;"></div>
+    </div>
+
+    <!-- DETAILS: POLICY GRADIENT DERIVATION -->
+    <details>
+      <summary>Mathematical Derivation: Policy Gradient for Reverse KL (Click to expand)</summary>
+      <div style="padding-top: 0.8rem;">
+        <p>When sampling rollouts on-policy $y \sim P_{\text{student}}(\cdot \mid x)$, the gradient with respect to student parameters $\theta$ requires differentiating through the expectation over generated sequences:</p>
+        <div class="math-block">
+          \nabla_\theta \mathbb{E}_{y \sim P_\theta} [ R(y) ] = \mathbb{E}_{y \sim P_\theta} \left[ R(y) \nabla_\theta \log P_\theta(y) \right]
+        </div>
+        <p>In GKD, the token-level loss at step $t$ acts as an intrinsic reward/cost signal from the teacher:</p>
+        <div class="math-block">
+          r_t = -\mathbb{D}_{\text{KL}}\Big( P_{\text{student}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{teacher}}(\cdot \mid x, y_{<t}) \Big)
+        </div>
+        <p>Because the student samples its own trajectory, this gradient directly updates the policy to make transitions into high-teacher-probability trajectories more likely, solving exposure bias completely!</p>
+      </div>
+    </details>
+
+    <!-- SECTION 6: COMPARISON TABLE -->
+    <h2>6. Comparison: GKD vs. SFT vs. RLHF / PPO</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>Data Distribution</th>
+          <th>Requires Reward Model?</th>
+          <th>Suffers from Exposure Bias?</th>
+          <th>Compute Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Supervised Fine-Tuning (SFT)</strong></td>
+          <td>Off-policy ($\mathcal{D}$)</td>
+          <td>No</td>
+          <td>Yes (severe)</td>
+          <td>Low</td>
+        </tr>
+        <tr>
+          <td><strong>Standard Distillation (KD)</strong></td>
+          <td>Off-policy ($\mathcal{D}$)</td>
+          <td>No</td>
+          <td>Yes (severe)</td>
+          <td>Low / Medium</td>
+        </tr>
+        <tr>
+          <td><strong>RLHF (PPO)</strong></td>
+          <td>On-policy rollouts</td>
+          <td>Yes (Reward Model)</td>
+          <td>No</td>
+          <td>High (unstable)</td>
+        </tr>
+        <tr>
+          <td><strong>GKD</strong></td>
+          <td>Mixed On/Off-Policy ($\lambda$)</td>
+          <td>No (Teacher is the reward)</td>
+          <td><strong>No (Solved)</strong></td>
+          <td>Medium</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- CHECKPOINT 3 -->
+    <div class="mcq-box" id="mcq-3">
+      <div class="mcq-title">Final Checkpoint: GKD vs RLHF</div>
+      <p>Why is GKD often more stable and sample-efficient than standard RLHF with a separate Reward Model (RM)?</p>
+      <label class="mcq-option">
+        <input type="radio" name="q3" value="A"> A) GKD does not need to learn any neural network weights.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q3" value="B"> B) Instead of a scalar reward at the very end of the sequence, the teacher provides dense, token-by-token distribution guidance across the entire vocabulary at every step.
+      </label>
+      <label class="mcq-option">
+        <input type="radio" name="q3" value="C"> C) GKD uses only forward KL divergence on static offline data.
+      </label>
+      <button class="btn" onclick="checkMCQ('mcq-3', 'B', 'Correct! Standard RLHF only receives a single scalar reward at the end of a long generation. GKD gives dense, step-by-step token distribution feedback from the teacher, providing vastly lower gradient variance and faster convergence.')">Check Answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
+      <p style="font-weight: bold;">Return or Review:</p>
+      <a href="attention.html" class="btn" style="text-decoration: none; display: inline-block;">← Back to Attention Guide</a>
+      <a href="index.html" class="btn" style="text-decoration: none; display: inline-block; margin-left: 10px;">View Table of Contents</a>
+    </div>
+  </main>
+
+  <!-- POPOVER MODAL CONTAINER -->
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()">×</button>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    // FONT SIZE CONTROLS
+    let currentFontSize = 18;
+    document.getElementById('font-inc').addEventListener('click', () => {
+      if (currentFontSize < 28) {
+        currentFontSize += 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+    document.getElementById('font-dec').addEventListener('click', () => {
+      if (currentFontSize > 14) {
+        currentFontSize -= 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+
+    // POPOVER GLOSSARY
+    const glossary = {
+      "exposure-bias": {
+        title: "Exposure Bias",
+        body: "The discrepancy that arises when an autoregressive model is conditioned on ground-truth tokens during training (teacher forcing), but must condition on its own previously generated tokens at test time."
+      },
+      "reverse-kl": {
+        title: "Reverse KL Divergence",
+        body: "D_KL(P_student || P_teacher). Also known as the zero-forcing or mode-seeking divergence. Extensively penalizes the student if it generates tokens that the teacher assigns near-zero probability to."
+      },
+      "mode-covering": {
+        title: "Mode-Covering (Forward KL)",
+        body: "The behavior of D_KL(P_target || P_approx). To prevent loss from blowing up, the approximating model must stretch its probability distribution to cover all modes of the target, leading to diffuse, blurry outputs."
+      },
+      "mode-seeking": {
+        title: "Mode-Seeking (Reverse KL)",
+        body: "The behavior of D_KL(P_approx || P_target). The approximating model focuses entirely on fitting one or more high-confidence modes, choosing precision over broad coverage. Ideal for text generation."
+      }
+    };
+
+    document.querySelectorAll('.term').forEach(el => {
+      el.addEventListener('click', () => {
+        const key = el.getAttribute('data-term');
+        if (glossary[key]) {
+          document.getElementById('popover-term-name').innerText = glossary[key].title;
+          document.getElementById('popover-body').innerText = glossary[key].body;
+          document.getElementById('popover-backdrop').style.display = 'block';
+          document.getElementById('popover-box').style.display = 'block';
+        }
+      });
+    });
+
+    function closePopover() {
+      document.getElementById('popover-backdrop').style.display = 'none';
+      document.getElementById('popover-box').style.display = 'none';
+    }
+
+    // MCQ CHECKER
+    function checkMCQ(boxId, correctAnswer, explanation) {
+      const box = document.getElementById(boxId);
+      const selected = box.querySelector('input[type="radio"]:checked');
+      const feedback = box.querySelector('.mcq-feedback');
+      
+      if (!selected) {
+        feedback.className = 'mcq-feedback incorrect';
+        feedback.style.display = 'block';
+        feedback.innerText = 'Please select an option before checking.';
+        return;
+      }
+
+      if (selected.value === correctAnswer) {
+        feedback.className = 'mcq-feedback correct';
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<strong>✓ Correct!</strong> ' + explanation;
+      } else {
+        feedback.className = 'mcq-feedback incorrect';
+        feedback.style.display = 'block';
+        feedback.innerHTML = '<strong>✗ Not quite.</strong> ' + explanation;
+      }
+    }
+
+    // INTERACTIVE KL SIMULATOR
+    const teacherP = [0.70, 0.25, 0.05];
+    const tokenNames = ["sunny", "cloudy", "rainy"];
+
+    function updateDistSimulator() {
+      let p1 = parseFloat(document.getElementById('s-p1').value);
+      let p2 = parseFloat(document.getElementById('s-p2').value);
+      if (p1 + p2 >= 0.95) {
+        p2 = 0.95 - p1;
+        document.getElementById('s-p2').value = p2.toFixed(2);
+      }
+      let p3 = 1.0 - (p1 + p2);
+      p3 = Math.max(0.01, p3);
+
+      document.getElementById('s-p1-label').innerText = p1.toFixed(2);
+      document.getElementById('s-p2-label').innerText = p2.toFixed(2);
+      document.getElementById('s-p3-label').innerText = p3.toFixed(2);
+
+      const studentP = [p1, p2, p3];
+
+      // Compute Forward KL: sum P_T * ln(P_T / P_S)
+      let fwdKL = 0;
+      for (let i = 0; i < 3; i++) {
+        fwdKL += teacherP[i] * Math.log(teacherP[i] / studentP[i]);
+      }
+
+      // Compute Reverse KL: sum P_S * ln(P_S / P_T)
+      let revKL = 0;
+      for (let i = 0; i < 3; i++) {
+        revKL += studentP[i] * Math.log(studentP[i] / teacherP[i]);
+      }
+
+      document.getElementById('val-fwd-kl').innerText = fwdKL.toFixed(4) + ' nats';
+      document.getElementById('val-rev-kl').innerText = revKL.toFixed(4) + ' nats';
+
+      // Analysis insight
+      let analysis = "";
+      if (studentP[2] > 0.15) {
+        analysis = `<strong>Warning:</strong> High student probability (${(studentP[2]*100).toFixed(0)}%) on improbable token "rainy" causes Reverse KL to skyrocket (+${(studentP[2] * Math.log(studentP[2]/teacherP[2])).toFixed(3)} penalty from rainy alone)! This strongly forces student to suppress this hallucination.`;
+      } else {
+        analysis = `Student probabilities closely respect the low tail of the teacher. Reverse KL remains well-controlled (${revKL.toFixed(3)}).`;
+      }
+      document.getElementById('kl-analysis').innerHTML = analysis;
+
+      // Render chart
+      let chartHtml = '';
+      for (let i = 0; i < 3; i++) {
+        let tHeight = teacherP[i] * 140;
+        let sHeight = studentP[i] * 140;
+        chartHtml += `
+          <div class="bar-group">
+            <div style="font-size: 11px; margin-bottom: 4px; font-weight: bold;">${tokenNames[i]}</div>
+            <div style="display: flex; gap: 4px; align-items: flex-end; width: 100%; justify-content: center;">
+              <div style="text-align: center;">
+                <div style="font-size: 10px;">${(teacherP[i]*100).toFixed(0)}%</div>
+                <div class="bar" style="height: ${tHeight}px; background: #000;"></div>
+                <div style="font-size: 10px; font-weight: bold;">T</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 10px;">${(studentP[i]*100).toFixed(0)}%</div>
+                <div class="bar" style="height: ${sHeight}px; background: #bbb;"></div>
+                <div style="font-size: 10px; font-weight: bold;">S</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      document.getElementById('bar-chart-vis').innerHTML = chartHtml;
+    }
+
+    // LAMBDA MIX SIMULATOR
+    function updateLambdaMix() {
+      const lam = parseFloat(document.getElementById('mix-lambda').value);
+      document.getElementById('lambda-val').innerText = lam.toFixed(1);
+      
+      let desc = "";
+      if (lam === 0.0) {
+        desc = "<strong>λ = 0.0 (Standard Supervised KD):</strong> 100% of training data sequences are drawn from static offline datasets or teacher rollouts. High risk of exposure bias at inference time.";
+      } else if (lam === 1.0) {
+        desc = "<strong>λ = 1.0 (Fully On-Policy GKD):</strong> 100% of training tokens are generated freely by the student model. The teacher acts as an online supervisor evaluating student-generated mistakes. Maximally eliminates exposure bias!";
+      } else {
+        desc = `<strong>λ = ${lam.toFixed(1)} (Balanced GKD Mixture):</strong> ${(lam * 100).toFixed(0)}% of rollouts are generated on-policy by the student, and ${((1-lam)*100).toFixed(0)}% come from teacher data. Provides stable gradient convergence while actively training student error recovery.`;
+      }
+      document.getElementById('lambda-description').innerHTML = desc;
+    }
+
+    // Initialize
+    updateDistSimulator();
+    updateLambdaMix();
+  </script>
+</body>
+</html>
