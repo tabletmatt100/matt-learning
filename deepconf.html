@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deep Think with Confidence (DeepConf): Voting with Fewer, Better Traces</title>
+
+  <!-- KaTeX: local copy first, CDN fallback -->
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <script>
+    var katexOptions = {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    };
+    function renderAllMath() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, katexOptions);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(renderAllMath, 50);
+      setTimeout(renderAllMath, 400);
+    });
+  </script>
+  <style>
+    /* E-INK OPTIMIZED STYLESHEET */
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --card-bg: #ffffff;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: var(--font-size);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem;
+      background: #ffffff;
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+    }
+
+    .font-controls { display: flex; gap: 6px; align-items: center; }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid #000;
+      padding: 8px 16px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 44px;
+      min-width: 44px;
+      margin: 3px 2px;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    h1 {
+      font-size: 2.1em;
+      line-height: 1.25;
+      margin-top: 0;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.5em;
+      margin-top: 2.6rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.3rem;
+    }
+
+    h3 { font-size: 1.2em; margin-top: 1.8rem; }
+
+    p, li { margin-bottom: 1.1rem; }
+
+    .byline { font-size: 0.9em; margin-top: -0.4rem; }
+
+    .tldr {
+      border: 3px solid #000;
+      padding: 0.8rem 1.4rem 0.2rem 1.4rem;
+      margin: 1.2rem 0 2rem 0;
+    }
+    .tldr-title { font-weight: bold; font-size: 1.1em; margin-bottom: 0.4rem; }
+    .tldr li { margin-bottom: 0.6rem; }
+
+    .term {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-decoration-thickness: 2px;
+      cursor: pointer;
+      background: var(--highlight-bg);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+    .term:active { background: var(--active-bg); color: var(--active-text); }
+
+    #popover-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(255, 255, 255, 0.6);
+      z-index: 999;
+    }
+
+    #popover-box {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #ffffff;
+      border: 3px solid #000000;
+      padding: 1.3rem;
+      max-width: 540px;
+      width: 90%;
+      z-index: 1000;
+    }
+
+    #popover-title {
+      font-size: 1.2em;
+      font-weight: bold;
+      margin: 0 0 0.6rem 0;
+      border-bottom: 2px solid #000;
+      padding-bottom: 0.4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #popover-close {
+      cursor: pointer;
+      font-size: 1.5rem;
+      background: #fff;
+      border: 2px solid #000;
+      min-width: 44px;
+      min-height: 44px;
+      font-weight: bold;
+    }
+
+    #popover-body { font-size: 0.95em; line-height: 1.5; }
+
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.8rem 1.2rem;
+      margin: 1.5rem 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    pre, code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+      border-radius: 2px;
+    }
+
+    pre {
+      padding: 1rem;
+      border: var(--border-thin);
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.45;
+    }
+    pre code { background: none; padding: 0; font-size: 1em; }
+
+    .interactive-card {
+      background: #ffffff;
+      border: 3px solid #000;
+      padding: 1.2rem 1.3rem;
+      margin: 2rem 0;
+    }
+    .interactive-card h3 {
+      margin-top: 0;
+      border-bottom: 1px solid #000;
+      padding-bottom: 0.4rem;
+    }
+    .widget-label { font-size: 0.8em; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .readout {
+      border: 2px solid #000;
+      padding: 10px 12px;
+      margin-top: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      line-height: 1.6;
+      overflow-x: auto;
+    }
+
+    input[type="range"] { width: 100%; min-height: 40px; accent-color: #000; }
+    input[type="number"], input[type="text"], textarea {
+      font-size: 16px;
+      border: 2px solid #000;
+      padding: 8px;
+      min-height: 44px;
+      background: #fff;
+      color: #000;
+      font-family: var(--font-mono);
+    }
+    input[type="number"] { width: 6.5em; }
+    textarea { width: 100%; min-height: 70px; }
+
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.2rem 0;
+      font-size: 0.85em;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #000000;
+      padding: 7px 9px;
+      text-align: center;
+    }
+    table.data-table th { background: var(--highlight-bg); }
+    table.data-table tr.dropped td { color: #777; text-decoration: line-through; }
+    table.data-table input { width: 5em; min-height: 40px; padding: 4px; }
+
+    .table-wrap { overflow-x: auto; }
+
+    details {
+      border: var(--border-thin);
+      margin: 1.5rem 0;
+      padding: 0.4rem 1rem;
+    }
+    details[open] { border: var(--border-thick); }
+    summary {
+      font-weight: bold;
+      cursor: pointer;
+      padding: 0.6rem 0;
+      min-height: 44px;
+    }
+
+    .mcq-box {
+      border: 2px solid #000000;
+      padding: 1.1rem;
+      margin: 2rem 0;
+    }
+    .mcq-title { font-weight: bold; margin-bottom: 0.6rem; }
+    .mcq-option {
+      display: block;
+      border: 2px solid #000;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    .mcq-option.picked { background: var(--highlight-bg); }
+    .mcq-option input[type="radio"] { margin-right: 10px; transform: scale(1.3); }
+    .mcq-feedback {
+      display: none;
+      padding: 10px 12px;
+      margin-top: 10px;
+      border: 3px solid #000;
+      font-size: 0.92em;
+    }
+    .mcq-feedback.incorrect { border-style: dashed; }
+
+    .chart {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid #000;
+      background: #fff;
+      margin: 10px 0;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid #000;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      text-transform: uppercase;
+    }
+
+    .status-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .status-chip {
+      border: 2px solid #000;
+      padding: 6px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.8em;
+    }
+    .status-chip.dead { border-style: dashed; color: #555; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Guides</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">Test-time compute</span>
+      <span class="tag">Reasoning</span>
+      <span class="tag">Meta AI / UCSD</span>
+    </div>
+
+    <h1>Deep Think with Confidence (DeepConf)</h1>
+    <p class="byline">Notes on Fu, Wang, Tian and Zhao, "Deep Think with Confidence", arXiv 2508.15260, August 2025.</p>
+
+    <div class="tldr">
+      <div class="tldr-title">TL;DR</div>
+      <ul>
+        <li>Majority voting over hundreds of sampled reasoning traces works, but it is expensive and counts a rambling, lost trace the same as a clean one.</li>
+        <li>DeepConf scores each trace using the model's own token probabilities. The useful score is local: the average confidence over a sliding window of tokens, and especially the worst window in the trace.</li>
+        <li>Offline, it keeps only the most confident traces (top 10% or top 90%) and runs a confidence-weighted vote over them.</li>
+        <li>Online, it generates 16 warmup traces, sets a cutoff from their scores, and kills any new trace the moment its windowed confidence falls below that cutoff. It also stops sampling once the vote is lopsided enough.</li>
+        <li>Reported headline: GPT-OSS-120B on AIME 2025 goes from 97.0% (cons@512) to 99.9%, and online mode cuts generated tokens by up to 84.7%. No training, no per-task tuning, a small patch to vLLM.</li>
+        <li>The weak spot is obvious once you see it: a trace that is wrong but confident sails through the filter.</li>
+      </ul>
+    </div>
+
+    <!-- SECTION 1 -->
+    <h2>1. The problem with voting over 512 traces</h2>
+    <p>
+      The cheapest reliable trick for squeezing more accuracy out of a reasoning model is <span class="term" data-term="self-consistency">self-consistency</span>. Sample the same math problem many times, read off the final answer of each trace, and return whichever answer shows up most. Papers write this as cons@N, where N is the number of traces. People also call it <span class="term" data-term="parallel-thinking">parallel thinking</span>, since the traces are independent and can run side by side.
+    </p>
+    <p>
+      It works well enough that it became the default baseline. It also has two ugly properties. First, the cost is linear in N and the accuracy curve flattens quickly, so going from 64 to 512 traces buys you 8x the tokens for a point or two. On reasoning models a single trace can be 10,000+ tokens, so cons@512 on one AIME problem can mean millions of generated tokens. Second, every trace gets one vote. A trace that wandered off, second-guessed itself twenty times and landed on a guess counts exactly as much as one that solved the problem in a straight line.
+    </p>
+    <p>
+      DeepConf goes after the second problem, and solving it turns out to help with the first. If you can tell which traces are bad, you can drop them from the vote. If you can tell early, you can stop generating them and save the tokens.
+    </p>
+    <p>
+      The signal they use is the one the model already hands you for free: the <span class="term" data-term="logprob">log-probabilities</span> of the tokens it considered at each step.
+    </p>
+
+    <!-- SECTION 2 -->
+    <h2>2. How confident is one token?</h2>
+    <p>
+      At each position $i$ the model produces a distribution over the vocabulary. Two standard ways to summarize how peaked it is:
+    </p>
+    <p>
+      <span class="term" data-term="entropy">Token entropy</span>, which uses the whole distribution:
+    </p>
+    <div class="math-block">$$H_i = -\sum_{j} P_i(j)\,\log P_i(j)$$</div>
+    <p>
+      And the paper's <em>token confidence</em>, which only uses the <span class="term" data-term="top-k">top-k</span> tokens:
+    </p>
+    <div class="math-block">$$C_i = -\frac{1}{k}\sum_{j=1}^{k} \log P_i(j)$$</div>
+    <p>
+      Low entropy means confident. High $C_i$ means confident. That second one feels backwards at first, so it's worth working through. When the model is sure, the top token gets nearly all the mass and the other $k-1$ tokens get tiny probabilities. Tiny probabilities have large negative logs, and after the minus sign they become large positive numbers. So $C_i$ is big. When the model is torn, the top-k probabilities are all middling and their negative logs are all moderate, so $C_i$ is small.
+    </p>
+    <p>
+      Put differently, $C_i$ mostly measures how unlikely the runners-up are, not how likely the winner is. The top token contributes almost nothing. I think that's a slightly odd design, but it's cheap: inference servers already return top-k logprobs, so you never need the full vocabulary distribution.
+    </p>
+
+    <h3>Worked example with k = 5</h3>
+    <p>Two positions in a trace. At position A the model is sure of the next token. At position B it is hedging.</p>
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th></th><th>rank 1</th><th>rank 2</th><th>rank 3</th><th>rank 4</th><th>rank 5</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A: $P$</td><td>0.90</td><td>0.04</td><td>0.03</td><td>0.02</td><td>0.01</td></tr>
+        <tr><td>A: $-\ln P$</td><td>0.1054</td><td>3.2189</td><td>3.5066</td><td>3.9120</td><td>4.6052</td></tr>
+        <tr><td>B: $P$</td><td>0.25</td><td>0.22</td><td>0.20</td><td>0.18</td><td>0.15</td></tr>
+        <tr><td>B: $-\ln P$</td><td>1.3863</td><td>1.5141</td><td>1.6094</td><td>1.7148</td><td>1.8971</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Position A:</p>
+    <div class="math-block">$$C_A = \tfrac{1}{5}(0.1054 + 3.2189 + 3.5066 + 3.9120 + 4.6052) = \tfrac{15.348}{5} = 3.070$$</div>
+    <p>Position B:</p>
+    <div class="math-block">$$C_B = \tfrac{1}{5}(1.3863 + 1.5141 + 1.6094 + 1.7148 + 1.8971) = \tfrac{8.122}{5} = 1.624$$</div>
+    <p>
+      A scores almost twice as high as B. Look at where A's score comes from: the winning token adds 0.105, and the four runners-up add the other 15.24. For comparison, the entropy over these five tokens is 0.453 nats for A and 1.595 nats for B, so the two measures agree on the ordering here.
+    </p>
+    <p>
+      One practical note. The absolute value of $C_i$ depends on $k$ and on the model. With a larger $k$ you include even rarer tokens and the numbers climb. That's fine for DeepConf, because it only ever compares traces for the same question from the same model. You can't carry a threshold from one setup to another, and the method doesn't try to.
+    </p>
+
+    <!-- WIDGET 1 -->
+    <div class="interactive-card" id="w-token">
+      <h3>Token confidence calculator</h3>
+      <p>Edit the top-5 probabilities. They don't have to sum to 1, since the rest of the vocabulary holds the remainder, but the sum can't exceed 1.</p>
+      <div class="row" id="tok-inputs"></div>
+      <div class="row">
+        <button class="btn" onclick="setTok([0.90,0.04,0.03,0.02,0.01])">Peaked (A)</button>
+        <button class="btn" onclick="setTok([0.25,0.22,0.20,0.18,0.15])">Torn (B)</button>
+        <button class="btn" onclick="setTok([0.50,0.45,0.02,0.02,0.01])">Two-way split</button>
+        <button class="btn" onclick="setTok([0.999,0.0003,0.0003,0.0002,0.0002])">Near certain</button>
+      </div>
+      <svg class="chart" id="tok-chart" viewBox="0 0 600 170"></svg>
+      <div class="readout" id="tok-out"></div>
+    </div>
+    <p>
+      Try the two-way split. The model is choosing between two tokens at roughly 50/50, which is real uncertainty, yet $C_i$ comes out fairly high because ranks 3 to 5 are tiny. Top-k confidence with a large $k$ partly hides this kind of fork. Averaging over a window of tokens softens it, but it's worth knowing the metric has blind spots.
+    </p>
+
+    <div class="mcq-box">
+      <div class="mcq-title">Check 1</div>
+      <p>Token confidence $C_i$ at some position is very high. What is the most accurate reading?</p>
+      <label class="mcq-option" data-correct="false" data-why="No. The top token's own term $-\log P$ is close to zero when it is likely, so it barely adds to $C_i$. The score is driven by the other tokens.">
+        <input type="radio" name="q1"> The top token's own log-probability is large, which pushes $C_i$ up.
+      </label>
+      <label class="mcq-option" data-correct="true" data-why="Right. High $C_i$ means the tokens ranked 2 to k have very small probabilities, so their negative logs are large. The model has more or less ruled out the alternatives.">
+        <input type="radio" name="q1"> The runner-up tokens all have very small probabilities.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. A high value means a peaked distribution, the opposite of high entropy. Low entropy and high $C_i$ go together.">
+        <input type="radio" name="q1"> The distribution has high entropy.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. Confidence is about the model's internal distribution, not correctness. A model can be very sure of a wrong token. That is the main limitation of the whole paper.">
+        <input type="radio" name="q1"> The token is probably correct.
+      </label>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 3 -->
+    <h2>3. From tokens to traces: global versus local scores</h2>
+    <p>
+      A trace has thousands of token confidences. You need one number per trace to rank them. The obvious choice, used in earlier work, is the mean over all tokens. That's essentially <span class="term" data-term="self-certainty">self-certainty</span>, and DeepConf calls it average trace confidence:
+    </p>
+    <div class="math-block">$$C_{\text{avg}} = \frac{1}{N}\sum_{i=1}^{N} C_i$$</div>
+    <p>
+      The problem is that a 12,000-token trace can have a stretch of 300 tokens where the model clearly lost the thread ("wait, let me reconsider... actually no...") and still post a decent average, because the other 11,700 tokens of routine algebra are confident. The breakdown is exactly what predicts a wrong answer, and averaging dilutes it to almost nothing.
+    </p>
+    <p>
+      So the paper switches to local measures. The building block is <em>group confidence</em>: the mean token confidence over a window $G_i$ of $n$ consecutive tokens, with windows overlapping (one per position).
+    </p>
+    <div class="math-block">$$C_{G_i} = \frac{1}{|G_i|}\sum_{t \in G_i} C_t$$</div>
+    <p>The paper uses windows of 2048 tokens. From the series of group confidences it builds several trace scores:</p>
+    <ul>
+      <li><strong>Bottom-10% group confidence:</strong> the mean of the lowest 10% of group confidences in the trace.</li>
+      <li><strong>Lowest group confidence:</strong> just the minimum. This is the one the online algorithm uses, because you can track it while generating.</li>
+      <li><strong>Tail confidence:</strong> the mean token confidence over the final stretch of the trace (they use the last 2048 tokens). The reasoning is that the end of a trace, where the answer gets written down, matters most.</li>
+    </ul>
+
+    <h3>Worked example: window of 4 over 10 tokens</h3>
+    <p>Here are token confidences for a toy 10-token trace. Something goes wrong around tokens 5 to 7.</p>
+    <div class="table-wrap">
+    <table class="data-table">
+      <tr><th>token</th><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td></tr>
+      <tr><th>$C_i$</th><td>3.1</td><td>3.0</td><td>3.2</td><td>2.9</td><td>1.2</td><td>0.9</td><td>1.1</td><td>2.8</td><td>3.0</td><td>3.1</td></tr>
+    </table>
+    </div>
+    <p>The average over all ten tokens is $24.3 / 10 = 2.43$. Not alarming. Now slide a window of 4:</p>
+    <div class="table-wrap">
+    <table class="data-table">
+      <tr><th>window</th><th>tokens</th><th>sum</th><th>group conf</th></tr>
+      <tr><td>1</td><td>1-4</td><td>3.1+3.0+3.2+2.9 = 12.2</td><td>3.050</td></tr>
+      <tr><td>2</td><td>2-5</td><td>3.0+3.2+2.9+1.2 = 10.3</td><td>2.575</td></tr>
+      <tr><td>3</td><td>3-6</td><td>3.2+2.9+1.2+0.9 = 8.2</td><td>2.050</td></tr>
+      <tr><td>4</td><td>4-7</td><td>2.9+1.2+0.9+1.1 = 6.1</td><td>1.525</td></tr>
+      <tr><td>5</td><td>5-8</td><td>1.2+0.9+1.1+2.8 = 6.0</td><td><strong>1.500</strong></td></tr>
+      <tr><td>6</td><td>6-9</td><td>0.9+1.1+2.8+3.0 = 7.8</td><td>1.950</td></tr>
+      <tr><td>7</td><td>7-10</td><td>1.1+2.8+3.0+3.1 = 10.0</td><td>2.500</td></tr>
+    </table>
+    </div>
+    <p>
+      Lowest group confidence is 1.500, from window 5. Against a trace-wide mean of 2.43, that's a much louder signal. Bottom-10% of 7 windows rounds to the single lowest one here, so it's also 1.500. Tail confidence over the last 4 tokens is the window 7 value, 2.500, which says the trace recovered by the end. Whether that recovery should be trusted is exactly the kind of judgment these different scores encode differently.
+    </p>
+
+    <!-- WIDGET 2 -->
+    <div class="interactive-card" id="w-window">
+      <h3>Sliding-window group confidence</h3>
+      <p>A synthetic 600-token trace. Dots are individual token confidences (noisy, as they are in practice). The black line is group confidence for the window size you pick. The vertical line marks the lowest window.</p>
+      <div class="widget-label">Window size: <span id="win-val">40</span> tokens</div>
+      <input type="range" id="win-size" min="1" max="200" step="1" value="40" oninput="drawWindow()">
+      <div class="row">
+        <label class="btn" style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="win-dip" checked onchange="drawWindow()"> Include a 40-token breakdown around token 300</label>
+      </div>
+      <svg class="chart" id="win-chart" viewBox="0 0 620 240"></svg>
+      <div class="readout" id="win-out"></div>
+    </div>
+    <p>
+      Toggle the breakdown on and off and watch the trace average. It moves by a fraction of a point. The lowest group confidence drops hard. Then try a window of 1: the minimum is now set by whichever single token happened to be noisiest, which tells you nothing. Make the window much wider than the breakdown and the dip gets smeared out. The paper's 2048 is a choice for traces that run to tens of thousands of tokens. They report it works without per-dataset tuning, though I'd expect very short traces to need something smaller.
+    </p>
+
+    <div class="mcq-box">
+      <div class="mcq-title">Check 2</div>
+      <p>Why does DeepConf prefer lowest group confidence over average trace confidence?</p>
+      <label class="mcq-option" data-correct="false" data-why="No. Both are cheap to compute from the same logprobs. Cost isn't the reason.">
+        <input type="radio" name="q2"> It's cheaper to compute.
+      </label>
+      <label class="mcq-option" data-correct="true" data-why="Right. A short collapse in reasoning predicts a wrong answer, but in a long trace it barely moves the mean. The minimum over windows keeps it visible. It also has a practical bonus: you can track a running minimum during generation, which is what makes early stopping possible.">
+        <input type="radio" name="q2"> A short stretch of confusion gets diluted in the mean but shows up clearly in the worst window.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. The minimum is a noisier statistic than the mean, not a smoother one. The window averaging is what tames the noise.">
+        <input type="radio" name="q2"> The minimum is less noisy than the mean.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. Both are computed from the same top-k logprobs. Neither needs the full vocabulary.">
+        <input type="radio" name="q2"> It doesn't require logprobs.
+      </label>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <h2>4. Offline DeepConf: filter, then weight</h2>
+    <p>
+      Offline means all the traces are already generated. You just want a better vote. DeepConf does two things.
+    </p>
+    <p>
+      Confidence-weighted voting. Each trace $t$ with answer $a_t$ and confidence score $C_t$ (any of the trace scores above) contributes $C_t$ votes instead of one:
+    </p>
+    <div class="math-block">$$V(a) = \sum_{t \in T} C_t \cdot \mathbb{1}[a_t = a], \qquad \hat{a} = \arg\max_a V(a)$$</div>
+    <p>
+      Confidence filtering. Before voting, sort traces by $C_t$ and keep only the top $\eta\%$. The paper tries two settings: $\eta = 10\%$ (aggressive, DeepConf-low) and $\eta = 90\%$ (conservative, DeepConf-high).
+    </p>
+    <p>
+      Here is something the paper's framing glosses over. Raw confidence scores for traces on the same question tend to sit in a narrow band. If one trace scores 13 and another 11, weighting gives the first only 18% more say. That's a weak nudge. The filtering step does most of the work, because it gives low-confidence traces zero say.
+    </p>
+
+    <h3>Worked example: 8 traces, true answer 24</h3>
+    <p>Scores are lowest group confidence on an arbitrary scale.</p>
+    <div class="table-wrap">
+    <table class="data-table">
+      <tr><th>trace</th><th>T1</th><th>T2</th><th>T3</th><th>T4</th><th>T5</th><th>T6</th><th>T7</th><th>T8</th></tr>
+      <tr><th>answer</th><td>18</td><td>24</td><td>18</td><td>30</td><td>24</td><td>18</td><td>24</td><td>18</td></tr>
+      <tr><th>$C_t$</th><td>10.9</td><td>13.2</td><td>11.3</td><td>12.1</td><td>12.8</td><td>10.6</td><td>13.5</td><td>11.0</td></tr>
+    </table>
+    </div>
+    <p><strong>Plain majority.</strong> 18 gets 4 votes, 24 gets 3, 30 gets 1. Majority returns 18, which is wrong.</p>
+    <p><strong>Weighted, no filter.</strong></p>
+    <ul>
+      <li>$V(18) = 10.9 + 11.3 + 10.6 + 11.0 = 43.8$</li>
+      <li>$V(24) = 13.2 + 12.8 + 13.5 = 39.5$</li>
+      <li>$V(30) = 12.1$</li>
+    </ul>
+    <p>Still 18. The extra wrong trace outweighs the confidence edge. This is the weak-nudge problem in action.</p>
+    <p><strong>Filter to top 50%, then weight.</strong> Keep the 4 highest: T7 (13.5), T2 (13.2), T5 (12.8), T4 (12.1).</p>
+    <ul>
+      <li>$V(24) = 13.5 + 13.2 + 12.8 = 39.5$</li>
+      <li>$V(30) = 12.1$</li>
+    </ul>
+    <p>Now 24 wins. Its weighted share is $\beta = 39.5 / (39.5 + 12.1) = 39.5/51.6 = 0.766$.</p>
+    <p>
+      <strong>Filter to top 90%.</strong> With 8 traces, 90% rounds to 7, so only T6 (10.6) goes. $V(18) = 43.8 - 10.6 = 33.2$, $V(24) = 39.5$. 24 wins. Even the conservative filter flips the result here, because the dropped trace happened to be one of the wrong ones. With 8 traces that's luck; with 512 the effect is statistical.
+    </p>
+    <p>
+      <strong>Filter to top 10%.</strong> One trace survives: T7, answer 24, $\beta = 1.0$. Correct, but now you're trusting a single sample. On a problem where the most confident trace is confidently wrong, this setting fails with no backup.
+    </p>
+
+    <!-- WIDGET 3 -->
+    <div class="interactive-card" id="w-vote">
+      <h3>Voting simulator</h3>
+      <p>Edit answers and confidences, pick a voting rule. Struck-out rows are filtered away.</p>
+      <div class="row">
+        <button class="btn" id="vm-majority" onclick="setVoteMode('majority')">Majority</button>
+        <button class="btn" id="vm-weighted" onclick="setVoteMode('weighted')">Weighted</button>
+        <button class="btn active" id="vm-filtered" onclick="setVoteMode('filtered')">Filter top &eta;% + weighted</button>
+        <button class="btn" onclick="resetVotes()">Reset table</button>
+      </div>
+      <div id="eta-box">
+        <div class="widget-label">&eta; (keep top): <span id="eta-val">50</span>%</div>
+        <input type="range" id="eta" min="10" max="100" step="5" value="50" oninput="drawVote()">
+      </div>
+      <div class="table-wrap"><table class="data-table" id="vote-table"></table></div>
+      <svg class="chart" id="vote-chart" viewBox="0 0 600 150"></svg>
+      <div class="readout" id="vote-out"></div>
+    </div>
+    <p>
+      Try making the confidence gap wider, say the 18-traces at 6 and the 24-traces at 14. Plain weighting now flips the answer on its own. So whether weighting helps depends entirely on how spread out the scores are, which the method doesn't control.
+    </p>
+
+    <details>
+      <summary>Pseudocode: offline DeepConf</summary>
+      <pre><code>input: traces T = {t_1..t_N}, each with final answer a_t
+       and token confidences C_{t,1..L_t}
+params: window n (2048), keep fraction eta (0.10 or 0.90),
+        score in {bottom10, lowest, tail}
+
+for each trace t:
+    G = [mean(C_{t,i-n+1..i}) for i in n..L_t]     # sliding group confidences
+    if score == lowest:   s_t = min(G)
+    if score == bottom10: s_t = mean(smallest 10% of G)
+    if score == tail:     s_t = mean(C_{t, L_t-n+1..L_t})
+
+keep = top ceil/round(eta * N) traces by s_t
+V = {}                                             # weighted votes
+for t in keep:
+    V[a_t] += s_t
+return argmax_a V[a]</code></pre>
+    </details>
+
+    <div class="mcq-box">
+      <div class="mcq-title">Check 3</div>
+      <p>In the 8-trace example, why did weighting alone fail while filtering succeeded?</p>
+      <label class="mcq-option" data-correct="false" data-why="No. The weights were computed correctly. They just weren't spread out enough to beat a 4-to-3 count.">
+        <input type="radio" name="q3"> The weights were computed with the wrong formula.
+      </label>
+      <label class="mcq-option" data-correct="true" data-why="Right. Confidence scores of 10.6 to 13.5 differ by at most about 27%, so four mediocre wrong traces still outvote three good ones. Filtering sets the worst traces' weight to zero, which is a far stronger correction.">
+        <input type="radio" name="q3"> The scores sat in a narrow band, so weighting barely changed anyone's influence; filtering zeroes out the low ones entirely.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. Filtering doesn't use the answers at all, just the scores. That's what makes it legitimate: it never peeks at which answer is correct.">
+        <input type="radio" name="q3"> Filtering looks at the answers and removes the wrong ones.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. Fewer traces generally means a noisier vote. Filtering helps only when the removed traces are disproportionately wrong, which is the paper's empirical bet.">
+        <input type="radio" name="q3"> Fewer traces always means a more accurate vote.
+      </label>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <h2>5. Online DeepConf: stop bad traces early</h2>
+    <p>
+      Offline filtering improves accuracy but saves nothing, since you already paid for all 512 traces. The online version uses the same idea to stop paying for traces that are going badly.
+    </p>
+    <p>It runs in three parts.</p>
+    <ol>
+      <li><strong>Warmup.</strong> Generate $N_{\text{init}} = 16$ traces to completion. Compute each one's lowest group confidence.</li>
+      <li><strong>Set the threshold.</strong> Pick $s$ as a <span class="term" data-term="percentile">percentile</span> of those 16 values. DeepConf-low keeps roughly the top 10%, so $s$ is the 90th percentile. DeepConf-high keeps roughly the top 90%, so $s$ is the 10th percentile.</li>
+      <li><strong>Generate with early stopping.</strong> For each new trace, track group confidence over the most recent window as tokens come out. The moment it drops below $s$, kill the trace. Its tokens are spent but you stop spending more, and it doesn't vote.</li>
+    </ol>
+    <p>
+      The logic of step 3: a finished trace's lowest group confidence is at most the group confidence of any window along the way. So if the current window is already below $s$, the trace's final score will be below $s$ too, and offline filtering would have discarded it anyway. Killing it now gives the same answer as generating it fully and then filtering. That's a neat argument, and it only holds because the score is a minimum. It wouldn't work for the average or the tail score.
+    </p>
+    <p>
+      There's a second, independent saving: adaptive sampling. After each trace finishes, compute the weighted share of the leading answer:
+    </p>
+    <div class="math-block">$$\beta = \frac{V(\hat{a})}{\sum_a V(a)}$$</div>
+    <p>
+      If $\beta \ge \tau$ (the paper uses $\tau = 0.95$), stop sampling. Otherwise keep going until you hit the budget $B$ (512 in their runs). Easy problems where every trace agrees stop after a few dozen traces; hard ones use more of the budget.
+    </p>
+
+    <h3>Worked example: threshold from 16 warmup traces</h3>
+    <p>Lowest group confidences of the 16 warmup traces, sorted:</p>
+    <div class="table-wrap">
+    <table class="data-table">
+      <tr><th>rank</th><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td></tr>
+      <tr><th>value</th><td>9.6</td><td>9.9</td><td>10.2</td><td>10.8</td><td>11.2</td><td>11.7</td><td>11.9</td><td>12.0</td></tr>
+      <tr><th>rank</th><td>8</td><td>9</td><td>10</td><td>11</td><td>12</td><td>13</td><td>14</td><td>15</td></tr>
+      <tr><th>value</th><td>12.2</td><td>12.3</td><td>12.5</td><td>12.6</td><td>12.8</td><td>13.0</td><td>13.1</td><td>13.4</td></tr>
+    </table>
+    </div>
+    <p>
+      Using linear interpolation (what <code>numpy.percentile</code> does by default), the $p$-th percentile sits at fractional rank $(16-1) \times p/100$.
+    </p>
+    <ul>
+      <li>DeepConf-low, 90th percentile: rank $15 \times 0.9 = 13.5$, halfway between 13.0 and 13.1, so $s = 13.05$.</li>
+      <li>DeepConf-high, 10th percentile: rank $15 \times 0.1 = 1.5$, halfway between 9.9 and 10.2, so $s = 10.05$.</li>
+    </ul>
+    <p>
+      With $s = 13.05$, only two of the warmup traces (13.1 and 13.4) would have survived. That's the aggressive setting: most new traces will be killed at some point. With $s = 10.05$, only the bottom two (9.6, 9.9) would have been cut.
+    </p>
+    <p>
+      Sixteen samples is not many for estimating a 90th percentile. The cutoff is basically "somewhere between the second-best and best warmup trace", and it'll move a lot from one question to the next just from sampling noise. The paper reports it works anyway; I'd still want to see the variance across seeds before relying on DeepConf-low.
+    </p>
+
+    <!-- WIDGET 4 -->
+    <div class="interactive-card" id="w-thresh">
+      <h3>Warmup threshold calculator</h3>
+      <p>Paste or edit the warmup scores (comma or space separated).</p>
+      <textarea id="th-input" oninput="drawThresh()">11.2, 12.5, 10.8, 13.1, 12.0, 9.6, 12.8, 11.7, 13.4, 10.2, 12.2, 11.9, 12.6, 9.9, 13.0, 12.3</textarea>
+      <div class="widget-label">Keep top: <span id="th-keep-val">10</span>% (threshold = <span id="th-pct-val">90</span>th percentile)</div>
+      <input type="range" id="th-keep" min="5" max="95" step="5" value="10" oninput="drawThresh()">
+      <div class="row">
+        <button class="btn" onclick="setKeep(10)">DeepConf-low (10%)</button>
+        <button class="btn" onclick="setKeep(90)">DeepConf-high (90%)</button>
+      </div>
+      <svg class="chart" id="th-chart" viewBox="0 0 600 110"></svg>
+      <div class="readout" id="th-out"></div>
+    </div>
+
+    <!-- WIDGET 5 -->
+    <div class="interactive-card" id="w-online">
+      <h3>Early-stopping stepper</h3>
+      <p>
+        Four traces being generated in parallel, 400 tokens each, with a 32-token window (scaled down from 2048 so you can see it). The thick horizontal line is the threshold $s$ from the warmup example. Step forward and watch which traces get killed.
+      </p>
+      <div class="row">
+        <button class="btn active" id="om-low" onclick="setOnlineMode('low')">DeepConf-low (s = 13.05)</button>
+        <button class="btn" id="om-high" onclick="setOnlineMode('high')">DeepConf-high (s = 10.05)</button>
+      </div>
+      <div class="row">
+        <button class="btn" onclick="stepOnline(20)">+20 tokens</button>
+        <button class="btn" onclick="stepOnline(100)">+100 tokens</button>
+        <button class="btn" onclick="stepOnline(400)">Run to end</button>
+        <button class="btn" onclick="resetOnline()">Reset</button>
+      </div>
+      <svg class="chart" id="on-chart" viewBox="0 0 620 260"></svg>
+      <div class="status-list" id="on-status"></div>
+      <div class="readout" id="on-out"></div>
+    </div>
+    <p>
+      In low mode, trace D gets killed even though it would have reached the right answer. It never broke down; it just ran a little less confident than A. That's the cost of a 90th-percentile cutoff: you're not only removing confused traces, you're removing anything that isn't near the top. In high mode only C, the one with a genuine collapse, gets cut.
+    </p>
+
+    <details>
+      <summary>Pseudocode: online DeepConf with adaptive sampling</summary>
+      <pre><code>params: N_init = 16, budget B = 512, tau = 0.95, window n = 2048,
+        keep fraction eta (0.10 -> DeepConf-low, 0.90 -> DeepConf-high)
+
+# 1. warmup
+W = generate N_init full traces
+scores = [lowest_group_conf(t) for t in W]
+s = percentile(scores, 100 * (1 - eta))
+votes = {}
+for t in W:
+    if score(t) >= s: votes[t.answer] += score(t)   # warmup traces vote too
+
+# 2. sampling with early stop
+n_generated = N_init
+while n_generated < B:
+    t = new trace; window = deque(maxlen=n); min_g = +inf
+    for each new token i:
+        window.append(C_i)
+        if len(window) == n:
+            g = mean(window); min_g = min(min_g, g)
+            if g < s:
+                discard t; break           # killed, no vote
+    else:
+        votes[t.answer] += min_g           # finished normally
+    n_generated += 1
+    beta = max(votes.values()) / sum(votes.values())
+    if beta >= tau: break                  # consensus reached
+return argmax(votes)</code></pre>
+      <p>In a real server the "for each new trace" loop runs as a batch of concurrent requests, not one at a time. Consensus is checked as traces finish.</p>
+    </details>
+
+    <div class="mcq-box">
+      <div class="mcq-title">Check 4</div>
+      <p>Why is killing a trace mid-generation guaranteed to agree with what offline filtering on lowest group confidence would have done?</p>
+      <label class="mcq-option" data-correct="true" data-why="Right. The final score is a minimum over all windows. Once one window is below s, no later tokens can raise the minimum back up, so the trace was doomed to fail the filter anyway.">
+        <input type="radio" name="q4"> The trace's final score is the minimum over windows, so once any window is below $s$, the final score must be below $s$.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. Traces do sometimes recover after a dip and reach the correct answer. The guarantee is only about agreement with the offline filter, not about correctness.">
+        <input type="radio" name="q4"> A trace that dips never recovers to a correct answer.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. The threshold is a percentile of the warmup scores, chosen once. It isn't recomputed per trace in the base algorithm.">
+        <input type="radio" name="q4"> The threshold is recomputed after every token.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. With the average score, a dip could be offset by later confident tokens, so early stopping would disagree with the offline result. The guarantee depends on using the minimum.">
+        <input type="radio" name="q4"> It would hold for average trace confidence just as well.
+      </label>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box">
+      <div class="mcq-title">Check 5</div>
+      <p>Warmup scores give a 10th percentile of 10.05 and a 90th percentile of 13.05. Which setup kills more traces?</p>
+      <label class="mcq-option" data-correct="false" data-why="No. DeepConf-high uses s = 10.05, the 10th percentile. Only traces that dip below 10.05 die, which is roughly the worst 10%.">
+        <input type="radio" name="q5"> DeepConf-high, since "high" means a higher threshold.
+      </label>
+      <label class="mcq-option" data-correct="true" data-why="Right. The names refer to how many traces are kept (low = keep 10%, high = keep 90%), not the threshold. DeepConf-low has the higher threshold, 13.05, and kills about 90% of traces.">
+        <input type="radio" name="q5"> DeepConf-low, which uses $s = 13.05$ and keeps only about 10%.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. The two thresholds differ by 3 points; traces scoring between 10.05 and 13.05 survive one and die in the other.">
+        <input type="radio" name="q5"> They kill the same number; only the voting differs.
+      </label>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 6 -->
+    <h2>6. What it saves</h2>
+    <p>
+      Token savings come from three places: killed traces stop partway, warmup is a fixed cost, and adaptive sampling can end the whole run before the budget. The estimator below is my own back-of-envelope model, not the paper's. It assumes every non-killed trace runs its full average length and killed traces die at a fixed fraction of the way through.
+    </p>
+
+    <!-- WIDGET 6 -->
+    <div class="interactive-card" id="w-save">
+      <h3>Token savings estimator</h3>
+      <div class="row">
+        <label>Budget B <input type="number" id="sv-B" value="512" min="16" step="16" oninput="drawSave()"></label>
+        <label>Avg trace length <input type="number" id="sv-L" value="12000" min="100" step="500" oninput="drawSave()"></label>
+        <label>Warmup N<sub>init</sub> <input type="number" id="sv-N" value="16" min="1" step="1" oninput="drawSave()"></label>
+      </div>
+      <div class="widget-label">Share of post-warmup traces killed: <span id="sv-kr-val">90</span>%</div>
+      <input type="range" id="sv-kr" min="0" max="100" step="5" value="90" oninput="drawSave()">
+      <div class="widget-label">Killed traces die after this fraction of full length: <span id="sv-kp-val">35</span>%</div>
+      <input type="range" id="sv-kp" min="5" max="100" step="5" value="35" oninput="drawSave()">
+      <div class="widget-label">Traces sampled before consensus (&beta; &ge; &tau;): <span id="sv-n-val">512</span></div>
+      <input type="range" id="sv-n" min="16" max="512" step="8" value="512" oninput="drawSave()">
+      <svg class="chart" id="sv-chart" viewBox="0 0 600 110"></svg>
+      <div class="readout" id="sv-out"></div>
+    </div>
+    <p>
+      With the defaults (90% killed at 35% of the way, no early consensus) you save a bit over half. To get anywhere near the paper's 84.7% you need either earlier kills or adaptive sampling stopping well short of 512. That matches intuition: the biggest wins are on problems the model finds easy, where the vote is settled after a few dozen traces. On genuinely hard problems, where you most want the extra compute, savings shrink.
+    </p>
+
+    <h3>Reported numbers</h3>
+    <p>
+      The paper tests DeepSeek-8B, Qwen3-8B, Qwen3-32B, GPT-OSS-20B and GPT-OSS-120B on AIME 2024, AIME 2025, BRUMO 2025, HMMT 2025 and GPQA-Diamond. The headline case:
+    </p>
+    <div class="table-wrap">
+    <table class="data-table">
+      <tr><th>Setting</th><th>GPT-OSS-120B, AIME 2025</th></tr>
+      <tr><td>cons@512 (plain majority)</td><td>97.0%</td></tr>
+      <tr><td>DeepConf@512 (offline, filtered + weighted)</td><td>99.9%</td></tr>
+      <tr><td>Online DeepConf token reduction vs. full parallel thinking</td><td>up to 84.7%</td></tr>
+    </table>
+    </div>
+    <p>
+      Keep the scale in mind. AIME 2025 has 30 problems. Going from 97.0% to 99.9% is a bit less than one problem's worth of accuracy, averaged over repeated runs. It's a real gain, but it's at the ceiling, and "up to" on the token savings means the best case across models and datasets. Gains elsewhere are smaller, and the aggressive 10% setting doesn't win everywhere. The authors are upfront that DeepConf-high is the safe default and DeepConf-low trades some risk for bigger savings.
+    </p>
+
+    <!-- SECTION 7 -->
+    <h2>7. Implementation</h2>
+    <p>
+      The method needs only per-token top-k logprobs, which <span class="term" data-term="vllm">vLLM</span> and most inference servers already return. No training, no reward model, no extra forward passes. The authors describe it as a small change to vLLM: keep a running window of token confidences per request and finish the request early when the window mean drops below a per-question threshold. The sketch below shows the logic. It's not the authors' code, and the vLLM details (the shape of returned logprobs, how you'd hook a stop condition) vary by version.
+    </p>
+    <details>
+      <summary>Python sketch: confidence tracking and offline/online voting</summary>
+      <pre><code>from collections import deque, defaultdict
+import numpy as np
+
+def token_conf(top_logprobs):
+    """top_logprobs: list of k log-probabilities at one position."""
+    return -sum(top_logprobs) / len(top_logprobs)
+
+class GroupConfTracker:
+    """Running window mean of token confidence. Return True to stop."""
+    def __init__(self, threshold=None, window=2048):
+        self.s, self.n = threshold, window
+        self.buf, self.total = deque(), 0.0
+        self.lowest = float("inf")
+
+    def update(self, top_logprobs):
+        c = token_conf(top_logprobs)
+        self.buf.append(c); self.total += c
+        if len(self.buf) > self.n:
+            self.total -= self.buf.popleft()
+        if len(self.buf) == self.n:
+            g = self.total / self.n
+            self.lowest = min(self.lowest, g)
+            if self.s is not None and g < self.s:
+                return True        # kill this trace
+        return False
+
+def weighted_vote(answers, scores, keep_frac=1.0):
+    order = np.argsort(scores)[::-1]
+    keep = order[: max(1, round(keep_frac * len(scores)))]
+    V = defaultdict(float)
+    for i in keep:
+        V[answers[i]] += scores[i]
+    best = max(V, key=V.get)
+    return best, V[best] / sum(V.values())     # answer, beta
+
+# --- with vLLM (offline) ---
+# from vllm import LLM, SamplingParams
+# llm = LLM(model="openai/gpt-oss-20b")
+# sp = SamplingParams(n=64, temperature=1.0, max_tokens=32000, logprobs=20)
+# out = llm.generate([prompt], sp)[0]
+# for o in out.outputs:
+#     tr = GroupConfTracker(window=2048)
+#     for pos in o.logprobs:                      # dict token_id -> Logprob
+#         tr.update([lp.logprob for lp in pos.values()])
+#     answers.append(extract_boxed(o.text)); scores.append(tr.lowest)
+# Note: vLLM may return the sampled token in addition to the top-k,
+# so a position can have k or k+1 entries.
+#
+# Online mode needs the stop check inside the decode loop (a custom
+# logits processor or a patched scheduler that finishes the request
+# when tracker.update(...) returns True), plus a warmup batch of 16
+# to set tracker.s = np.percentile(warmup_lowest, 90)  # DeepConf-low</code></pre>
+      <p>One edge case to watch: a trace shorter than the window never fills it, so it never gets a group score. You'd fall back to the mean over whatever tokens exist.</p>
+    </details>
+
+    <!-- SECTION 8 -->
+    <h2>8. Where it breaks</h2>
+    <p>
+      The core assumption is that low confidence correlates with wrong answers. On average, for these models and these math benchmarks, it does. But the failure that matters is the other direction: a trace that is wrong and confident. Models trained hard with RL on math often produce fluent, assured derivations that contain a single wrong step. Nothing in the logprobs flags that step, because the model believed it. DeepConf will keep that trace and weight it up. If several traces share the same confident mistake, filtering makes the vote worse, not better.
+    </p>
+    <p>
+      Aggressive filtering also collapses diversity. Majority voting gets its power from independent errors cancelling out. Cut down to the top 10% and you might be voting with 50 traces that share a style, and possibly a blind spot. The paper's own results show the 10% setting sometimes lands below plain majority voting, which is exactly what you'd expect from this.
+    </p>
+    <p>
+      It needs logprobs. Many commercial APIs either don't expose them or expose only a few per position, and some reasoning models hide the reasoning tokens entirely. In practice this is a method for people running open-weight models on their own servers.
+    </p>
+    <p>
+      And it only applies where answers can be voted on. Math problems with a single boxed number are ideal. For open-ended writing or code, "majority answer" isn't well defined, and you'd need some other way to group traces before any of this helps.
+    </p>
+    <p>
+      None of that makes the paper less useful. The offline filter is a few lines of code on top of a vote you were already running, and the online version is one of the more practical test-time compute savings I've seen, because it needs nothing beyond what the server already computes. I'd use DeepConf-high by default and treat DeepConf-low as something to validate per model first.
+    </p>
+
+    <div class="mcq-box">
+      <div class="mcq-title">Check 6</div>
+      <p>Which scenario is most likely to make DeepConf do worse than plain majority voting?</p>
+      <label class="mcq-option" data-correct="false" data-why="No. If the model is torn, wrong traces tend to have low confidence and get filtered out. That's the case DeepConf handles well.">
+        <input type="radio" name="q6"> Wrong traces are hesitant and full of self-corrections.
+      </label>
+      <label class="mcq-option" data-correct="true" data-why="Right. If the wrong traces are the confident ones, filtering removes the correct-but-hesitant traces and weighting boosts the wrong ones. Aggressive filtering (10%) makes it worse.">
+        <input type="radio" name="q6"> Several traces make the same mistake fluently and confidently, while correct traces hesitate.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. If every trace agrees, majority voting and DeepConf return the same answer, and adaptive sampling just stops early to save tokens.">
+        <input type="radio" name="q6"> All traces reach the same answer.
+      </label>
+      <label class="mcq-option" data-correct="false" data-why="No. Trace length doesn't matter much, as long as traces are at least a window long. Short traces are an edge case for the window, not a reason for worse accuracy.">
+        <input type="radio" name="q6"> Traces are around 10,000 tokens long.
+      </label>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <h2>Reference</h2>
+    <p>
+      Yichao Fu, Xuewei Wang, Yuandong Tian, Jiawei Zhao. "Deep Think with Confidence." arXiv:2508.15260, 2025. Meta AI and UC San Diego.
+    </p>
+
+    <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
+      <a href="index.html" class="btn" style="text-decoration: none; display: inline-block;">&larr; All guides</a>
+    </div>
+  </main>
+
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box" role="dialog">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()">&times;</button>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    // ---------- FONT SIZE ----------
+    var currentFontSize = 18;
+    document.getElementById('font-inc').addEventListener('click', function () {
+      if (currentFontSize < 30) { currentFontSize += 2; document.body.style.fontSize = currentFontSize + 'px'; }
+    });
+    document.getElementById('font-dec').addEventListener('click', function () {
+      if (currentFontSize > 14) { currentFontSize -= 2; document.body.style.fontSize = currentFontSize + 'px'; }
+    });
+
+    // ---------- POPOVERS ----------
+    var glossary = {
+      'self-consistency': {
+        title: 'Self-consistency',
+        body: 'Wang et al., 2022. Sample many chain-of-thought answers to the same question at nonzero temperature and return the most common final answer. Written cons@N for N samples. It is the baseline DeepConf tries to beat.'
+      },
+      'parallel-thinking': {
+        title: 'Parallel thinking',
+        body: 'Spending extra inference compute by generating many independent reasoning traces at once (rather than one longer trace) and aggregating their answers, usually by voting. Contrast with sequential approaches like a longer thinking budget.'
+      },
+      'logprob': {
+        title: 'Log-probability (logprob)',
+        body: 'The natural log of the probability the model assigned to a token, always zero or negative. Inference APIs often return the logprobs of the top few candidates at each position. ln(0.9) = -0.105, ln(0.01) = -4.605.'
+      },
+      'top-k': {
+        title: 'Top-k tokens',
+        body: 'The k highest-probability tokens at a position. DeepConf computes token confidence from these alone, which matters because servers usually return only the top few logprobs, not the full vocabulary distribution.'
+      },
+      'entropy': {
+        title: 'Entropy',
+        body: 'H = -sum p log p over the distribution. Zero when one token has all the mass; ln(V) when V tokens are equally likely. Low entropy = confident. DeepConf\'s token confidence is a cheaper top-k proxy that moves in the opposite direction (high = confident).'
+      },
+      'percentile': {
+        title: 'Percentile',
+        body: 'The p-th percentile is the value below which p% of the data falls. With 16 warmup scores, the 90th percentile sits between the 2nd-highest and highest values. numpy.percentile interpolates linearly at rank (n-1)*p/100.'
+      },
+      'self-certainty': {
+        title: 'Self-certainty',
+        body: 'A trace-level confidence score from earlier work (Kang et al., 2025): roughly, how far the model\'s token distributions are from uniform, averaged across the whole response. DeepConf\'s point is that any whole-trace average hides short local breakdowns.'
+      },
+      'vllm': {
+        title: 'vLLM',
+        body: 'A widely used open-source LLM inference server with paged attention and continuous batching. It can return per-token top-k logprobs, which is all DeepConf needs. The online mode needs a hook in the decode loop to finish a request early.'
+      }
+    };
+
+    document.querySelectorAll('.term').forEach(function (el) {
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('click', function () {
+        var g = glossary[el.getAttribute('data-term')];
+        if (!g) return;
+        document.getElementById('popover-term-name').textContent = g.title;
+        document.getElementById('popover-body').textContent = g.body;
+        document.getElementById('popover-backdrop').style.display = 'block';
+        document.getElementById('popover-box').style.display = 'block';
+      });
+    });
+    function closePopover() {
+      document.getElementById('popover-backdrop').style.display = 'none';
+      document.getElementById('popover-box').style.display = 'none';
+    }
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePopover(); });
+
+    // ---------- MCQ (instant per-option feedback) ----------
+    document.querySelectorAll('.mcq-box').forEach(function (box) {
+      var fb = box.querySelector('.mcq-feedback');
+      box.querySelectorAll('.mcq-option').forEach(function (opt) {
+        opt.addEventListener('click', function () {
+          box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+          opt.classList.add('picked');
+          var ok = opt.getAttribute('data-correct') === 'true';
+          fb.className = 'mcq-feedback ' + (ok ? 'correct' : 'incorrect');
+          fb.style.display = 'block';
+          fb.innerHTML = '<strong>' + (ok ? 'Correct.' : 'Not quite.') + '</strong> ' + opt.getAttribute('data-why');
+          if (typeof renderMathInElement === 'function') renderMathInElement(fb, katexOptions);
+        });
+      });
+    });
+
+    // ---------- HELPERS ----------
+    function mulberry32(a) {
+      return function () {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        var t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+    function percentile(arr, p) {
+      var s = arr.slice().sort(function (a, b) { return a - b; });
+      if (s.length === 0) return NaN;
+      var r = (s.length - 1) * p / 100, lo = Math.floor(r), hi = Math.ceil(r);
+      return s[lo] + (s[hi] - s[lo]) * (r - lo);
+    }
+    function f(x, d) { return Number(x).toFixed(d === undefined ? 3 : d); }
+
+    // ---------- WIDGET 1: TOKEN CONFIDENCE ----------
+    var tokInit = [0.90, 0.04, 0.03, 0.02, 0.01];
+    (function buildTok() {
+      var html = '';
+      for (var i = 0; i < 5; i++) {
+        html += '<label>rank ' + (i + 1) + ' <input type="number" id="tok-' + i + '" min="0.0001" max="1" step="0.01" value="' + tokInit[i] + '" oninput="drawTok()"></label>';
+      }
+      document.getElementById('tok-inputs').innerHTML = html;
+    })();
+    function setTok(arr) {
+      for (var i = 0; i < 5; i++) document.getElementById('tok-' + i).value = arr[i];
+      drawTok();
+    }
+    function drawTok() {
+      var p = [], bad = false;
+      for (var i = 0; i < 5; i++) {
+        var v = parseFloat(document.getElementById('tok-' + i).value);
+        if (!(v > 0) || v > 1) bad = true;
+        p.push(v);
+      }
+      var out = document.getElementById('tok-out');
+      var sum = p.reduce(function (a, b) { return a + b; }, 0);
+      if (bad || sum > 1.0001) {
+        out.textContent = 'Each probability must be in (0, 1] and the five must sum to at most 1. Current sum: ' + f(sum, 4);
+        return;
+      }
+      var nl = p.map(function (x) { return -Math.log(x); });
+      var C = nl.reduce(function (a, b) { return a + b; }, 0) / 5;
+      var Hk = -p.reduce(function (a, x) { return a + x * Math.log(x); }, 0);
+      // chart: bars of probability (filled) and -ln p (outlined)
+      var svg = '', maxNl = Math.max(5, Math.max.apply(null, nl));
+      for (var j = 0; j < 5; j++) {
+        var x = 30 + j * 115;
+        var hp = p[j] * 120, hn = nl[j] / maxNl * 120;
+        svg += '<rect x="' + x + '" y="' + (140 - hp) + '" width="40" height="' + hp + '" fill="#000"/>';
+        svg += '<rect x="' + (x + 44) + '" y="' + (140 - hn) + '" width="40" height="' + hn + '" fill="#fff" stroke="#000" stroke-width="2"/>';
+        svg += '<text x="' + (x + 20) + '" y="' + (135 - hp) + '" font-size="11" text-anchor="middle">' + f(p[j], 2) + '</text>';
+        svg += '<text x="' + (x + 64) + '" y="' + (135 - hn) + '" font-size="11" text-anchor="middle">' + f(nl[j], 2) + '</text>';
+        svg += '<text x="' + (x + 42) + '" y="158" font-size="12" text-anchor="middle">rank ' + (j + 1) + '</text>';
+      }
+      svg += '<line x1="20" y1="140" x2="590" y2="140" stroke="#000" stroke-width="2"/>';
+      svg += '<rect x="20" y="4" width="12" height="12" fill="#000"/><text x="36" y="14" font-size="12">P</text>';
+      svg += '<rect x="70" y="4" width="12" height="12" fill="#fff" stroke="#000" stroke-width="2"/><text x="86" y="14" font-size="12">-ln P (what C averages)</text>';
+      document.getElementById('tok-chart').innerHTML = svg;
+      var lines = [];
+      lines.push('-ln P   = [' + nl.map(function (x) { return f(x, 4); }).join(', ') + ']');
+      lines.push('sum     = ' + f(nl.reduce(function (a, b) { return a + b; }, 0), 4));
+      lines.push('C_i     = sum / 5 = ' + f(C, 3) + '   (higher = more confident)');
+      lines.push('top token share of C: ' + f(100 * nl[0] / (5 * C), 1) + '%');
+      lines.push('entropy over these 5 = ' + f(Hk, 3) + ' nats   (lower = more confident)');
+      lines.push('mass outside top-5 = ' + f(1 - sum, 4));
+      out.innerHTML = lines.join('<br>');
+    }
+
+    // ---------- WIDGET 2: SLIDING WINDOW ----------
+    var winNoise = (function () {
+      var r = mulberry32(7), a = [];
+      for (var i = 0; i < 600; i++) a.push((r() - 0.5) * 8);
+      return a;
+    })();
+    function winTrace(withDip) {
+      var a = [];
+      for (var i = 0; i < 600; i++) {
+        var v = 14 + winNoise[i] - 0.6 * Math.sin(i / 70);
+        if (withDip && i >= 300 && i < 340) v -= 6;
+        a.push(Math.max(1, v));
+      }
+      return a;
+    }
+    function groupConf(arr, w) {
+      var g = [], s = 0;
+      for (var i = 0; i < arr.length; i++) {
+        s += arr[i];
+        if (i >= w) s -= arr[i - w];
+        if (i >= w - 1) g.push(s / w);
+      }
+      return g;
+    }
+    function drawWindow() {
+      var w = parseInt(document.getElementById('win-size').value, 10);
+      var dip = document.getElementById('win-dip').checked;
+      document.getElementById('win-val').textContent = w;
+      var tr = winTrace(dip), g = groupConf(tr, w);
+      var X0 = 40, W = 570, Y0 = 220, H = 200, ymin = 0, ymax = 24;
+      function X(i) { return X0 + i / 599 * W; }
+      function Y(v) { return Y0 - (v - ymin) / (ymax - ymin) * H; }
+      var svg = '';
+      for (var t = 0; t <= 24; t += 4) {
+        svg += '<line x1="' + X0 + '" y1="' + Y(t) + '" x2="' + (X0 + W) + '" y2="' + Y(t) + '" stroke="#ccc" stroke-width="1"/>';
+        svg += '<text x="' + (X0 - 6) + '" y="' + (Y(t) + 4) + '" font-size="11" text-anchor="end">' + t + '</text>';
+      }
+      for (var i = 0; i < 600; i += 1) {
+        svg += '<circle cx="' + f(X(i), 1) + '" cy="' + f(Y(tr[i]), 1) + '" r="1.3" fill="#888"/>';
+      }
+      var pts = [];
+      for (var k = 0; k < g.length; k++) pts.push(f(X(k + w - 1), 1) + ',' + f(Y(g[k]), 1));
+      svg += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#000" stroke-width="2.5"/>';
+      var minV = Infinity, minK = 0;
+      for (var m = 0; m < g.length; m++) if (g[m] < minV) { minV = g[m]; minK = m; }
+      var xm = X(minK + w - 1);
+      svg += '<line x1="' + xm + '" y1="' + Y(ymax) + '" x2="' + xm + '" y2="' + Y0 + '" stroke="#000" stroke-width="1.5" stroke-dasharray="5,4"/>';
+      svg += '<text x="' + Math.min(xm + 4, 520) + '" y="' + (Y(ymax) + 12) + '" font-size="12" font-weight="bold">lowest: ' + f(minV, 2) + '</text>';
+      svg += '<line x1="' + X0 + '" y1="' + Y0 + '" x2="' + (X0 + W) + '" y2="' + Y0 + '" stroke="#000" stroke-width="2"/>';
+      svg += '<text x="' + (X0 + W) + '" y="236" font-size="11" text-anchor="end">token position</text>';
+      document.getElementById('win-chart').innerHTML = svg;
+      var mean = tr.reduce(function (a, b) { return a + b; }, 0) / tr.length;
+      var meanOther = winTrace(!dip).reduce(function (a, b) { return a + b; }, 0) / 600;
+      var sorted = g.slice().sort(function (a, b) { return a - b; });
+      var nb = Math.max(1, Math.round(sorted.length * 0.1));
+      var b10 = sorted.slice(0, nb).reduce(function (a, b) { return a + b; }, 0) / nb;
+      var tail = tr.slice(500).reduce(function (a, b) { return a + b; }, 0) / 100;
+      var out = [];
+      out.push('average trace confidence = ' + f(mean, 3) + '   (other setting of the toggle: ' + f(meanOther, 3) + ')');
+      out.push('lowest group confidence  = ' + f(minV, 3) + '   window ending at token ' + (minK + w));
+      out.push('bottom-10% group conf    = ' + f(b10, 3) + '   (mean of lowest ' + nb + ' of ' + g.length + ' windows)');
+      out.push('tail confidence (last 100 tokens) = ' + f(tail, 3));
+      document.getElementById('win-out').innerHTML = out.join('<br>');
+    }
+
+    // ---------- WIDGET 3: VOTING ----------
+    var voteDefault = [
+      ['18', 10.9], ['24', 13.2], ['18', 11.3], ['30', 12.1],
+      ['24', 12.8], ['18', 10.6], ['24', 13.5], ['18', 11.0]
+    ];
+    var votes = [];
+    var voteMode = 'filtered';
+    function resetVotes() {
+      votes = voteDefault.map(function (r) { return [r[0], r[1]]; });
+      buildVoteTable();
+      drawVote();
+    }
+    function buildVoteTable() {
+      var h = '<tr><th>trace</th><th>answer</th><th>confidence</th></tr>';
+      for (var i = 0; i < votes.length; i++) {
+        h += '<tr id="vrow-' + i + '"><td>T' + (i + 1) + '</td>' +
+          '<td><input type="text" id="va-' + i + '" value="' + votes[i][0] + '" oninput="readVotes()"></td>' +
+          '<td><input type="number" step="0.1" id="vc-' + i + '" value="' + votes[i][1] + '" oninput="readVotes()"></td></tr>';
+      }
+      document.getElementById('vote-table').innerHTML = h;
+    }
+    function readVotes() {
+      for (var i = 0; i < votes.length; i++) {
+        votes[i][0] = document.getElementById('va-' + i).value.trim() || '?';
+        var c = parseFloat(document.getElementById('vc-' + i).value);
+        votes[i][1] = isNaN(c) ? 0 : c;
+      }
+      drawVote();
+    }
+    function setVoteMode(m) {
+      voteMode = m;
+      ['majority', 'weighted', 'filtered'].forEach(function (k) {
+        document.getElementById('vm-' + k).classList.toggle('active', k === m);
+      });
+      document.getElementById('eta-box').style.display = (m === 'filtered') ? 'block' : 'none';
+      drawVote();
+    }
+    function drawVote() {
+      var eta = parseInt(document.getElementById('eta').value, 10);
+      document.getElementById('eta-val').textContent = eta;
+      var n = votes.length;
+      var idx = votes.map(function (_, i) { return i; });
+      var keep = {};
+      if (voteMode === 'filtered') {
+        idx.sort(function (a, b) { return votes[b][1] - votes[a][1]; });
+        var nk = Math.max(1, Math.round(eta / 100 * n));
+        for (var i = 0; i < nk; i++) keep[idx[i]] = true;
+      } else {
+        for (var j = 0; j < n; j++) keep[j] = true;
+      }
+      var V = {}, order = [];
+      for (var t = 0; t < n; t++) {
+        var row = document.getElementById('vrow-' + t);
+        if (row) row.className = keep[t] ? '' : 'dropped';
+        if (!keep[t]) continue;
+        var a = votes[t][0];
+        if (!(a in V)) { V[a] = 0; order.push(a); }
+        V[a] += (voteMode === 'majority') ? 1 : votes[t][1];
+      }
+      var total = 0, best = null;
+      order.forEach(function (a) { total += V[a]; if (best === null || V[a] > V[best]) best = a; });
+      // chart
+      var svg = '', maxV = 0;
+      order.forEach(function (a) { if (V[a] > maxV) maxV = V[a]; });
+      var bw = Math.min(120, 520 / Math.max(1, order.length));
+      order.forEach(function (a, k) {
+        var x = 40 + k * (bw + 10), h = maxV > 0 ? V[a] / maxV * 100 : 0;
+        svg += '<rect x="' + x + '" y="' + (120 - h) + '" width="' + bw + '" height="' + h + '" fill="' + (a === best ? '#000' : '#fff') + '" stroke="#000" stroke-width="2"/>';
+        svg += '<text x="' + (x + bw / 2) + '" y="' + (115 - h) + '" font-size="12" text-anchor="middle">' + f(V[a], voteMode === 'majority' ? 0 : 1) + '</text>';
+        svg += '<text x="' + (x + bw / 2) + '" y="138" font-size="13" text-anchor="middle" font-weight="bold">' + a + '</text>';
+      });
+      svg += '<line x1="30" y1="120" x2="590" y2="120" stroke="#000" stroke-width="2"/>';
+      document.getElementById('vote-chart').innerHTML = svg;
+      var beta = total > 0 ? V[best] / total : 0;
+      var lines = [];
+      var label = voteMode === 'majority' ? 'plain majority (1 vote each)' : voteMode === 'weighted' ? 'confidence-weighted, all traces' : 'top ' + eta + '% (' + Object.keys(keep).length + ' of ' + n + ' traces), then weighted';
+      lines.push('rule: ' + label);
+      lines.push(order.map(function (a) { return 'V(' + a + ') = ' + f(V[a], voteMode === 'majority' ? 0 : 1); }).join('   '));
+      lines.push('winner: ' + best + (best === '24' ? '   (correct in the default example)' : ''));
+      lines.push('beta = ' + f(V[best], 1) + ' / ' + f(total, 1) + ' = ' + f(beta, 3) + (beta >= 0.95 ? '   >= 0.95, adaptive sampling would stop' : '   < 0.95, adaptive sampling would keep going'));
+      document.getElementById('vote-out').innerHTML = lines.join('<br>');
+    }
+
+    // ---------- WIDGET 4: THRESHOLD ----------
+    function setKeep(k) { document.getElementById('th-keep').value = k; drawThresh(); }
+    function drawThresh() {
+      var keep = parseInt(document.getElementById('th-keep').value, 10);
+      var p = 100 - keep;
+      document.getElementById('th-keep-val').textContent = keep;
+      document.getElementById('th-pct-val').textContent = p;
+      var vals = document.getElementById('th-input').value.split(/[\s,]+/).map(parseFloat).filter(function (x) { return !isNaN(x); });
+      var out = document.getElementById('th-out');
+      if (vals.length < 2) { out.textContent = 'Enter at least two numbers.'; document.getElementById('th-chart').innerHTML = ''; return; }
+      var s = vals.slice().sort(function (a, b) { return a - b; });
+      var thr = percentile(s, p);
+      var r = (s.length - 1) * p / 100, lo = Math.floor(r), hi = Math.ceil(r);
+      var mn = s[0], mx = s[s.length - 1], span = (mx - mn) || 1;
+      function X(v) { return 30 + (v - mn) / span * 540; }
+      var svg = '<line x1="30" y1="60" x2="570" y2="60" stroke="#000" stroke-width="2"/>';
+      var survive = 0;
+      s.forEach(function (v) {
+        var ok = v >= thr; if (ok) survive++;
+        svg += '<circle cx="' + f(X(v), 1) + '" cy="60" r="7" fill="' + (ok ? '#000' : '#fff') + '" stroke="#000" stroke-width="2"/>';
+      });
+      svg += '<line x1="' + X(thr) + '" y1="20" x2="' + X(thr) + '" y2="95" stroke="#000" stroke-width="3"/>';
+      svg += '<text x="' + Math.min(Math.max(X(thr), 40), 540) + '" y="14" font-size="12" text-anchor="middle" font-weight="bold">s = ' + f(thr, 3) + '</text>';
+      svg += '<text x="30" y="90" font-size="11">' + f(mn, 2) + '</text><text x="570" y="90" font-size="11" text-anchor="end">' + f(mx, 2) + '</text>';
+      document.getElementById('th-chart').innerHTML = svg;
+      var lines = [];
+      lines.push('sorted: ' + s.map(function (v) { return f(v, 2); }).join(', '));
+      lines.push('rank = (n-1) * p/100 = ' + (s.length - 1) + ' * ' + p + '/100 = ' + f(r, 2));
+      lines.push('s = ' + f(s[lo], 3) + ' + (' + f(s[hi], 3) + ' - ' + f(s[lo], 3) + ') * ' + f(r - lo, 2) + ' = ' + f(thr, 3));
+      lines.push('warmup traces at or above s: ' + survive + ' of ' + s.length + ' (filled dots)');
+      out.innerHTML = lines.join('<br>');
+    }
+
+    // ---------- WIDGET 5: ONLINE STEPPER ----------
+    var ON_LEN = 400, ON_W = 32;
+    var onSpecs = [
+      { name: 'A', answer: '24', base: 14.2, dipAt: 0, depth: 0, seed: 11, dash: '' },
+      { name: 'B', answer: '18', base: 13.7, dipAt: 160, depth: 3.2, seed: 12, dash: '8,4' },
+      { name: 'C', answer: '30', base: 13.6, dipAt: 260, depth: 5.0, seed: 13, dash: '2,4' },
+      { name: 'D', answer: '24', base: 13.35, dipAt: 0, depth: 0, seed: 14, dash: '10,4,2,4' }
+    ];
+    var onTraces = onSpecs.map(function (sp) {
+      var r = mulberry32(sp.seed), tok = [];
+      for (var i = 0; i < ON_LEN; i++) {
+        var v = sp.base + (r() - 0.5) * 6;
+        if (sp.depth) v -= sp.depth * Math.exp(-Math.pow((i - sp.dipAt) / 25, 2));
+        tok.push(v);
+      }
+      return { spec: sp, tok: tok, g: groupConf(tok, ON_W) };
+    });
+    var onMode = 'low', onPos = 0;
+    function onThreshold() { return onMode === 'low' ? 13.05 : 10.05; }
+    function setOnlineMode(m) {
+      onMode = m;
+      document.getElementById('om-low').classList.toggle('active', m === 'low');
+      document.getElementById('om-high').classList.toggle('active', m === 'high');
+      drawOnline();
+    }
+    function resetOnline() { onPos = 0; drawOnline(); }
+    function stepOnline(k) { onPos = Math.min(ON_LEN, onPos + k); drawOnline(); }
+    function killPoint(tr, s) {
+      // returns token count at which the trace is killed, or -1
+      for (var k = 0; k < tr.g.length; k++) if (tr.g[k] < s) return k + ON_W;
+      return -1;
+    }
+    function drawOnline() {
+      var s = onThreshold();
+      var X0 = 40, W = 560, Y0 = 230, H = 210, ymin = 7, ymax = 16;
+      function X(i) { return X0 + i / ON_LEN * W; }
+      function Y(v) { return Y0 - (Math.max(ymin, Math.min(ymax, v)) - ymin) / (ymax - ymin) * H; }
+      var svg = '';
+      for (var t = 7; t <= 16; t++) {
+        svg += '<line x1="' + X0 + '" y1="' + Y(t) + '" x2="' + (X0 + W) + '" y2="' + Y(t) + '" stroke="#ddd" stroke-width="1"/>';
+        svg += '<text x="' + (X0 - 6) + '" y="' + (Y(t) + 4) + '" font-size="11" text-anchor="end">' + t + '</text>';
+      }
+      svg += '<line x1="' + X0 + '" y1="' + Y(s) + '" x2="' + (X0 + W) + '" y2="' + Y(s) + '" stroke="#000" stroke-width="4"/>';
+      svg += '<text x="' + (X0 + W) + '" y="' + (Y(s) - 6) + '" font-size="12" text-anchor="end" font-weight="bold">s = ' + s + '</text>';
+      svg += '<line x1="' + X(onPos) + '" y1="' + Y(ymax) + '" x2="' + X(onPos) + '" y2="' + Y0 + '" stroke="#888" stroke-width="1"/>';
+      var used = 0, chips = '', surv = [];
+      onTraces.forEach(function (tr) {
+        var kp = killPoint(tr, s);
+        var dead = kp !== -1 && kp <= onPos;
+        var upto = dead ? kp : onPos;
+        used += upto;
+        var pts = [];
+        for (var i = ON_W; i <= upto; i++) pts.push(f(X(i), 1) + ',' + f(Y(tr.g[i - ON_W]), 1));
+        if (pts.length > 1) svg += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="' + tr.spec.dash + '"/>';
+        if (pts.length > 0) {
+          var last = pts[pts.length - 1].split(',');
+          if (dead) {
+            svg += '<text x="' + last[0] + '" y="' + (parseFloat(last[1]) + 5) + '" font-size="18" font-weight="bold" text-anchor="middle">X</text>';
+          }
+          svg += '<text x="' + (parseFloat(last[0]) + 8) + '" y="' + (parseFloat(last[1]) - 6) + '" font-size="12" font-weight="bold">' + tr.spec.name + '</text>';
+        }
+        var st;
+        if (dead) st = 'killed at token ' + kp;
+        else if (onPos >= ON_LEN) { st = 'finished, answer ' + tr.spec.answer; surv.push(tr); }
+        else st = 'running (' + onPos + ' tokens)';
+        chips += '<div class="status-chip' + (dead ? ' dead' : '') + '">' + tr.spec.name + ': ' + st + '</div>';
+      });
+      svg += '<line x1="' + X0 + '" y1="' + Y0 + '" x2="' + (X0 + W) + '" y2="' + Y0 + '" stroke="#000" stroke-width="2"/>';
+      svg += '<text x="' + (X0 + W) + '" y="250" font-size="11" text-anchor="end">tokens generated (group conf drawn once the first 32-token window fills)</text>';
+      document.getElementById('on-chart').innerHTML = svg;
+      document.getElementById('on-status').innerHTML = chips;
+      var lines = [];
+      lines.push('tokens generated: ' + used + ' of ' + (onPos * 4) + ' that full generation would have used by now');
+      if (onPos >= ON_LEN) {
+        lines.push('final: ' + used + ' / ' + (ON_LEN * 4) + ' tokens = ' + f(100 * (1 - used / (ON_LEN * 4)), 1) + '% saved');
+        if (surv.length) {
+          var V = {};
+          surv.forEach(function (tr) {
+            var mg = Math.min.apply(null, tr.g);
+            V[tr.spec.answer] = (V[tr.spec.answer] || 0) + mg;
+          });
+          lines.push('vote among survivors (weighted by lowest group conf): ' + Object.keys(V).map(function (a) { return a + ' = ' + f(V[a], 2); }).join(', '));
+        } else {
+          lines.push('no survivors: fall back to warmup votes');
+        }
+      }
+      document.getElementById('on-out').innerHTML = lines.join('<br>');
+    }
+
+    // ---------- WIDGET 6: SAVINGS ----------
+    function drawSave() {
+      var B = Math.max(1, parseInt(document.getElementById('sv-B').value, 10) || 512);
+      var L = Math.max(1, parseFloat(document.getElementById('sv-L').value) || 12000);
+      var N0 = Math.max(1, parseInt(document.getElementById('sv-N').value, 10) || 16);
+      var kr = parseInt(document.getElementById('sv-kr').value, 10) / 100;
+      var kp = parseInt(document.getElementById('sv-kp').value, 10) / 100;
+      var nEl = document.getElementById('sv-n');
+      nEl.max = B;
+      var n = Math.min(B, Math.max(N0, parseInt(nEl.value, 10)));
+      document.getElementById('sv-kr-val').textContent = Math.round(kr * 100);
+      document.getElementById('sv-kp-val').textContent = Math.round(kp * 100);
+      document.getElementById('sv-n-val').textContent = n;
+      var base = B * L;
+      var warm = N0 * L;
+      var per = (1 - kr) * L + kr * kp * L;
+      var rest = (n - N0) * per;
+      var total = warm + rest;
+      var saved = 1 - total / base;
+      var svg = '';
+      var wW = warm / base * 540, wR = rest / base * 540;
+      svg += '<text x="30" y="18" font-size="12">full parallel: ' + Math.round(base).toLocaleString() + ' tokens</text>';
+      svg += '<rect x="30" y="24" width="540" height="24" fill="#fff" stroke="#000" stroke-width="2"/>';
+      svg += '<text x="30" y="68" font-size="12">DeepConf online: ' + Math.round(total).toLocaleString() + ' tokens</text>';
+      svg += '<rect x="30" y="74" width="' + f(wW, 1) + '" height="24" fill="#000"/>';
+      svg += '<rect x="' + f(30 + wW, 1) + '" y="74" width="' + f(wR, 1) + '" height="24" fill="#bbb" stroke="#000" stroke-width="1"/>';
+      document.getElementById('sv-chart').innerHTML = svg;
+      var lines = [];
+      lines.push('baseline  = B * L = ' + B + ' * ' + L + ' = ' + Math.round(base).toLocaleString());
+      lines.push('warmup    = ' + N0 + ' * ' + L + ' = ' + Math.round(warm).toLocaleString() + '   (black)');
+      lines.push('per trace = (1-' + f(kr, 2) + ')*L + ' + f(kr, 2) + '*' + f(kp, 2) + '*L = ' + Math.round(per).toLocaleString());
+      lines.push('rest      = (' + n + ' - ' + N0 + ') * ' + Math.round(per).toLocaleString() + ' = ' + Math.round(rest).toLocaleString() + '   (gray)');
+      lines.push('saved     = ' + f(100 * saved, 1) + '%');
+      document.getElementById('sv-out').innerHTML = lines.join('<br>');
+    }
+
+    // ---------- INIT ----------
+    drawTok();
+    drawWindow();
+    resetVotes();
+    setVoteMode('filtered');
+    drawThresh();
+    drawOnline();
+    drawSave();
+  </script>
+</body>
+</html>

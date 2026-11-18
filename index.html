@@ -4,6 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Matt's Learning Library (Boox Go 10.3 Edition)</title>
+
+  <!-- KaTeX for crisp offline/online LaTeX math rendering (Boox Go 10.3 optimized) -->
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <script>
+    var katexOptions = {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    };
+    function renderAllMath() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, katexOptions);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(renderAllMath, 50);
+      setTimeout(renderAllMath, 400);
+    });
+  </script>
   <style>
     :root {
       --bg: #ffffff;
@@ -192,6 +217,34 @@
       <a href="gkd.html" class="read-btn">Read GKD Guide →</a>
     </div>
 
+    <!-- ARTICLE 3 -->
+    <div class="article-card">
+      <div>
+        <span class="tag">Classification</span>
+        <span class="tag">Evaluation</span>
+        <span class="tag">Practical ML</span>
+      </div>
+      <h3>3. Dealing with Class Imbalance in Classification</h3>
+      <p>
+        Why accuracy misleads on skewed data, and what to do about it: better metrics, threshold moving, class weights and focal loss, SMOTE and friends, balanced ensembles, and fixing probabilities afterwards.
+      </p>
+      <a href="class-imbalance.html" class="read-btn">Read Class Imbalance Guide →</a>
+    </div>
+
+    <!-- ARTICLE 4 -->
+    <div class="article-card">
+      <div>
+        <span class="tag">LLM Reasoning</span>
+        <span class="tag">Test-Time Compute</span>
+        <span class="tag">Paper</span>
+      </div>
+      <h3>4. DeepConf: Deep Think with Confidence</h3>
+      <p>
+        How Meta's DeepConf uses token log-probabilities to drop or stop weak reasoning traces, beating plain majority voting while generating far fewer tokens. Covers group confidence, offline filtering, and online early stopping.
+      </p>
+      <a href="deepconf.html" class="read-btn">Read DeepConf Guide →</a>
+    </div>
+
     <!-- HOW TO VIEW ON BOOX GO 10.3 -->
     <h2>Viewing Options on Your Boox Go 10.3</h2>
     <div class="callout">
@@ -216,7 +269,7 @@
       <p><strong>Method 3: Copy to Device Documents Storage</strong><br>
         If you prefer opening files from the Onyx Boox native <strong>Storage / Documents</strong> or <strong>NeoReader</strong> app:
       </p>
-      <pre><code>cp ~/matt-learning/*.html /sdcard/Documents/</code></pre>
+      <pre><code>cp -r ~/matt-learning/*.html ~/matt-learning/katex /sdcard/Documents/</code></pre>
       <p>
         You can then open the files directly inside your Boox Library or Document viewer.
       </p>
@@ -237,6 +290,26 @@
         document.body.style.fontSize = currentFontSize + 'px';
       }
     });
-  </script>
-</body>
+
+    // KATEX AUTO-RENDER INITIALIZATION
+    function renderAllMath() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      renderAllMath();
+      setTimeout(renderAllMath, 150);
+      setTimeout(renderAllMath, 600);
+    });
+  </script></body>
 </html>

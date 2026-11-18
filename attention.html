@@ -4,6 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Understanding Attention: From Intuition to Multi-Head Math</title>
+
+  <!-- KaTeX for crisp offline/online LaTeX math rendering (Boox Go 10.3 optimized) -->
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <script>
+    // Define renderAllMath early so it's available when auto-render.min.js fires onload
+    var katexOptions = {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    };
+    function renderAllMath() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, katexOptions);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(renderAllMath, 50);
+      setTimeout(renderAllMath, 400);
+    });
+  </script>
   <style>
     /* E-INK OPTIMIZED STYLESHEET */
     :root {
@@ -44,9 +70,6 @@
       border-bottom: 3px solid var(--border);
       padding: 1.5rem 1rem;
       background: #ffffff;
-      position: sticky;
-      top: 0;
-      z-index: 100;
     }
 
     .header-inner {
@@ -194,12 +217,14 @@
     .math-block {
       background: var(--card-bg);
       border: var(--border-thick);
-      padding: 1rem;
+      padding: 0.8rem 1.2rem;
       margin: 1.5rem 0;
       overflow-x: auto;
-      font-family: var(--font-mono);
-      font-size: 16px;
       text-align: center;
+    }
+
+    .math-block .katex-display {
+      margin: 0.2rem 0;
     }
 
     pre, code {
@@ -414,7 +439,7 @@
     </p>
 
     <div class="math-block">
-      h_t = \tanh(W_{hh} h_{t-1} + W_{xh} x_t)
+      $$h_t = \tanh(W_{hh} h_{t-1} + W_{xh} x_t)$$
     </div>
 
     <p>
@@ -438,7 +463,7 @@
       <label class="mcq-option">
         <input type="radio" name="q1" value="C"> C) They required attention matrices that were too large to compute.
       </label>
-      <button class="btn" onclick="checkMCQ('mcq-1', 'B', 'Correct! RNNs compress the entire history into a single vector h_t. In long sequences, early tokens are overwritten or diluted by vanishing gradients.')">Check Answer</button>
+      <button class="btn" onclick="checkMCQ('mcq-1', 'B', 'Correct! RNNs compress the entire history into a single vector $h_t$. In long sequences, early tokens are overwritten or diluted by vanishing gradients.')">Check Answer</button>
       <div class="mcq-feedback"></div>
     </div>
 
@@ -503,7 +528,7 @@
     <!-- SECTION 3 -->
     <h2>3. The Exact Mathematical Formula</h2>
     <div class="math-block">
-      \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V
+      $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V$$
     </div>
 
     <p>Let's break down each component step-by-step:</p>
@@ -526,9 +551,9 @@
         <p>The dot product is $q \cdot k = \sum_{i=1}^{d_k} q_i k_i$.</p>
         <p>The mean of each product term is $\mathbb{E}[q_i k_i] = \mathbb{E}[q_i]\mathbb{E}[k_i] = 0$.</p>
         <p>The variance of each product term is:</p>
-        <div class="math-block">\text{Var}(q_i k_i) = \mathbb{E}[q_i^2 k_i^2] - (\mathbb{E}[q_i k_i])^2 = \text{Var}(q_i)\text{Var}(k_i) = 1 \cdot 1 = 1</div>
+        <div class="math-block">$$\text{Var}(q_i k_i) = \mathbb{E}[q_i^2 k_i^2] - (\mathbb{E}[q_i k_i])^2 = \text{Var}(q_i)\text{Var}(k_i) = 1 \cdot 1 = 1$$</div>
         <p>Since the terms are independent, the variance of the sum is the sum of the variances:</p>
-        <div class="math-block">\text{Var}\left(\sum_{i=1}^{d_k} q_i k_i\right) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k</div>
+        <div class="math-block">$$\text{Var}\left(\sum_{i=1}^{d_k} q_i k_i\right) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$</div>
         <p>Thus, the standard deviation is $\sqrt{d_k}$. For large $d_k$ (e.g., $d_k = 64$ or $128$), the dot products grow very large in magnitude. When input values to softmax are large, the softmax function saturates, yielding gradients near zero (<span class="term" data-term="vanishing-gradient">vanishing gradient problem</span>). Dividing by $\sqrt{d_k}$ normalizes the variance back to 1.0!</p>
       </div>
     </details>
@@ -631,9 +656,11 @@
     <h3>Step 4.5: Multiply Weights by Values ($Z = A V$)</h3>
     <p>For Token 2 ("dog"), its new contextual representation is:</p>
     <div class="math-block">
-      z_2 = 0.045 \cdot v_1 + 0.187 \cdot v_2 + 0.768 \cdot v_3 \\
-      z_2 = 0.045 \begin{bmatrix}2.0 \\ 1.0\end{bmatrix} + 0.187 \begin{bmatrix}0.0 \\ 3.0\end{bmatrix} + 0.768 \begin{bmatrix}1.0 \\ 0.0\end{bmatrix} \\
-      z_2 = \begin{bmatrix}0.090 \\ 0.045\end{bmatrix} + \begin{bmatrix}0.000 \\ 0.561\end{bmatrix} + \begin{bmatrix}0.768 \\ 0.000\end{bmatrix} = \mathbf{\begin{bmatrix}0.858 \\ 0.606\end{bmatrix}}
+      $$\begin{aligned}
+      z_2 &= 0.045 \cdot v_1 + 0.187 \cdot v_2 + 0.768 \cdot v_3 \\
+      z_2 &= 0.045 \begin{bmatrix}2.0 \\ 1.0\end{bmatrix} + 0.187 \begin{bmatrix}0.0 \\ 3.0\end{bmatrix} + 0.768 \begin{bmatrix}1.0 \\ 0.0\end{bmatrix} \\
+      z_2 &= \begin{bmatrix}0.090 \\ 0.045\end{bmatrix} + \begin{bmatrix}0.000 \\ 0.561\end{bmatrix} + \begin{bmatrix}0.768 \\ 0.000\end{bmatrix} = \mathbf{\begin{bmatrix}0.858 \\ 0.606\end{bmatrix}}
+      \end{aligned}$$
     </div>
     <p>The new vector for "dog" now contains information from "The", "dog", and especially "barked"!</p>
 
@@ -675,8 +702,10 @@
       <strong>Multi-Head Attention (MHA)</strong> runs $h$ attention heads in parallel, each with its own projection matrices $W_Q^i, W_K^i, W_V^i$:
     </p>
     <div class="math-block">
-      \text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W_O \\
-      \text{where } \text{head}_i = \text{Attention}(Q W_Q^i, K W_K^i, V W_V^i)
+      $$\begin{aligned}
+      \text{MultiHead}(Q, K, V) &= \text{Concat}(\text{head}_1, \dots, \text{head}_h) W_O \\
+      \text{where } \text{head}_i &= \text{Attention}(Q W_Q^i, K W_K^i, V W_V^i)
+      \end{aligned}$$
     </div>
 
     <!-- INTERACTIVE HEAD EXPLORER -->
@@ -708,7 +737,7 @@
       <label class="mcq-option">
         <input type="radio" name="q2" value="C"> C) 4096 ($512 \times 8$)
       </label>
-      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Correct! In standard Transformers, each head operates on d_k = d_model / h = 512 / 8 = 64. This ensures total computation cost remains comparable to a single full-dimensional head.')">Check Answer</button>
+      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Correct! In standard Transformers, each head operates on $d_k = d_{\\text{model}} / h = 512 / 8 = 64$. This ensures total computation cost remains comparable to a single full-dimensional head.')">Check Answer</button>
       <div class="mcq-feedback"></div>
     </div>
 
@@ -801,7 +830,7 @@ class SelfAttention(nn.Module):
       <label class="mcq-option">
         <input type="radio" name="q3" value="C"> C) Deleting the future tokens from memory during the forward pass.
       </label>
-      <button class="btn" onclick="checkMCQ('mcq-3', 'B', 'Correct! Adding -infinity to future scores before softmax causes exp(-inf) to evaluate to exactly 0.0, ensuring no probability weight is allocated to future tokens.')">Check Answer</button>
+      <button class="btn" onclick="checkMCQ('mcq-3', 'B', 'Correct! Adding $-\\infty$ to future scores before softmax causes $\\exp(-\\infty)$ to evaluate to exactly $0.0$, ensuring no probability weight is allocated to future tokens.')">Check Answer</button>
       <div class="mcq-feedback"></div>
     </div>
 
@@ -875,9 +904,19 @@ class SelfAttention(nn.Module):
         const key = el.getAttribute('data-term');
         if (glossary[key]) {
           document.getElementById('popover-term-name').innerText = glossary[key].title;
-          document.getElementById('popover-body').innerText = glossary[key].body;
+          const popBody = document.getElementById('popover-body');
+          popBody.innerHTML = glossary[key].body;
           document.getElementById('popover-backdrop').style.display = 'block';
           document.getElementById('popover-box').style.display = 'block';
+          if (typeof renderMathInElement === 'function') {
+            renderMathInElement(popBody, {
+              delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false}
+              ],
+              throwOnError: false
+            });
+          }
         }
       });
     });
@@ -908,6 +947,16 @@ class SelfAttention(nn.Module):
         feedback.className = 'mcq-feedback incorrect';
         feedback.style.display = 'block';
         feedback.innerHTML = '<strong>✗ Not quite.</strong> ' + explanation;
+      }
+
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(feedback, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false
+        });
       }
     }
 

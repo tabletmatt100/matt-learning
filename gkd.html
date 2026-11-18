@@ -4,6 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Generalized Knowledge Distillation (GKD): Solving Exposure Bias in LLMs</title>
+
+  <!-- KaTeX for crisp offline/online LaTeX math rendering (Boox Go 10.3 optimized) -->
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <script>
+    var katexOptions = {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    };
+    function renderAllMath() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, katexOptions);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(renderAllMath, 50);
+      setTimeout(renderAllMath, 400);
+    });
+  </script>
   <style>
     /* E-INK OPTIMIZED STYLESHEET */
     :root {
@@ -43,9 +68,6 @@
       border-bottom: 3px solid var(--border);
       padding: 1.5rem 1rem;
       background: #ffffff;
-      position: sticky;
-      top: 0;
-      z-index: 100;
     }
 
     .header-inner {
@@ -193,12 +215,33 @@
     .math-block {
       background: var(--card-bg);
       border: var(--border-thick);
-      padding: 1rem;
+      padding: 0.8rem 1.2rem;
       margin: 1.5rem 0;
       overflow-x: auto;
-      font-family: var(--font-mono);
-      font-size: 16px;
       text-align: center;
+    }
+
+    .math-block .katex-display {
+      margin: 0.2rem 0;
+    }
+
+    .algo-block {
+      background: var(--card-bg);
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin: 1.5rem 0;
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    .algo-line {
+      margin-bottom: 0.3rem;
+    }
+
+    .algo-num {
+      font-weight: bold;
+      display: inline-block;
+      width: 1.5rem;
     }
 
     pre, code {
@@ -412,7 +455,7 @@
       In classical supervised knowledge distillation (Hinton et al., 2015), the student model is trained on a static offline dataset $\mathcal{D}$:
     </p>
     <div class="math-block">
-      \mathcal{L}_{\text{KD}}(\theta) = \mathbb{E}_{(x, y) \sim \mathcal{D}} \left[ \sum_{t=1}^T \mathbb{D}_{\text{KL}}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]
+      $$\mathcal{L}_{\text{KD}}(\theta) = \mathbb{E}_{(x, y) \sim \mathcal{D}} \left[ \sum_{t=1}^T \mathbb{D}_{\text{KL}}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]$$
     </div>
 
     <p>
@@ -480,7 +523,7 @@
       GKD formalizes knowledge distillation under a generalized loss objective:
     </p>
     <div class="math-block">
-      \mathcal{L}_{\text{GKD}}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, \, y \sim \mu(\cdot \mid x)} \left[ \sum_{t=1}^{|y|} \mathbb{D}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]
+      $$\mathcal{L}_{\text{GKD}}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, \, y \sim \mu(\cdot \mid x)} \left[ \sum_{t=1}^{|y|} \mathbb{D}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]$$
     </div>
 
     <p>Notice the two decisive levers:</p>
@@ -488,7 +531,7 @@
       <li><strong>Generation Distribution $\mu(\cdot \mid x)$</strong>:
         We interpolate between off-policy dataset/teacher samples and <strong>on-policy student rollouts</strong> using mixture parameter $\lambda \in [0, 1]$:
         <div class="math-block">
-          \mu(y \mid x) = \lambda P_{\text{student}}(y \mid x) + (1 - \lambda) P_{\text{data}}(y \mid x)
+          $$\mu(y \mid x) = \lambda P_{\text{student}}(y \mid x) + (1 - \lambda) P_{\text{data}}(y \mid x)$$
         </div>
         When $\lambda > 0$, the student generates its own candidate trajectories, and the teacher evaluates the student's *actual* generated outputs!
       </li>
@@ -584,7 +627,7 @@
 
     <h3>Calculation A: Forward KL $\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$</h3>
     <div class="math-block">
-      \mathbb{D}_{\text{KL}}(P_T \,\|\, P_S) = \sum_{k} P_T(k) \ln\left(\frac{P_T(k)}{P_S(k)}\right)
+      $$\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S) = \sum_{k} P_T(k) \ln\left(\frac{P_T(k)}{P_S(k)}\right)$$
     </div>
     <ol>
       <li>For "sunny": $0.70 \times \ln(0.70 / 0.40) = 0.70 \times \ln(1.750) = 0.70 \times 0.5596 = \mathbf{+0.3917}$</li>
@@ -598,7 +641,7 @@
 
     <h3>Calculation B: Reverse KL $\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$</h3>
     <div class="math-block">
-      \mathbb{D}_{\text{KL}}(P_S \,\|\, P_T) = \sum_{k} P_S(k) \ln\left(\frac{P_S(k)}{P_T(k)}\right)
+      $$\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T) = \sum_{k} P_S(k) \ln\left(\frac{P_S(k)}{P_T(k)}\right)$$
     </div>
     <ol>
       <li>For "sunny": $0.40 \times \ln(0.40 / 0.70) = 0.40 \times \ln(0.5714) = 0.40 \times (-0.5596) = \mathbf{-0.2238}$</li>
@@ -623,7 +666,7 @@
       <label class="mcq-option">
         <input type="radio" name="q2" value="C"> C) It turns negative and rewards the student.
       </label>
-      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Exact! In Reverse KL, dividing by P_T(k) inside the logarithm causes the loss to explode to +infinity if the student puts mass where the teacher has zero mass. This is the definition of zero-forcing/mode-seeking!')">Check Answer</button>
+      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Exact! In Reverse KL, dividing by $P_T(k)$ inside the logarithm causes the loss to explode to $+\\infty$ if the student puts mass where the teacher has zero mass. This is the definition of zero-forcing/mode-seeking!')">Check Answer</button>
       <div class="mcq-feedback"></div>
     </div>
 
@@ -633,14 +676,14 @@
       How do we practically train with on-policy generation? The GKD training loop proceeds as follows:
     </p>
 
-    <div class="math-block" style="text-align: left; font-size: 15px;">
-      1. Sample prompt: x ~ D_prompt<br>
-      2. With probability λ: Sample student rollout y ~ P_student(· | x)<br>
-      &nbsp;&nbsp;&nbsp;With probability (1-λ): Take reference sequence y ~ D_data<br>
-      3. Run teacher forward pass on sequence (x, y) to obtain P_teacher(· | x, y_{&lt;t})<br>
-      4. Run student forward pass on sequence (x, y) to obtain P_student(· | x, y_{&lt;t})<br>
-      5. Compute divergence D(P_teacher || P_student) at each generated step t<br>
-      6. Backpropagate gradients into student weights θ
+    <div class="algo-block">
+      <div class="algo-line"><span class="algo-num">1.</span> Sample prompt: $x \sim \mathcal{D}_{\text{prompt}}$</div>
+      <div class="algo-line"><span class="algo-num">2.</span> With probability $\lambda$: Sample student rollout $y \sim P_{\text{student}}(\cdot \mid x)$</div>
+      <div class="algo-line" style="padding-left: 1.5rem;">With probability $(1-\lambda)$: Take reference sequence $y \sim \mathcal{D}_{\text{data}}$</div>
+      <div class="algo-line"><span class="algo-num">3.</span> Run teacher forward pass on sequence $(x, y)$ to obtain $P_{\text{teacher}}(\cdot \mid x, y_{<t})$</div>
+      <div class="algo-line"><span class="algo-num">4.</span> Run student forward pass on sequence $(x, y)$ to obtain $P_{\text{student}}(\cdot \mid x, y_{<t})$</div>
+      <div class="algo-line"><span class="algo-num">5.</span> Compute divergence $\mathbb{D}(P_{\text{teacher}} \,\|\, P_{\text{student}})$ at each generated step $t$</div>
+      <div class="algo-line"><span class="algo-num">6.</span> Backpropagate gradients into student weights $\theta$</div>
     </div>
 
     <!-- INTERACTIVE SECTION 2: LAMBDA MIXING EXPLORER -->
@@ -665,11 +708,11 @@
       <div style="padding-top: 0.8rem;">
         <p>When sampling rollouts on-policy $y \sim P_{\text{student}}(\cdot \mid x)$, the gradient with respect to student parameters $\theta$ requires differentiating through the expectation over generated sequences:</p>
         <div class="math-block">
-          \nabla_\theta \mathbb{E}_{y \sim P_\theta} [ R(y) ] = \mathbb{E}_{y \sim P_\theta} \left[ R(y) \nabla_\theta \log P_\theta(y) \right]
+          $$\nabla_\theta \mathbb{E}_{y \sim P_\theta} [ R(y) ] = \mathbb{E}_{y \sim P_\theta} \left[ R(y) \nabla_\theta \log P_\theta(y) \right]$$
         </div>
         <p>In GKD, the token-level loss at step $t$ acts as an intrinsic reward/cost signal from the teacher:</p>
         <div class="math-block">
-          r_t = -\mathbb{D}_{\text{KL}}\Big( P_{\text{student}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{teacher}}(\cdot \mid x, y_{<t}) \Big)
+          $$r_t = -\mathbb{D}_{\text{KL}}\Big( P_{\text{student}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{teacher}}(\cdot \mid x, y_{<t}) \Big)$$
         </div>
         <p>Because the student samples its own trajectory, this gradient directly updates the policy to make transitions into high-teacher-probability trajectories more likely, solving exposure bias completely!</p>
       </div>
@@ -777,15 +820,15 @@
       },
       "reverse-kl": {
         title: "Reverse KL Divergence",
-        body: "D_KL(P_student || P_teacher). Also known as the zero-forcing or mode-seeking divergence. Extensively penalizes the student if it generates tokens that the teacher assigns near-zero probability to."
+        body: "$\\mathbb{D}_{\\text{KL}}(P_{\\text{student}} \\parallel P_{\\text{teacher}})$. Also known as the zero-forcing or mode-seeking divergence. Extensively penalizes the student if it generates tokens that the teacher assigns near-zero probability to."
       },
       "mode-covering": {
         title: "Mode-Covering (Forward KL)",
-        body: "The behavior of D_KL(P_target || P_approx). To prevent loss from blowing up, the approximating model must stretch its probability distribution to cover all modes of the target, leading to diffuse, blurry outputs."
+        body: "The behavior of $\\mathbb{D}_{\\text{KL}}(P_{\\text{target}} \\parallel P_{\\text{approx}})$. To prevent loss from blowing up, the approximating model must stretch its probability distribution to cover all modes of the target, leading to diffuse, blurry outputs."
       },
       "mode-seeking": {
         title: "Mode-Seeking (Reverse KL)",
-        body: "The behavior of D_KL(P_approx || P_target). The approximating model focuses entirely on fitting one or more high-confidence modes, choosing precision over broad coverage. Ideal for text generation."
+        body: "The behavior of $\\mathbb{D}_{\\text{KL}}(P_{\\text{approx}} \\parallel P_{\\text{target}})$. The approximating model focuses entirely on fitting one or more high-confidence modes, choosing precision over broad coverage. Ideal for text generation."
       }
     };
 
@@ -794,9 +837,19 @@
         const key = el.getAttribute('data-term');
         if (glossary[key]) {
           document.getElementById('popover-term-name').innerText = glossary[key].title;
-          document.getElementById('popover-body').innerText = glossary[key].body;
+          const popBody = document.getElementById('popover-body');
+          popBody.innerHTML = glossary[key].body;
           document.getElementById('popover-backdrop').style.display = 'block';
           document.getElementById('popover-box').style.display = 'block';
+          if (typeof renderMathInElement === 'function') {
+            renderMathInElement(popBody, {
+              delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false}
+              ],
+              throwOnError: false
+            });
+          }
         }
       });
     });
@@ -827,6 +880,16 @@
         feedback.className = 'mcq-feedback incorrect';
         feedback.style.display = 'block';
         feedback.innerHTML = '<strong>✗ Not quite.</strong> ' + explanation;
+      }
+
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(feedback, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false
+        });
       }
     }
 

@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dealing with Class Imbalance in Classification</title>
+
+  <!-- KaTeX: local copy first, CDN fallback -->
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <script>
+    var katexOptions = {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    };
+    function renderAllMath() {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.body, katexOptions);
+      }
+    }
+    function renderMathIn(el) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(el, katexOptions);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(renderAllMath, 50);
+      setTimeout(renderAllMath, 400);
+    });
+  </script>
+  <style>
+    /* E-INK OPTIMIZED STYLESHEET */
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --card-bg: #ffffff;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: var(--font-size);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem 1rem;
+      background: #ffffff;
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+      display: inline-block;
+      padding: 8px 0;
+    }
+
+    .font-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thick);
+      padding: 6px 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 48px;
+      min-width: 48px;
+      font-family: inherit;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    h1 {
+      font-size: 2.1rem;
+      line-height: 1.25;
+      margin-top: 0;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.55rem;
+      margin-top: 2.8rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.3rem;
+    }
+
+    h3 {
+      font-size: 1.22rem;
+      margin-top: 1.8rem;
+    }
+
+    p, li {
+      margin-bottom: 1.1rem;
+    }
+
+    a { color: #000; }
+
+    .tldr {
+      border: 3px solid #000;
+      padding: 1rem 1.3rem 0.4rem 1.3rem;
+      margin: 1.2rem 0 2rem 0;
+    }
+    .tldr h2 {
+      margin-top: 0;
+      font-size: 1.2rem;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .tldr li { margin-bottom: 0.6rem; }
+
+    .toc {
+      border: var(--border-thin);
+      padding: 0.6rem 1.2rem;
+      margin-bottom: 2rem;
+    }
+    .toc ol { margin: 0.4rem 0; padding-left: 1.4rem; }
+    .toc li { margin-bottom: 0.3rem; }
+    .toc a { display: inline-block; padding: 4px 0; }
+
+    /* Popover trigger terms */
+    .term {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-decoration-thickness: 2px;
+      cursor: pointer;
+      background: var(--highlight-bg);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+    .term:active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    #popover-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(255, 255, 255, 0.6);
+      z-index: 999;
+    }
+    #popover-box {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #ffffff;
+      border: 3px solid #000000;
+      padding: 1.3rem;
+      max-width: 540px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+    #popover-title {
+      font-size: 1.25rem;
+      font-weight: bold;
+      margin: 0 0 0.6rem 0;
+      border-bottom: 2px solid #000;
+      padding-bottom: 0.4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #popover-close {
+      cursor: pointer;
+      font-size: 1.6rem;
+      background: #fff;
+      border: 2px solid #000;
+      min-width: 48px;
+      min-height: 48px;
+      font-weight: bold;
+    }
+    #popover-body { font-size: 1rem; line-height: 1.5; }
+
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.6rem 1rem;
+      margin: 1.4rem 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+    .math-block .katex-display { margin: 0.3rem 0; }
+
+    pre, code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+      border-radius: 2px;
+    }
+    pre {
+      padding: 1rem;
+      border: var(--border-thin);
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.45;
+      background: #f2f2f2;
+    }
+    pre code { background: none; padding: 0; font-size: 1em; }
+
+    .interactive-card {
+      background: #ffffff;
+      border: 3px solid #000;
+      padding: 1.2rem 1.3rem;
+      margin: 2rem 0;
+    }
+    .interactive-card h3 {
+      margin-top: 0;
+      border-bottom: 1px solid #000;
+      padding-bottom: 0.4rem;
+    }
+    .widget-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      font-weight: bold;
+      letter-spacing: 0.04em;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0.8rem 0;
+    }
+    .control-row label { font-weight: 600; min-width: 9rem; }
+    .control-row .val {
+      font-family: var(--font-mono);
+      font-weight: bold;
+      min-width: 5rem;
+      border: 1px solid #000;
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      min-width: 180px;
+      height: 44px;
+      background: transparent;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px; background: #000; border: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 30px; height: 30px;
+      background: #fff; border: 3px solid #000;
+      border-radius: 50%;
+      margin-top: -12px;
+    }
+    input[type="range"]::-moz-range-track { height: 6px; background: #000; }
+    input[type="range"]::-moz-range-thumb {
+      width: 26px; height: 26px; background: #fff;
+      border: 3px solid #000; border-radius: 50%;
+    }
+
+    input[type="number"], select {
+      font-size: 1rem;
+      font-family: inherit;
+      border: 2px solid #000;
+      padding: 8px;
+      min-height: 46px;
+      width: 8rem;
+      background: #fff;
+      color: #000;
+      border-radius: 0;
+    }
+    select { width: auto; }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.1rem 0;
+      font-size: 0.88em;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #000000;
+      padding: 7px 9px;
+      text-align: center;
+    }
+    table.data-table th { background: var(--highlight-bg); font-weight: bold; }
+    .table-wrap { overflow-x: auto; }
+
+    table.cm {
+      border-collapse: collapse;
+      margin: 1rem auto;
+      font-size: 0.95em;
+    }
+    table.cm th, table.cm td {
+      border: 2px solid #000;
+      padding: 10px 14px;
+      text-align: center;
+      min-width: 6.5rem;
+    }
+    table.cm th { background: var(--highlight-bg); }
+    table.cm td.hit { background: #000; color: #fff; font-weight: bold; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 1rem 0;
+    }
+    .stat {
+      border: 2px solid #000;
+      padding: 8px 10px;
+    }
+    .stat .k { font-size: 0.78rem; text-transform: uppercase; font-weight: bold; }
+    .stat .v { font-family: var(--font-mono); font-size: 1.25rem; font-weight: bold; }
+
+    .worked {
+      border-left: 4px solid #000;
+      padding: 0.3rem 0 0.3rem 1rem;
+      margin: 1.2rem 0;
+    }
+    .worked p { margin-bottom: 0.6rem; }
+
+    .readout {
+      border: 1px solid #000;
+      padding: 0.7rem 1rem;
+      font-size: 0.95em;
+      margin-top: 0.8rem;
+    }
+
+    details {
+      border: var(--border-thin);
+      margin: 1.5rem 0;
+      padding: 0.4rem 1rem;
+      border-radius: 2px;
+    }
+    details[open] { border: var(--border-thick); }
+    summary {
+      font-weight: bold;
+      cursor: pointer;
+      padding: 0.7rem 0;
+      min-height: 44px;
+    }
+
+    .mcq-box {
+      border: 2px solid #000000;
+      padding: 1.1rem 1.2rem;
+      margin: 2rem 0;
+    }
+    .mcq-title { font-weight: bold; font-size: 1.05rem; margin-bottom: 0.6rem; }
+    .mcq-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border: 1px solid #000;
+      padding: 12px 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    .mcq-option input[type="radio"] {
+      margin-top: 4px;
+      width: 22px; height: 22px;
+      flex-shrink: 0;
+    }
+    .mcq-option.picked { border: 3px solid #000; }
+    .mcq-feedback {
+      display: none;
+      padding: 10px 12px;
+      margin-top: 10px;
+      border: 2px solid #000;
+      font-size: 0.95em;
+    }
+    .mcq-feedback p { margin-bottom: 0.5rem; }
+
+    .diagram-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      margin: 1rem auto;
+      border: 1px solid #000;
+      background: #fff;
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid #000;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      text-transform: uppercase;
+    }
+
+    ol.checklist > li { margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Guides</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">Classical ML</span>
+      <span class="tag">Evaluation</span>
+      <span class="tag">Practical</span>
+    </div>
+
+    <h1>Dealing with Class Imbalance in Classification</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li>Accuracy is useless when one class is rare. A model that always says "not fraud" scores 99% on a 1% fraud problem. Look at precision, recall, PR-AUC and MCC instead.</li>
+        <li>Fix your evaluation first: stratified splits, an untouched test set, and any resampling done only inside the training folds.</li>
+        <li>Moving the decision threshold away from 0.5 is usually the cheapest and most effective fix. With costs, the optimal threshold is $C_{FP}/(C_{FP}+C_{FN})$, assuming calibrated scores.</li>
+        <li>Class weights and focal loss change what the model pays attention to during training. They are cheap and usually beat resampling.</li>
+        <li>SMOTE and friends sometimes help, often do nothing, and occasionally hurt (high dimensions, categorical features, overlapping classes).</li>
+        <li>Resampling and weighting distort predicted probabilities. If you need real probabilities, correct for the prior shift or recalibrate on untouched data.</li>
+      </ul>
+    </div>
+
+    <div class="toc">
+      <strong>Sections</strong>
+      <ol>
+        <li><a href="#s1">Why accuracy lies</a></li>
+        <li><a href="#s2">Fix the evaluation before the model</a></li>
+        <li><a href="#s3">Threshold moving</a></li>
+        <li><a href="#s4">Class weights and cost-sensitive loss</a></li>
+        <li><a href="#s5">Resampling: under, over, SMOTE</a></li>
+        <li><a href="#s6">Ensembles built for imbalance</a></li>
+        <li><a href="#s7">Getting probabilities back</a></li>
+        <li><a href="#s8">Other angles</a></li>
+        <li><a href="#s9">Order of operations</a></li>
+      </ol>
+    </div>
+
+    <p>
+      Most real classification problems are lopsided. Fraud, churn, disease screening, defect detection, click prediction, rare intents in a chatbot. The class you actually care about is the rare one, and standard training and evaluation quietly optimise for the common one.
+    </p>
+    <p>
+      I'll use one running example throughout: a card-fraud model scoring 10,000 transactions, of which 100 are fraud. That's a 1% positive rate, or a 99:1 imbalance. Real fraud rates are often lower than that, which only makes everything below worse.
+    </p>
+
+    <!-- SECTION 1 -->
+    <h2 id="s1">1. Why accuracy lies</h2>
+
+    <p>
+      Start with the laziest possible model: predict "legit" for every transaction. It gets 9,900 out of 10,000 right. That's 99% accuracy, and it catches zero fraud. If your dashboard only shows accuracy, this model looks excellent.
+    </p>
+    <p>
+      Now a real model. Say it flags 400 transactions, and 80 of them are actually fraud. Here's its confusion matrix:
+    </p>
+
+    <table class="cm">
+      <tr><th></th><th>Predicted fraud</th><th>Predicted legit</th><th>Total</th></tr>
+      <tr><th>Actual fraud</th><td>TP = 80</td><td>FN = 20</td><td>100</td></tr>
+      <tr><th>Actual legit</th><td>FP = 320</td><td>TN = 9,580</td><td>9,900</td></tr>
+      <tr><th>Total</th><td>400</td><td>9,600</td><td>10,000</td></tr>
+    </table>
+
+    <p>
+      Its accuracy is $(80 + 9580)/10000 = 96.6\%$. Lower than the do-nothing model. Yet this one is obviously more useful: it catches 80% of fraud. Accuracy is dominated by the 9,900 negatives, so it mostly measures how well you handle the easy majority.
+    </p>
+
+    <h3>The metrics that actually move</h3>
+
+    <div class="worked">
+      <p><span class="term" data-term="precision">Precision</span>: of the things I flagged, how many were real?
+      $$\text{Precision} = \frac{TP}{TP+FP} = \frac{80}{80+320} = \frac{80}{400} = 0.20$$</p>
+      <p><span class="term" data-term="recall">Recall</span> (sensitivity, true positive rate): of the real fraud, how much did I catch?
+      $$\text{Recall} = \frac{TP}{TP+FN} = \frac{80}{100} = 0.80$$</p>
+      <p>F1 is the harmonic mean of the two:
+      $$F_1 = \frac{2PR}{P+R} = \frac{2 \times 0.20 \times 0.80}{0.20 + 0.80} = \frac{0.32}{1.00} = 0.32$$</p>
+      <p>Specificity (true negative rate) $= 9580/9900 = 0.968$. False positive rate $= 320/9900 = 0.032$.</p>
+      <p><span class="term" data-term="balanced-accuracy">Balanced accuracy</span> averages recall over both classes:
+      $$\text{BA} = \frac{0.800 + 0.968}{2} = 0.884$$
+      The always-legit model gets $(0 + 1)/2 = 0.5$, which is what it deserves.</p>
+    </div>
+
+    <p>
+      The <span class="term" data-term="mcc">Matthews correlation coefficient</span> uses all four cells and is my default single-number summary for binary problems:
+    </p>
+    <div class="math-block">
+      $$\text{MCC} = \frac{TP \cdot TN - FP \cdot FN}{\sqrt{(TP+FP)(TP+FN)(TN+FP)(TN+FN)}}$$
+    </div>
+    <div class="worked">
+      <p>Numerator: $80 \times 9580 - 320 \times 20 = 766{,}400 - 6{,}400 = 760{,}000$.</p>
+      <p>Denominator: $\sqrt{400 \times 100 \times 9900 \times 9600} = \sqrt{3.8016 \times 10^{12}} \approx 1{,}949{,}769$.</p>
+      <p>MCC $= 760000 / 1949769 \approx 0.39$. It ranges from $-1$ to $1$, with 0 meaning no better than chance. The always-legit model has a zero in the denominator, and by convention gets 0.</p>
+    </div>
+
+    <p>
+      So the same model reads as 96.6% (accuracy), 0.88 (balanced accuracy), 0.39 (MCC) or 0.32 (F1). None of these is wrong. They answer different questions. The ones that punish the 320 false alarms are the ones that match how the fraud team will feel about this model when they have to review 400 cases to find 80.
+    </p>
+
+    <h3>PR-AUC vs ROC-AUC</h3>
+    <p>
+      The metrics above all depend on a threshold. To compare models before you've picked one, people use areas under curves. <span class="term" data-term="roc-auc">ROC-AUC</span> plots recall against false positive rate. <span class="term" data-term="pr-auc">PR-AUC</span> (or average precision) plots precision against recall.
+    </p>
+    <p>
+      The trouble with ROC on imbalanced data is that the x-axis, FPR, divides by the huge number of negatives. Our model's FPR is 0.032, which looks tiny on a ROC plot. But 0.032 of 9,900 is 320 false alarms, four for every real catch. Precision feels that pain directly because its denominator is the flagged set, not the negative set.
+    </p>
+    <p>
+      The baselines differ too. A random scorer gets ROC-AUC 0.5 regardless of imbalance. A random scorer's PR-AUC equals the positive rate, here 0.01. So a PR-AUC of 0.30 on this problem is thirty times better than random, even though it sounds bad. I report both, but when they disagree on imbalanced data I trust PR-AUC more. ROC-AUC values of 0.95+ are routine on fraud data and tell you very little.
+    </p>
+
+    <div class="interactive-card" id="w-dumb">
+      <div class="widget-label">Widget 1</div>
+      <h3>How good does the do-nothing model look?</h3>
+      <p>Slide the positive rate down. The classifier always predicts the majority class.</p>
+      <div class="control-row">
+        <label for="dumb-slider">Positive rate</label>
+        <input type="range" id="dumb-slider" min="0" max="100" step="1" value="42">
+        <span class="val" id="dumb-rate">1%</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Positives per 10k</div><div class="v" id="dumb-npos">100</div></div>
+        <div class="stat"><div class="k">Accuracy</div><div class="v" id="dumb-acc">99.0%</div></div>
+        <div class="stat"><div class="k">Recall</div><div class="v">0.00</div></div>
+        <div class="stat"><div class="k">Balanced acc.</div><div class="v">0.50</div></div>
+        <div class="stat"><div class="k">MCC</div><div class="v">0.00</div></div>
+        <div class="stat"><div class="k">Random PR-AUC</div><div class="v" id="dumb-prauc">0.010</div></div>
+      </div>
+      <div class="readout" id="dumb-note"></div>
+    </div>
+
+    <details>
+      <summary>Code: computing these metrics in scikit-learn</summary>
+<pre><code>from sklearn.metrics import (
+    confusion_matrix, precision_score, recall_score, f1_score,
+    balanced_accuracy_score, matthews_corrcoef,
+    average_precision_score, roc_auc_score, classification_report,
+)
+
+# y_true: 0/1 labels, y_score: predicted probability of class 1
+y_pred = (y_score >= 0.5).astype(int)
+
+tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+print("precision", precision_score(y_true, y_pred))
+print("recall   ", recall_score(y_true, y_pred))
+print("f1       ", f1_score(y_true, y_pred))
+print("bal acc  ", balanced_accuracy_score(y_true, y_pred))
+print("mcc      ", matthews_corrcoef(y_true, y_pred))
+
+# threshold-free
+print("PR-AUC (avg precision)", average_precision_score(y_true, y_score))
+print("ROC-AUC               ", roc_auc_score(y_true, y_score))
+
+print(classification_report(y_true, y_pred, digits=3))</code></pre>
+      <p>Note that <code>average_precision_score</code> is not exactly the trapezoidal area under the PR curve. It's a step-wise sum, which avoids the overly optimistic interpolation you get from <code>auc(recall, precision)</code>. Use it.</p>
+    </details>
+
+    <div class="mcq-box" id="mcq-1" data-correct="C">
+      <div class="mcq-title">Check 1</div>
+      <p>A screening model on a 0.5% prevalence disease reports 99.4% accuracy and ROC-AUC 0.93. What should you look at before getting excited?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Accuracy is the number that's misleading you here. Always predicting healthy gives 99.5%, which beats 99.4%."> A) Nothing, 99.4% beats almost any benchmark.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="ROC-AUC is the more flattering curve on imbalanced data because FPR divides by the huge number of negatives. A higher ROC-AUC doesn't fix that."> B) Whether ROC-AUC can be pushed above 0.95.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Right. 99.4% is below the 99.5% you'd get by predicting 'healthy' for everyone. Precision, recall and PR-AUC (baseline 0.005) tell you whether it finds any sick patients."> C) The confusion matrix, precision/recall, and PR-AUC compared to its 0.005 baseline.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="D" data-explain="Training accuracy will be even more flattering and tells you nothing about the minority class."> D) Training accuracy, to rule out overfitting.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2 id="s2">2. Fix the evaluation before the model</h2>
+
+    <p>
+      Most of the damage I've seen from imbalance isn't from a bad model. It's from evaluation that lies, so you tune toward the wrong thing. Three rules.
+    </p>
+
+    <h3>Stratify your splits</h3>
+    <p>
+      With 100 positives and a random 80/20 split, the test set gets on average 20 positives, but it could easily get 12 or 28. With 5-fold CV, each fold has roughly 20, and the variance between folds will be large. <span class="term" data-term="stratified">Stratified</span> splitting forces each fold to have the same positive rate as the whole. In scikit-learn it's <code>StratifiedKFold</code> and <code>train_test_split(..., stratify=y)</code>. There is no reason not to do this.
+    </p>
+    <p>
+      Even stratified, 20 positives per fold means a recall estimate jumps by 0.05 every time one case flips. Report the spread across folds, and consider repeated stratified CV if positives are scarce. If you have time structure (fraud usually does), split by time instead and accept that the positive rate will drift between folds. That drift is real and you want to see it.
+    </p>
+
+    <h3>Never resample the test set</h3>
+    <p>
+      The test set should look like production. If production has 1% fraud, so does the test set. If you balance the test set to 50:50, precision goes way up (fewer negatives to generate false positives), and you'll ship a model whose precision in the wild is a fraction of what you reported. Accuracy on a balanced test set is just balanced accuracy in disguise, and PR-AUC becomes incomparable to anything in production.
+    </p>
+
+    <h3>Resample only inside the training folds</h3>
+    <p>
+      This is the classic <span class="term" data-term="leakage">leakage</span> bug. If you run SMOTE (or random oversampling) on the full dataset and then do cross-validation, synthetic points made from a validation-fold positive end up in the training fold. Duplicated points are worse: the exact same row appears on both sides. The model has effectively seen the answers, and CV scores come out inflated, sometimes wildly.
+    </p>
+    <p>
+      The fix is to make resampling a pipeline step so it runs fresh on each training fold and never touches the validation fold. imbalanced-learn ships a <code>Pipeline</code> that does exactly this (the sklearn one won't accept samplers).
+    </p>
+
+    <details>
+      <summary>Code: leak-free resampling inside cross-validation</summary>
+<pre><code>from imblearn.pipeline import Pipeline          # not sklearn.pipeline
+from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_validate
+
+pipe = Pipeline([
+    ("scale", StandardScaler()),
+    ("smote", SMOTE(k_neighbors=5, random_state=0)),  # fit_resample on train folds only
+    ("clf",   LogisticRegression(max_iter=1000)),
+])
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+scores = cross_validate(
+    pipe, X, y, cv=cv,
+    scoring=["average_precision", "f1", "matthews_corrcoef"],
+)
+for k, v in scores.items():
+    if k.startswith("test_"):
+        print(k, v.mean().round(3), "+/-", v.std().round(3))
+
+# WRONG (leaks):
+# X_res, y_res = SMOTE().fit_resample(X, y)
+# cross_validate(LogisticRegression(), X_res, y_res, cv=cv)</code></pre>
+      <p>The imblearn pipeline only calls the sampler during <code>fit</code>. At <code>predict</code> time it is skipped, so validation and test data pass through untouched.</p>
+    </details>
+
+    <div class="mcq-box" id="mcq-2" data-correct="B">
+      <div class="mcq-title">Check 2</div>
+      <p>You have 50,000 rows and 400 positives. Where does SMOTE belong?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="This is the leakage bug. Synthetic points derived from validation positives land in training folds, and CV scores get inflated."> A) Apply it to all 50,000 rows once, then run 5-fold CV on the result.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Correct. Each training fold is oversampled separately, and the validation fold keeps its natural 0.8% positive rate, matching production."> B) As a step inside an imblearn Pipeline, so it's refit on each training fold only.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Balancing the test set inflates precision and makes the result useless as a forecast of production performance."> C) On train and test separately, so both are balanced 50:50.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="D" data-explain="Order of SMOTE relative to the split is the whole issue. After splitting, but only on the training portion, is the right answer; on the test portion is wrong."> D) It doesn't matter as long as you use a fixed random seed.</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 3 -->
+    <h2 id="s3">3. Threshold moving</h2>
+
+    <p>
+      Here's the thing a lot of tutorials skip: most classifiers don't output classes, they output scores. The 0.5 cutoff that turns a score into a label is a default somebody picked, not a law. On a 1% problem, a perfectly calibrated model will rarely put any transaction above 0.5, because even a suspicious transaction is usually more likely legit than fraud. So at 0.5 it predicts "legit" almost always, and people conclude the model "can't learn the minority class". It often learned fine. The cutoff is just wrong.
+    </p>
+    <p>
+      In practice, I'd try threshold moving first, before any resampling or reweighting. It costs nothing, doesn't change the model, and doesn't distort probabilities. Pick the threshold on a validation set (never on test).
+    </p>
+
+    <h3>Picking the threshold from costs</h3>
+    <p>
+      If you can put rough costs on mistakes, the decision becomes simple. Flag a case when the expected cost of not flagging exceeds the expected cost of flagging. With calibrated probability $p$ of fraud:
+    </p>
+    <div class="math-block">
+      $$p \cdot C_{FN} > (1-p) \cdot C_{FP} \quad\Longleftrightarrow\quad p > t^* = \frac{C_{FP}}{C_{FP} + C_{FN}}$$
+    </div>
+    <div class="worked">
+      <p>Say a manual review costs about 5 dollars of analyst time ($C_{FP} = 5$), and a missed fraud costs about 200 dollars in chargebacks ($C_{FN} = 200$).</p>
+      <p>$$t^* = \frac{5}{5 + 200} = \frac{5}{205} \approx 0.024$$</p>
+      <p>So you should flag anything with more than a 2.4% chance of fraud. That's twenty times lower than the default. If the costs were equal, you'd get $t^* = 0.5$, which is the only situation where the default makes sense.</p>
+    </div>
+    <p>
+      This assumes the scores are calibrated probabilities (section 7). If they aren't, the formula gives the wrong number, but you can still sweep thresholds on validation data and pick the one with lowest total cost. Without costs, people pick the threshold that maximises F1, or the one that hits a required recall ("we must catch 90% of fraud") or a review budget ("analysts can handle 500 cases a day").
+    </p>
+
+    <div class="interactive-card" id="w-thresh">
+      <div class="widget-label">Widget 2</div>
+      <h3>Threshold explorer</h3>
+      <p>
+        Simulated fraud model: 9,900 legit and 100 fraud transactions. Each has a feature $x$; legit $x \sim \mathcal{N}(0,1)$, fraud $x \sim \mathcal{N}(d,1)$. The score is the exact posterior $P(\text{fraud} \mid x)$, so it is perfectly calibrated. Counts below are expected values.
+      </p>
+      <svg id="thresh-svg" class="diagram-svg" viewBox="0 0 640 230" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="control-row">
+        <label for="t-slider">Threshold $t$</label>
+        <input type="range" id="t-slider" min="0" max="1000" step="1" value="700">
+        <span class="val" id="t-val">0.500</span>
+      </div>
+      <div class="control-row">
+        <label for="d-slider">Separation $d$</label>
+        <input type="range" id="d-slider" min="10" max="45" step="1" value="25">
+        <span class="val" id="d-val">2.5</span>
+      </div>
+      <div class="control-row">
+        <label for="cfp">Cost of FP</label>
+        <input type="number" id="cfp" value="5" min="0" step="1">
+        <label for="cfn" style="min-width:auto;">Cost of FN</label>
+        <input type="number" id="cfn" value="200" min="0" step="1">
+      </div>
+      <div class="control-row">
+        <button class="btn" id="t-default">t = 0.5</button>
+        <button class="btn" id="t-cost">Cost-optimal t*</button>
+        <button class="btn" id="t-f1">Best F1</button>
+      </div>
+      <table class="cm">
+        <tr><th></th><th>Flagged</th><th>Not flagged</th></tr>
+        <tr><th>Fraud (100)</th><td id="cm-tp"></td><td id="cm-fn"></td></tr>
+        <tr><th>Legit (9,900)</th><td id="cm-fp"></td><td id="cm-tn"></td></tr>
+      </table>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Precision</div><div class="v" id="st-p"></div></div>
+        <div class="stat"><div class="k">Recall</div><div class="v" id="st-r"></div></div>
+        <div class="stat"><div class="k">F1</div><div class="v" id="st-f1"></div></div>
+        <div class="stat"><div class="k">MCC</div><div class="v" id="st-mcc"></div></div>
+        <div class="stat"><div class="k">Accuracy</div><div class="v" id="st-acc"></div></div>
+        <div class="stat"><div class="k">Total cost</div><div class="v" id="st-cost"></div></div>
+      </div>
+      <div class="readout" id="thresh-note"></div>
+    </div>
+
+    <p>
+      With the defaults ($d = 2.5$), the 0.5 threshold catches about 28 of 100 frauds with 10 false alarms. Precision 0.74 looks great, recall 0.28 does not, and total cost is around 14,500 dollars. Jump to $t^* = 0.024$: about 81 caught, 529 false alarms, precision drops to 0.13, but total cost falls to about 6,400. Less than half. The grid search over thresholds lands on the same $t^*$ as the formula, because the scores here are calibrated. Note that best-F1 and minimum-cost are different thresholds. F1 doesn't know what your errors cost.
+    </p>
+
+    <details>
+      <summary>Code: tuning the threshold on validation data</summary>
+<pre><code>import numpy as np
+from sklearn.metrics import precision_recall_curve
+
+# p_val: validation scores, y_val: validation labels
+prec, rec, thr = precision_recall_curve(y_val, p_val)
+f1 = 2 * prec * rec / np.clip(prec + rec, 1e-12, None)
+best_f1_t = thr[np.argmax(f1[:-1])]   # last point has no threshold
+
+# cost-based sweep (works even if scores aren't calibrated)
+C_FP, C_FN = 5, 200
+ts = np.linspace(0.001, 0.999, 999)
+cost = [C_FP * ((p_val >= t) & (y_val == 0)).sum()
+        + C_FN * ((p_val <  t) & (y_val == 1)).sum() for t in ts]
+best_cost_t = ts[int(np.argmin(cost))]
+
+# scikit-learn >= 1.5 can do this inside CV:
+from sklearn.model_selection import TunedThresholdClassifierCV
+tuned = TunedThresholdClassifierCV(base_clf, scoring="f1", cv=5).fit(X_train, y_train)
+print(tuned.best_threshold_)</code></pre>
+    </details>
+
+    <div class="mcq-box" id="mcq-3" data-correct="B">
+      <div class="mcq-title">Check 3</div>
+      <p>A missed tumour costs 9 times as much as an unnecessary biopsy. With calibrated probabilities, what's the cost-optimal threshold?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="0.9 is the threshold you'd get if the biopsy were 9 times worse than the miss. You've swapped the costs."> A) 0.9</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. t* = C_FP / (C_FP + C_FN) = 1 / (1 + 9) = 0.1. Recommend a biopsy above a 10% chance."> B) 0.1</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="0.5 is only optimal when both errors cost the same."> C) 0.5</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="D" data-explain="1/9 is close but uses C_FP / C_FN instead of C_FP / (C_FP + C_FN). The denominator has to include both costs."> D) 0.111</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <h2 id="s4">4. Class weights and cost-sensitive loss</h2>
+
+    <p>
+      Threshold moving changes the decision after training. Class weights change the training itself: errors on the rare class cost more in the loss, so the model spends more capacity separating it. For binary cross-entropy with weights $w_1$ (positive) and $w_0$ (negative):
+    </p>
+    <div class="math-block">
+      $$\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N} \Big[\, w_1\, y_i \log p_i + w_0\, (1-y_i) \log(1-p_i) \,\Big]$$
+    </div>
+
+    <h3>The "balanced" formula</h3>
+    <p>
+      scikit-learn's <code>class_weight="balanced"</code> sets each class weight to
+    </p>
+    <div class="math-block">
+      $$w_c = \frac{n}{k \cdot n_c}$$
+    </div>
+    <p>where $n$ is the number of samples, $k$ the number of classes and $n_c$ the count of class $c$.</p>
+    <div class="worked">
+      <p>For our fraud data: $n = 10000$, $k = 2$, $n_{\text{legit}} = 9900$, $n_{\text{fraud}} = 100$.</p>
+      <p>$w_{\text{legit}} = 10000 / (2 \times 9900) = 0.505$</p>
+      <p>$w_{\text{fraud}} = 10000 / (2 \times 100) = 50$</p>
+      <p>Total weight per class: $9900 \times 0.505 = 5000$ and $100 \times 50 = 5000$. Each class now contributes equally to the loss, as if the data were 50:50. The ratio $50 / 0.505 = 99$ is just the imbalance ratio.</p>
+      <p>Effect on one example where the model says $p = 0.3$: if it's fraud, loss $= 50 \times (-\ln 0.3) = 50 \times 1.204 = 60.2$. If it's legit, loss $= 0.505 \times (-\ln 0.7) = 0.505 \times 0.357 = 0.18$. Missing fraud now hurts 330 times more.</p>
+    </div>
+
+    <div class="interactive-card" id="w-weights">
+      <div class="widget-label">Widget 3</div>
+      <h3>Class weight calculator</h3>
+      <p>Enter class counts. Leave the third at 0 for a binary problem.</p>
+      <div class="control-row">
+        <label for="cw-a">Class A count</label><input type="number" id="cw-a" value="9900" min="0">
+      </div>
+      <div class="control-row">
+        <label for="cw-b">Class B count</label><input type="number" id="cw-b" value="100" min="0">
+      </div>
+      <div class="control-row">
+        <label for="cw-c">Class C count</label><input type="number" id="cw-c" value="0" min="0">
+      </div>
+      <div class="table-wrap"><table class="data-table" id="cw-table"></table></div>
+      <div class="readout" id="cw-note"></div>
+    </div>
+
+    <p>
+      "Balanced" is a starting point, not gospel. Full balancing at 99:1 often overshoots: the model starts flagging far too much and precision collapses. I usually treat the positive weight as a hyperparameter and search something like $\{1, \sqrt{r}, r/4, r\}$ where $r$ is the imbalance ratio. With threshold tuning on top, the gap between these is often smaller than you'd expect, since weighting mostly shifts the score distribution and a re-tuned threshold absorbs a lot of that shift.
+    </p>
+
+    <h3>Focal loss</h3>
+    <p>
+      Class weights scale every example of a class equally. <span class="term" data-term="focal-loss">Focal loss</span> (Lin et al., 2017, from the RetinaNet object detection paper) scales by how hard each example is. Write $p_t$ for the probability the model gives to the true class ($p_t = p$ if $y=1$, $1-p$ if $y=0$). Then:
+    </p>
+    <div class="math-block">
+      $$\text{CE} = -\log p_t \qquad\qquad \text{FL} = -\alpha_t\,(1-p_t)^{\gamma} \log p_t$$
+    </div>
+    <p>
+      The factor $(1-p_t)^\gamma$ is near zero for examples the model already gets right, and near one for examples it gets badly wrong. In detection, there are 100,000 easy background boxes per image; individually tiny losses, but together they swamp the gradient. Focal loss turns them down.
+    </p>
+    <div class="worked">
+      <p>With $\gamma = 2$:</p>
+      <p>Easy example, $p_t = 0.9$: CE $= 0.105$. Factor $(0.1)^2 = 0.01$. FL $= 0.00105$. Cut by 100x.</p>
+      <p>Hard example, $p_t = 0.1$: CE $= 2.303$. Factor $(0.9)^2 = 0.81$. FL $= 1.865$. Cut by only 1.23x.</p>
+      <p>Relative to the easy one, the hard example now matters about 80 times more than it did under plain CE.</p>
+    </div>
+
+    <div class="interactive-card" id="w-focal">
+      <div class="widget-label">Widget 4</div>
+      <h3>Focal loss explorer</h3>
+      <div class="control-row">
+        <label for="g-slider">Focusing $\gamma$</label>
+        <input type="range" id="g-slider" min="0" max="50" step="5" value="20">
+        <span class="val" id="g-val">2.0</span>
+      </div>
+      <svg id="focal-svg" class="diagram-svg" viewBox="0 0 640 260" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="table-wrap"><table class="data-table" id="focal-table"></table></div>
+      <div class="readout" id="focal-note"></div>
+    </div>
+
+    <p>
+      My honest take: focal loss earns its keep in dense detection and in deep models with huge numbers of easy negatives. On tabular data with gradient boosting, plain class weights plus threshold tuning are usually just as good and easier to reason about. Also, focal loss pushes predictions away from confident values, so its outputs are miscalibrated by design. $\gamma = 2$, $\alpha = 0.25$ were the paper's defaults; note that the $\alpha$ there weights the positive (rare) class by 0.25, less than the negatives, because $\gamma$ already did most of the rebalancing.
+    </p>
+
+    <details>
+      <summary>Derivation: the focal loss gradient</summary>
+      <p>Take a positive example ($y=1$), logit $z$, $p = \sigma(z)$, so $p_t = p$ and $\frac{dp}{dz} = p(1-p)$. Ignore $\alpha$.</p>
+      <p>$$\text{FL}(p) = -(1-p)^\gamma \log p$$</p>
+      <p>Product rule with respect to $p$:</p>
+      <p>$$\frac{d\,\text{FL}}{dp} = \gamma (1-p)^{\gamma-1}\log p \;-\; \frac{(1-p)^\gamma}{p}$$</p>
+      <p>Chain rule, multiplying by $p(1-p)$:</p>
+      <p>$$\frac{d\,\text{FL}}{dz} = \gamma\, p\,(1-p)^{\gamma}\log p \;-\; (1-p)^{\gamma+1} = (1-p)^{\gamma}\big(\gamma\, p \log p + p - 1\big)$$</p>
+      <p>Check: at $\gamma = 0$ this is $p - 1$, the familiar cross-entropy gradient. For $\gamma > 0$, both terms are negative (since $\log p < 0$), and the leading $(1-p)^\gamma$ kills the gradient as $p \to 1$. Numerically: at $p = 0.9$, $\gamma = 2$, the gradient is $0.01 \times (2 \times 0.9 \times (-0.105) - 0.1) = 0.01 \times (-0.290) = -0.0029$, against $-0.1$ for CE. About 34x smaller.</p>
+      <p>Negative examples are symmetric: replace $p$ with $1-p$ and flip the sign of the gradient.</p>
+    </details>
+
+    <details>
+      <summary>Code: class weights in sklearn, XGBoost, LightGBM and PyTorch</summary>
+<pre><code># scikit-learn
+from sklearn.linear_model import LogisticRegression
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
+
+clf = LogisticRegression(class_weight="balanced", max_iter=1000)
+w = compute_class_weight("balanced", classes=np.array([0, 1]), y=y_train)
+# w -> array([0.505, 50.0]) for 9900/100
+clf2 = LogisticRegression(class_weight={0: 1.0, 1: 10.0})  # hand-tuned
+
+# XGBoost / LightGBM: one number for binary problems
+import xgboost as xgb
+spw = (y_train == 0).sum() / (y_train == 1).sum()          # 99.0
+model = xgb.XGBClassifier(scale_pos_weight=spw, eval_metric="aucpr")
+
+# PyTorch, binary: pos_weight multiplies the positive term only
+import torch, torch.nn as nn
+loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([99.0]))
+
+# PyTorch, multiclass: one weight per class
+weights = torch.tensor([0.505, 50.0])
+loss_fn = nn.CrossEntropyLoss(weight=weights)</code></pre>
+<pre><code># Focal loss for binary classification (PyTorch)
+import torch
+import torch.nn.functional as F
+
+def focal_loss(logits, targets, gamma=2.0, alpha=0.25):
+    """logits, targets: shape (N,); targets are 0./1. floats"""
+    ce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
+    p = torch.sigmoid(logits)
+    p_t = p * targets + (1 - p) * (1 - targets)
+    alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+    return (alpha_t * (1 - p_t) ** gamma * ce).mean()
+
+# torchvision has the same thing built in:
+# from torchvision.ops import sigmoid_focal_loss</code></pre>
+    </details>
+
+    <div class="mcq-box" id="mcq-4" data-correct="A">
+      <div class="mcq-title">Check 4</div>
+      <p>A churn dataset has 900 stayers and 100 churners. With <code>class_weight="balanced"</code>, what weight does a churner get?</p>
+      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Correct. n / (k n_c) = 1000 / (2 x 100) = 5. Stayers get 1000 / 1800 = 0.556, so each class sums to 500."> A) 5.0</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="9 is the ratio of the two weights (5 / 0.556), and also what you'd use for XGBoost's scale_pos_weight. The balanced formula itself gives 5."> B) 9.0</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="10 is n / n_c. You forgot to divide by k = 2."> C) 10.0</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="D" data-explain="0.556 is the stayer weight, 1000 / (2 x 900)."> D) 0.556</label>
+      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-5" data-correct="C">
+      <div class="mcq-title">Check 5</div>
+      <p>With $\gamma = 2$, an example where the model gives the true class $p_t = 0.5$. By what factor does focal loss scale its cross-entropy?</p>
+      <label class="mcq-option"><input type="radio" name="q5" value="A" data-explain="0.5 would be gamma = 1. With gamma = 2 the factor is squared."> A) 0.5</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="B" data-explain="That's the factor for p_t = 0.9 (0.1 squared). This example is a coin flip, not an easy one."> B) 0.01</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="C" data-explain="Correct. (1 - 0.5)^2 = 0.25. CE is 0.693, so FL is 0.173."> C) 0.25</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="D" data-explain="Focal loss never scales loss up (ignoring alpha). The factor (1 - p_t)^gamma is at most 1."> D) 4.0</label>
+      <button class="btn" onclick="checkMCQ('mcq-5')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <h2 id="s5">5. Resampling: under, over, SMOTE</h2>
+
+    <p>
+      Resampling changes the training data instead of the loss. It's the approach most people reach for first, and in my experience it should be about third.
+    </p>
+
+    <h3>Random undersampling</h3>
+    <p>
+      Throw away majority examples until the classes are closer. Going all the way to 100:100 on our data discards 9,800 of 9,900 legit transactions, 99% of your negatives. That's a lot of information about what normal looks like. Partial undersampling (say to 10:1) is more reasonable, and it does have one real advantage: training gets much faster. On a billion-row click log, downsampling negatives is standard practice for that reason alone, followed by a probability correction (section 7).
+    </p>
+
+    <h3>Random oversampling</h3>
+    <p>
+      Duplicate minority examples. To reach 50:50 here, each fraud row appears 99 times. Nothing is lost, but nothing new is added either, and flexible models (deep trees, k-NN) will memorise those 100 points. For a linear model, oversampling by a factor $r$ is mathematically almost the same as giving the class weight $r$, so you may as well use weights and skip the bigger dataset.
+    </p>
+
+    <h3>SMOTE</h3>
+    <p>
+      <span class="term" data-term="smote">SMOTE</span> (Chawla et al., 2002) creates new minority points instead of copying. For each minority point, find its $k$ nearest minority neighbours (default $k=5$), pick one, and place a new point at a random spot on the line segment between them:
+    </p>
+    <div class="math-block">
+      $$x_{\text{new}} = x_i + \lambda\,(x_{nn} - x_i), \qquad \lambda \sim \text{Uniform}(0, 1)$$
+    </div>
+    <div class="worked">
+      <p>Two fraud points with features (amount z-score, hour-of-day z-score): $x_i = (2.0,\ 3.0)$ and its neighbour $x_{nn} = (4.0,\ 1.0)$.</p>
+      <p>Difference: $x_{nn} - x_i = (2.0,\ -2.0)$.</p>
+      <p>Draw $\lambda = 0.3$: $x_{\text{new}} = (2.0 + 0.3 \times 2.0,\ 3.0 + 0.3 \times (-2.0)) = (2.6,\ 2.4)$.</p>
+      <p>The new point is 30% of the way from $x_i$ to its neighbour. It's plausible only if the space between two fraud cases is also fraud-like, which is the assumption SMOTE quietly makes.</p>
+    </div>
+
+    <div class="interactive-card" id="w-smote">
+      <div class="widget-label">Widget 5</div>
+      <h3>SMOTE stepper</h3>
+      <p>Filled circles are minority (fraud), open squares are majority (legit). Pick a seed/neighbour pair and step $\lambda$.</p>
+      <div class="control-row">
+        <label for="sm-pair">Pair</label>
+        <select id="sm-pair">
+          <option value="0">A to B</option>
+          <option value="1">A to C</option>
+          <option value="2">D to B</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="sm-lam">$\lambda$</label>
+        <button class="btn" id="sm-dec">&minus; 0.1</button>
+        <input type="range" id="sm-lam" min="0" max="100" step="5" value="30">
+        <button class="btn" id="sm-inc">+ 0.1</button>
+        <span class="val" id="sm-lam-val">0.30</span>
+      </div>
+      <svg id="smote-svg" class="diagram-svg" viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="control-row">
+        <button class="btn" id="sm-gen">Generate 10 random synthetic points</button>
+        <button class="btn" id="sm-clear">Clear</button>
+      </div>
+      <div class="readout" id="sm-note"></div>
+    </div>
+
+    <p>
+      Try the A to B pair and push $\lambda$ to around 0.5. The synthetic point lands right on top of a legit transaction. That's the overlap problem in one picture: SMOTE has no idea the majority class exists, so it happily paints minority labels into majority territory.
+    </p>
+
+    <h3>Variants, briefly</h3>
+    <ul>
+      <li><strong>Borderline-SMOTE</strong> only oversamples minority points near the decision boundary (those whose neighbourhoods are mostly majority), on the theory that interior points don't need help.</li>
+      <li><strong>ADASYN</strong> generates more synthetic points around minority examples that are harder to learn, weighted by how many majority neighbours each has. It can amplify noise if your "hard" points are mislabelled.</li>
+      <li><strong><span class="term" data-term="tomek">Tomek links</span></strong> is a cleaning method: find pairs of opposite-class points that are each other's nearest neighbour, and drop the majority one. It sharpens the boundary a little.</li>
+      <li><strong>ENN</strong> (Edited Nearest Neighbours) removes points whose class disagrees with most of their $k$ neighbours. More aggressive than Tomek. SMOTE+ENN and SMOTE+Tomek combine oversampling with cleaning.</li>
+      <li><strong>SMOTE-NC</strong> handles mixed numeric/categorical features by taking the majority category among neighbours instead of interpolating.</li>
+    </ul>
+
+    <h3>When SMOTE hurts</h3>
+    <ul>
+      <li><strong>High dimensions.</strong> Nearest neighbours become nearly meaningless in hundreds of dimensions, and the segment between two points passes through empty space. Text embeddings and raw pixels are bad candidates.</li>
+      <li><strong>Categorical or one-hot features.</strong> Interpolating between "country = FR" and "country = DE" gives a row that's 0.3 French and 0.7 German. Use SMOTE-NC or don't use SMOTE.</li>
+      <li><strong>Overlapping classes.</strong> As in the widget, synthetic points land among the majority and teach the model to flag normal behaviour.</li>
+      <li><strong>Strong learners.</strong> Several benchmarks (e.g. Elor and Averbuch-Elor, 2022) found that with tuned gradient boosting and a tuned threshold, SMOTE adds little or nothing over doing no resampling at all. It helped most for weak learners like plain decision trees.</li>
+      <li><strong>Probabilities.</strong> Like all resampling, it shifts the training prior, so raw outputs overestimate the minority class.</li>
+    </ul>
+    <p>
+      I'm not anti-SMOTE, it just has to beat a weighted baseline with a tuned threshold on your validation folds before I'd keep it. Often it doesn't.
+    </p>
+
+    <details>
+      <summary>Code: imbalanced-learn samplers</summary>
+<pre><code>from imblearn.under_sampling import RandomUnderSampler, TomekLinks, EditedNearestNeighbours
+from imblearn.over_sampling import RandomOverSampler, SMOTE, BorderlineSMOTE, ADASYN, SMOTENC
+from imblearn.combine import SMOTETomek, SMOTEENN
+
+# sampling_strategy = desired minority/majority ratio after resampling
+rus   = RandomUnderSampler(sampling_strategy=0.1, random_state=0)   # to 10:1
+ros   = RandomOverSampler(sampling_strategy=0.2, random_state=0)
+smote = SMOTE(sampling_strategy=0.2, k_neighbors=5, random_state=0)
+bsm   = BorderlineSMOTE(kind="borderline-1", random_state=0)
+ada   = ADASYN(random_state=0)
+snc   = SMOTENC(categorical_features=[0, 3, 7], random_state=0)
+combo = SMOTEENN(random_state=0)
+
+# Outside a pipeline, only ever on training data:
+X_tr_res, y_tr_res = smote.fit_resample(X_train, y_train)</code></pre>
+    </details>
+
+    <!-- SECTION 6 -->
+    <h2 id="s6">6. Ensembles built for imbalance</h2>
+
+    <p>
+      Undersampling throws data away. Ensembles get it back by undersampling many times with different random subsets and combining the results. Every majority example gets used by some member.
+    </p>
+    <ul>
+      <li><strong>EasyEnsemble</strong> (Liu, Wu and Zhou, 2009): draw, say, 10 balanced subsets (all 100 fraud + 100 random legit each), train an AdaBoost model on each, average. 10 subsets touch about 1,000 of the 9,900 negatives; use more subsets to cover more. Each member is cheap to train.</li>
+      <li><strong>BalancedRandomForest</strong>: a random forest where each tree's bootstrap sample is drawn so the classes are balanced. Same idea at the level of individual trees. A good, hard-to-break baseline for tabular data.</li>
+      <li><strong>RUSBoost</strong> and <strong>BalancedBagging</strong> follow the same pattern with boosting or arbitrary base estimators.</li>
+      <li><strong>Gradient boosting with <code>scale_pos_weight</code></strong>: not an ensemble of resamples, just a weighted loss inside XGBoost or LightGBM. The usual starting value is $\#\text{neg} / \#\text{pos} = 9900/100 = 99$. Tune it; values well below the full ratio (like 10 or $\sqrt{99} \approx 10$) often do better on precision-heavy metrics. Also switch the early-stopping metric to <code>aucpr</code>, since the default logloss or AUC will be dominated by the negatives.</li>
+    </ul>
+    <p>
+      On tabular problems my default stack is LightGBM or XGBoost, a moderate <code>scale_pos_weight</code>, early stopping on PR-AUC, then threshold tuning. BalancedRandomForest is my second opinion. I rarely end up needing anything fancier.
+    </p>
+
+    <details>
+      <summary>Code: imbalanced ensembles</summary>
+<pre><code>from imblearn.ensemble import (
+    BalancedRandomForestClassifier, EasyEnsembleClassifier,
+    RUSBoostClassifier, BalancedBaggingClassifier,
+)
+
+brf = BalancedRandomForestClassifier(
+    n_estimators=500, sampling_strategy="all", replacement=True,
+    bootstrap=False, random_state=0,
+)
+eec = EasyEnsembleClassifier(n_estimators=10, random_state=0)  # AdaBoost members
+
+import lightgbm as lgb
+lgbm = lgb.LGBMClassifier(
+    n_estimators=2000, learning_rate=0.03,
+    scale_pos_weight=10,            # try 1, 10, 99
+)
+lgbm.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], eval_metric="average_precision",
+         callbacks=[lgb.early_stopping(100)])</code></pre>
+    </details>
+
+    <!-- SECTION 7 -->
+    <h2 id="s7">7. Getting probabilities back</h2>
+
+    <p>
+      If you only need a ranking or a yes/no decision with a tuned threshold, you can skip this section. But if anything downstream uses the number as a probability (expected loss, pricing, combining with other models, showing "12% risk" to a doctor), then resampling and weighting have broken it. A model trained on 50:50 data believes fraud is 50% common, and its outputs reflect that belief. <span class="term" data-term="calibration">Calibration</span> is the property you need to restore.
+    </p>
+
+    <h3>Prior-shift correction</h3>
+    <p>
+      If the only thing you changed was the class balance (undersampling, oversampling, or class weights), there's an exact fix. Training with positive rate $\pi'$ instead of the true $\pi$ shifts the model's log-odds by a constant. Undo it:
+    </p>
+    <div class="math-block">
+      $$\text{logit}(p) = \text{logit}(p') + \text{logit}(\pi) - \text{logit}(\pi'), \qquad \text{logit}(x) = \ln\frac{x}{1-x}$$
+    </div>
+    <p>Equivalently, in probability form:</p>
+    <div class="math-block">
+      $$p = \frac{p' \,\frac{\pi}{\pi'}}{p'\,\frac{\pi}{\pi'} + (1-p')\,\frac{1-\pi}{1-\pi'}}$$
+    </div>
+    <div class="worked">
+      <p>We undersampled to 50:50 ($\pi' = 0.5$). The real rate is $\pi = 0.01$. The model outputs $p' = 0.8$ for a transaction.</p>
+      <p>Ratios: $\pi/\pi' = 0.01/0.5 = 0.02$ and $(1-\pi)/(1-\pi') = 0.99/0.5 = 1.98$.</p>
+      <p>Numerator: $0.8 \times 0.02 = 0.016$.</p>
+      <p>Denominator: $0.016 + 0.2 \times 1.98 = 0.016 + 0.396 = 0.412$.</p>
+      <p>$p = 0.016 / 0.412 \approx 0.039$.</p>
+      <p>The model's "80% fraud" is really about 3.9%. Still four times the base rate, so a useful signal, but nowhere near 80%. Check via logits: $\text{logit}(0.8) = 1.386$, $\text{logit}(0.01) = -4.595$, $\text{logit}(0.5) = 0$. Sum: $-3.209$. $\sigma(-3.209) = 0.039$.</p>
+    </div>
+    <p>
+      For class weights, use the same formula with the implied training prior. Weights $w_1, w_0$ multiply the odds by $w_1/w_0$, so subtract $\ln(w_1/w_0)$ from the logit. "Balanced" weights at 99:1 give $\ln 99 = 4.595$, the same as undersampling to 50:50.
+    </p>
+
+    <div class="interactive-card" id="w-prior">
+      <div class="widget-label">Widget 6</div>
+      <h3>Prior-shift corrector</h3>
+      <div class="control-row">
+        <label for="ps-p">Model output $p'$</label>
+        <input type="range" id="ps-p" min="1" max="99" step="1" value="80">
+        <span class="val" id="ps-p-val">0.80</span>
+      </div>
+      <div class="control-row">
+        <label for="ps-train">Training rate $\pi'$</label>
+        <select id="ps-train">
+          <option value="0.5" selected>0.50 (fully balanced)</option>
+          <option value="0.25">0.25</option>
+          <option value="0.1">0.10</option>
+          <option value="0.0909">0.0909 (10:1)</option>
+          <option value="0.01">0.01 (no resampling)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="ps-true">True rate $\pi$</label>
+        <select id="ps-true">
+          <option value="0.1">0.10</option>
+          <option value="0.01" selected>0.01</option>
+          <option value="0.001">0.001</option>
+          <option value="0.0001">0.0001</option>
+        </select>
+      </div>
+      <div class="readout" id="ps-out"></div>
+    </div>
+
+    <h3>When the shortcut isn't enough</h3>
+    <p>
+      The prior-shift formula assumes the model was calibrated on its training distribution to begin with. Boosted trees, SVMs, focal-loss networks and SMOTE-trained models often aren't, and SMOTE also changes the shape of the minority distribution, not just its frequency. In those cases, fit a calibration map on a held-out set that has the true class balance:
+    </p>
+    <ul>
+      <li><span class="term" data-term="platt">Platt scaling</span>: fit a logistic regression $p = \sigma(a s + b)$ on the model score $s$. Two parameters, works with little data. Note that it can learn the prior-shift offset itself (that's the $b$).</li>
+      <li><span class="term" data-term="isotonic">Isotonic regression</span>: fit any monotone step function. More flexible, but needs more data, and with only a few hundred positives it overfits. With 100 positives I'd use Platt.</li>
+    </ul>
+    <p>Check the result with a reliability diagram and the Brier score, not with AUC (calibration doesn't change ranking, so AUC won't move).</p>
+
+    <details>
+      <summary>Code: prior correction and calibration</summary>
+<pre><code>import numpy as np
+from scipy.special import logit, expit
+
+def correct_prior(p_train, pi_train, pi_true):
+    return expit(logit(p_train) + logit(pi_true) - logit(pi_train))
+
+correct_prior(0.8, 0.5, 0.01)   # -> 0.0388
+
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+from sklearn.metrics import brier_score_loss
+
+# Option 1: wrap and calibrate with internal CV (calibration folds keep true prior
+# as long as resampling lives inside the base estimator's pipeline)
+cal = CalibratedClassifierCV(pipe, method="sigmoid", cv=5).fit(X_train, y_train)
+
+# Option 2: prefit model + separate untouched calibration set
+from sklearn.frozen import FrozenEstimator        # sklearn >= 1.6
+cal = CalibratedClassifierCV(FrozenEstimator(model), method="isotonic").fit(X_cal, y_cal)
+
+p = cal.predict_proba(X_test)[:, 1]
+print("Brier", brier_score_loss(y_test, p))
+frac_pos, mean_pred = calibration_curve(y_test, p, n_bins=10, strategy="quantile")</code></pre>
+    </details>
+
+    <div class="mcq-box" id="mcq-6" data-correct="D">
+      <div class="mcq-title">Check 6</div>
+      <p>You trained on data undersampled to 50:50. The true positive rate is 1%. For some input the model outputs exactly 0.5. What's the corrected probability?</p>
+      <label class="mcq-option"><input type="radio" name="q6" value="A" data-explain="0.5 is the model's belief under a 50:50 world. It hasn't been corrected for the real 1% rate."> A) 0.5</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="B" data-explain="Close, but not exact. The correction acts on log-odds: logit(0.5) = 0, so the corrected logit is exactly logit(0.01), which gives 0.01, not 0.0098."> B) 0.0098</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="C" data-explain="This would mean the input made fraud less likely than base rate, but an output of 0.5 under balanced training means the evidence was neutral."> C) 0.001</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="D" data-explain="Correct. logit(0.5) = 0, so the corrected logit is just logit(0.01). An output of 0.5 on balanced data means 'no evidence either way', so you fall back to the base rate."> D) 0.01</label>
+      <button class="btn" onclick="checkMCQ('mcq-6')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 8 -->
+    <h2 id="s8">8. Other angles</h2>
+
+    <h3>Treat it as anomaly detection</h3>
+    <p>
+      When positives are extremely rare (dozens in millions), or when new kinds of positives keep appearing that look nothing like the old ones, a supervised classifier has little to learn from. Modelling "normal" and flagging deviations can work better: Isolation Forest, one-class SVM, autoencoder reconstruction error, or plain density estimates. These won't beat a supervised model on the fraud patterns you've labelled, but they can catch the ones you haven't. In fraud teams it's common to run both and send the union to review.
+    </p>
+
+    <h3>Get more minority data</h3>
+    <p>
+      Boring and usually the biggest win. Some ways: extend the time window, pull in related labelled datasets, mine your false negatives (the cases that were caught later by other means), and use active learning to send the most uncertain unlabelled cases to annotators. An extra 200 real positives is worth more than 10,000 synthetic ones.
+    </p>
+
+    <h3>Data augmentation</h3>
+    <p>
+      For images, audio and text, domain-aware augmentation (crops, flips, noise, pitch shift, back-translation, paraphrasing with an LLM) applied to the minority class is a much better version of oversampling than SMOTE, because the augmented examples stay on the data manifold. Augment only training data, same rule as before.
+    </p>
+
+    <h3>Two-stage models</h3>
+    <p>
+      Use a cheap high-recall first stage to throw out the obvious negatives (say 95% of traffic), then train a second, more expensive model on what's left. The second stage sees a much less skewed problem: if stage one keeps 95 of 100 frauds and 500 of 9,900 legit, stage two works at about 16% positives instead of 1%. Search ranking and ad systems are built this way. The cost is two models to maintain, and stage one's misses can never be recovered.
+    </p>
+
+    <h3>Reframe the label</h3>
+    <p>
+      Sometimes the rare class can be decomposed or merged. Predicting "chargeback within 90 days" might be rarer and noisier than predicting a precursor event that's more common. Grouping a dozen rare intents into an "other" class and handling it separately is another version of the same idea.
+    </p>
+
+    <div class="mcq-box" id="mcq-7" data-correct="B">
+      <div class="mcq-title">Check 7</div>
+      <p>Your features are 768-dimensional sentence embeddings and you have 60 positive examples of a rare complaint type. Which plan makes most sense first?</p>
+      <label class="mcq-option"><input type="radio" name="q7" value="A" data-explain="SMOTE in 768 dimensions interpolates through mostly empty space; nearest neighbours aren't very meaningful there. It's the weakest option on this list."> A) SMOTE the positives up to 50:50 and retrain.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="B" data-explain="Correct. A weighted linear model is a strong cheap baseline, a tuned threshold costs nothing, and more real positives (active learning, paraphrasing the 60 you have) attacks the actual bottleneck."> B) Class-weighted logistic regression with a tuned threshold, plus active learning or text augmentation to get more positives.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="C" data-explain="Undersampling to 60:60 throws away nearly all your negatives and leaves you with 120 training rows."> C) Undersample negatives to 60 to make it balanced.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="D" data-explain="Accuracy will be near 100% for any model that predicts 'not this complaint', so it can't tell you whether anything worked."> D) Train as-is and judge by accuracy.</label>
+      <button class="btn" onclick="checkMCQ('mcq-7')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 9 -->
+    <h2 id="s9">9. Order of operations</h2>
+
+    <p>This is roughly the order I go in on a new imbalanced problem. Most projects stop somewhere around step 5.</p>
+
+    <ol class="checklist">
+      <li><strong>Decide what a mistake costs.</strong> Even rough numbers ("a miss is about 40 times worse than a false alarm") or a constraint ("we can review 300 cases a day") settle most later arguments.</li>
+      <li><strong>Set up honest evaluation.</strong> Stratified (or time-based) splits, a test set with the production class balance, and metrics that see the minority class: PR-AUC, recall at your operating point, precision, MCC. Put the always-majority baseline in the results table.</li>
+      <li><strong>Train a plain strong model with no tricks.</strong> Gradient boosting for tabular, a pretrained backbone for images/text. Look at PR-AUC. Ranking quality is fixed at this point; everything else is about where you cut.</li>
+      <li><strong>Tune the threshold</strong> on validation data, from costs, a recall target, or a review budget. Often this alone solves the problem people were blaming on imbalance.</li>
+      <li><strong>Try class weights</strong> (or <code>scale_pos_weight</code>), searching a few values below and at the full ratio. Re-tune the threshold each time.</li>
+      <li><strong>Try focal loss</strong> if you're training a deep model with masses of easy negatives.</li>
+      <li><strong>Try resampling</strong> (undersampling for speed, SMOTE variants for low-dimensional numeric data, a balanced ensemble) inside the CV pipeline. Keep it only if it beats step 5 on validation.</li>
+      <li><strong>Fix probabilities</strong> if anything downstream needs them: prior-shift correction, then Platt or isotonic on untouched data. Check with a reliability diagram.</li>
+      <li><strong>Get more positives.</strong> Really this belongs in parallel with everything above. Label mining, active learning, augmentation.</li>
+      <li><strong>Consider reframing</strong>: anomaly detection for unseen patterns, two-stage models for extreme skew, or a different label.</li>
+    </ol>
+
+    <p>
+      One last opinion. "Imbalance" is often blamed for problems that are really about weak features or too few positives in absolute terms. 100 positives at 1% and 100 positives at 0.01% are harder for very different reasons; the second has the same amount of signal but far more chances for false alarms. If PR-AUC from step 3 is close to the base rate, no rebalancing trick will save you, and the next hour is better spent on features or labels.
+    </p>
+
+    <details>
+      <summary>References and further reading</summary>
+      <ul>
+        <li>Chawla et al., 2002. SMOTE: Synthetic Minority Over-sampling Technique. JAIR.</li>
+        <li>Lin et al., 2017. Focal Loss for Dense Object Detection. ICCV.</li>
+        <li>Saito and Rehmsmeier, 2015. The Precision-Recall Plot Is More Informative than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets. PLoS ONE.</li>
+        <li>Chicco and Jurman, 2020. The advantages of the Matthews correlation coefficient over F1 score and accuracy. BMC Genomics.</li>
+        <li>Dal Pozzolo et al., 2015. Calibrating Probability with Undersampling for Unbalanced Classification.</li>
+        <li>Liu, Wu and Zhou, 2009. Exploratory Undersampling for Class-Imbalance Learning (EasyEnsemble).</li>
+        <li>Elor and Averbuch-Elor, 2022. To SMOTE, or not to SMOTE?</li>
+        <li>Elkan, 2001. The Foundations of Cost-Sensitive Learning. IJCAI.</li>
+        <li>imbalanced-learn documentation: imbalanced-learn.org</li>
+      </ul>
+    </details>
+  </main>
+
+  <!-- POPOVER -->
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box" role="dialog" aria-modal="true">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()" aria-label="Close">&times;</button>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    // FONT SIZE CONTROLS
+    var currentFontSize = 18;
+    document.getElementById('font-inc').addEventListener('click', function () {
+      if (currentFontSize < 30) { currentFontSize += 2; document.body.style.fontSize = currentFontSize + 'px'; }
+    });
+    document.getElementById('font-dec').addEventListener('click', function () {
+      if (currentFontSize > 14) { currentFontSize -= 2; document.body.style.fontSize = currentFontSize + 'px'; }
+    });
+
+    // GLOSSARY POPOVERS
+    var glossary = {
+      'precision': {
+        title: 'Precision',
+        body: 'Of everything the model flagged as positive, the fraction that really is positive: $TP/(TP+FP)$. Also called positive predictive value. Low precision means lots of false alarms.'
+      },
+      'recall': {
+        title: 'Recall',
+        body: 'Of all real positives, the fraction the model caught: $TP/(TP+FN)$. Same thing as sensitivity and true positive rate. A model that predicts "negative" for everything has recall 0, whatever its accuracy.'
+      },
+      'balanced-accuracy': {
+        title: 'Balanced accuracy',
+        body: 'The average of per-class recall. For binary problems, $(\\text{TPR} + \\text{TNR})/2$. Random or constant predictions score 0.5 regardless of imbalance.'
+      },
+      'mcc': {
+        title: 'Matthews correlation coefficient (MCC)',
+        body: 'The Pearson correlation between predicted and true binary labels. Ranges from -1 (always wrong) through 0 (chance) to 1 (perfect). It only gets high when all four confusion-matrix cells are good, which makes it hard to game with imbalance. Formula: $\\frac{TP\\cdot TN - FP \\cdot FN}{\\sqrt{(TP+FP)(TP+FN)(TN+FP)(TN+FN)}}$.'
+      },
+      'roc-auc': {
+        title: 'ROC-AUC',
+        body: 'Area under the curve of true positive rate vs false positive rate as the threshold sweeps. Equals the probability that a random positive gets a higher score than a random negative. Random = 0.5 at any imbalance, which makes it look flattering when negatives vastly outnumber positives.'
+      },
+      'pr-auc': {
+        title: 'PR-AUC (average precision)',
+        body: 'Area under the precision-recall curve. A random scorer gets PR-AUC equal to the positive rate (0.01 for 1% fraud), so always compare to that baseline. More sensitive than ROC-AUC to false positives on imbalanced data. In sklearn: <code>average_precision_score</code>.'
+      },
+      'stratified': {
+        title: 'Stratified split',
+        body: 'A train/test split or CV fold assignment that keeps the class proportions identical in every part. Without it, a small minority class can end up badly over- or under-represented in some folds.'
+      },
+      'leakage': {
+        title: 'Leakage',
+        body: 'Any path by which information from validation/test data reaches the training process. Resampling before splitting is a classic example: copies or interpolations of test positives end up in training, inflating scores.'
+      },
+      'focal-loss': {
+        title: 'Focal loss',
+        body: '$-\\alpha_t(1-p_t)^\\gamma \\log p_t$. Cross-entropy multiplied by a factor that shrinks the loss of well-classified examples. Introduced for RetinaNet (Lin et al., 2017) to stop masses of easy background boxes from dominating training.'
+      },
+      'smote': {
+        title: 'SMOTE',
+        body: 'Synthetic Minority Over-sampling Technique (Chawla et al., 2002). Creates new minority examples by interpolating between a minority point and one of its $k$ nearest minority neighbours: $x_i + \\lambda(x_{nn}-x_i)$, $\\lambda \\in [0,1]$.'
+      },
+      'tomek': {
+        title: 'Tomek link',
+        body: 'A pair of points from opposite classes that are each other\'s nearest neighbour. Such pairs sit on the class boundary or are noise. Removing the majority member of each pair cleans up the boundary.'
+      },
+      'calibration': {
+        title: 'Calibration',
+        body: 'A model is calibrated if, among all cases it gives probability 0.2, about 20% are positive. Ranking metrics like AUC ignore calibration entirely. Resampling, class weights and focal loss all break it.'
+      },
+      'platt': {
+        title: 'Platt scaling',
+        body: 'Calibration by fitting a 1-D logistic regression $\\sigma(a s + b)$ on the model\'s score $s$, using held-out data. Two parameters, so it needs little data, but it can only fix S-shaped distortions.'
+      },
+      'isotonic': {
+        title: 'Isotonic regression',
+        body: 'Calibration by fitting a non-decreasing step function from score to probability on held-out data. Handles any monotone distortion but overfits when positives are few (rule of thumb: want at least a thousand or so calibration examples, and a decent number of positives).'
+      }
+    };
+
+    var popBox = document.getElementById('popover-box');
+    var popBackdrop = document.getElementById('popover-backdrop');
+    document.querySelectorAll('.term').forEach(function (el) {
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('click', function () {
+        var key = el.getAttribute('data-term');
+        var g = glossary[key];
+        if (!g) { return; }
+        document.getElementById('popover-term-name').textContent = g.title;
+        var body = document.getElementById('popover-body');
+        body.innerHTML = g.body;
+        popBackdrop.style.display = 'block';
+        popBox.style.display = 'block';
+        renderMathIn(body);
+      });
+    });
+    function closePopover() {
+      popBackdrop.style.display = 'none';
+      popBox.style.display = 'none';
+    }
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closePopover(); } });
+
+    // MCQ: per-option explanations
+    document.querySelectorAll('.mcq-option input').forEach(function (inp) {
+      inp.addEventListener('change', function () {
+        var box = inp.closest('.mcq-box');
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+        inp.closest('.mcq-option').classList.add('picked');
+      });
+    });
+    function checkMCQ(boxId) {
+      var box = document.getElementById(boxId);
+      var correct = box.getAttribute('data-correct');
+      var selected = box.querySelector('input[type="radio"]:checked');
+      var fb = box.querySelector('.mcq-feedback');
+      fb.style.display = 'block';
+      if (!selected) {
+        fb.innerHTML = '<p>Pick an option first.</p>';
+        return;
+      }
+      var html;
+      if (selected.value === correct) {
+        html = '<p><strong>Correct.</strong> ' + selected.getAttribute('data-explain') + '</p>';
+      } else {
+        var right = box.querySelector('input[value="' + correct + '"]');
+        html = '<p><strong>Not quite (' + selected.value + ').</strong> ' + selected.getAttribute('data-explain') + '</p>' +
+               '<p><strong>Answer: ' + correct + '.</strong> ' + right.getAttribute('data-explain') + '</p>';
+      }
+      html += '<details><summary>Why each option is right or wrong</summary><ul>';
+      box.querySelectorAll('input[type="radio"]').forEach(function (o) {
+        html += '<li><strong>' + o.value + ':</strong> ' + o.getAttribute('data-explain') + '</li>';
+      });
+      html += '</ul></details>';
+      fb.innerHTML = html;
+      renderMathIn(fb);
+    }
+
+    // SHARED MATH HELPERS
+    function erf(x) {
+      // Abramowitz and Stegun 7.1.26
+      var s = x < 0 ? -1 : 1;
+      x = Math.abs(x);
+      var t = 1 / (1 + 0.3275911 * x);
+      var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+      return s * y;
+    }
+    function Phi(x) { return 0.5 * (1 + erf(x / Math.SQRT2)); }
+    function phi(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+    function logit(p) { return Math.log(p / (1 - p)); }
+    function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+    function fmt(x, d) { return (isFinite(x) ? x.toFixed(d) : 'n/a'); }
+    function fmtInt(x) { return Math.round(x).toLocaleString('en-US'); }
+    function svgEl(tag, attrs, text) {
+      var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) { el.setAttribute(k, attrs[k]); } }
+      if (text !== undefined) { el.textContent = text; }
+      return el;
+    }
+
+    // WIDGET 1: do-nothing classifier vs imbalance
+    (function () {
+      var slider = document.getElementById('dumb-slider');
+      function rateFromSlider(v) { return 0.5 * Math.pow(10, -4 * v / 100); }
+      function pctStr(p) {
+        var x = p * 100;
+        if (x >= 1) { return x.toFixed(1).replace(/\.0$/, '') + '%'; }
+        if (x >= 0.1) { return x.toFixed(2) + '%'; }
+        return x.toFixed(3) + '%';
+      }
+      function update() {
+        var p = rateFromSlider(+slider.value);
+        document.getElementById('dumb-rate').textContent = pctStr(p);
+        var npos = p * 10000;
+        document.getElementById('dumb-npos').textContent = npos >= 10 ? fmtInt(npos) : npos.toFixed(1);
+        document.getElementById('dumb-acc').textContent = pctStr(1 - p);
+        document.getElementById('dumb-prauc').textContent = p >= 0.001 ? p.toFixed(3) : p.toExponential(1);
+        var note;
+        if (p > 0.3) {
+          note = 'Near balance, the constant model only scores ' + pctStr(1 - p) + '. Accuracy is still a fair metric here.';
+        } else if (p > 0.05) {
+          note = 'At ' + pctStr(p) + ' positives the constant model already beats ' + pctStr(1 - p).replace('%', '') + '% accuracy. Any real model has to clear that bar just to break even.';
+        } else {
+          note = 'At ' + pctStr(p) + ' positives, the constant model is ' + pctStr(1 - p) + ' accurate and finds nothing. Out of a million cases it misses all ' + fmtInt(p * 1e6) + ' positives. Balanced accuracy and MCC correctly call it useless.';
+        }
+        document.getElementById('dumb-note').textContent = note;
+      }
+      slider.addEventListener('input', update);
+      update();
+    })();
+
+    // WIDGET 2: threshold explorer
+    (function () {
+      var NPOS = 100, NNEG = 9900, PI = NPOS / (NPOS + NNEG);
+      var tSlider = document.getElementById('t-slider');
+      var dSlider = document.getElementById('d-slider');
+      var cfpIn = document.getElementById('cfp');
+      var cfnIn = document.getElementById('cfn');
+      var svg = document.getElementById('thresh-svg');
+
+      // slider position -> threshold on a logit scale so small thresholds are reachable
+      function tFromSlider(v) { return sigmoid(-7 + 14 * v / 1000); }
+      function sliderFromT(t) { return Math.round((logit(t) + 7) / 14 * 1000); }
+      tSlider.value = sliderFromT(0.5);
+
+      function getD() { return +dSlider.value / 10; }
+      function xStar(t, d) { return (logit(t) - logit(PI) + d * d / 2) / d; }
+      function counts(t, d) {
+        var xs = xStar(t, d);
+        var tp = NPOS * (1 - Phi(xs - d));
+        var fp = NNEG * (1 - Phi(xs));
+        return { tp: tp, fn: NPOS - tp, fp: fp, tn: NNEG - fp, xs: xs };
+      }
+      function metrics(c) {
+        var p = c.tp / (c.tp + c.fp);
+        var r = c.tp / NPOS;
+        var f1 = (p + r) > 0 ? 2 * p * r / (p + r) : 0;
+        var den = Math.sqrt((c.tp + c.fp) * (c.tp + c.fn) * (c.tn + c.fp) * (c.tn + c.fn));
+        var mcc = den > 0 ? (c.tp * c.tn - c.fp * c.fn) / den : 0;
+        return { p: p, r: r, f1: f1, mcc: mcc, acc: (c.tp + c.tn) / (NPOS + NNEG) };
+      }
+      function costs() {
+        var a = Math.max(0, +cfpIn.value || 0), b = Math.max(0, +cfnIn.value || 0);
+        return { fp: a, fn: b };
+      }
+      function scan(d, C) {
+        var best = { cost: Infinity, tc: 0.5, f1: -1, tf: 0.5 };
+        for (var i = 1; i < 1000; i++) {
+          var t = tFromSlider(i);
+          var c = counts(t, d), m = metrics(c);
+          var cost = C.fp * c.fp + C.fn * c.fn;
+          if (cost < best.cost) { best.cost = cost; best.tc = t; }
+          if (m.f1 > best.f1) { best.f1 = m.f1; best.tf = t; }
+        }
+        return best;
+      }
+
+      function draw(d, xs) {
+        while (svg.firstChild) { svg.removeChild(svg.firstChild); }
+        var W = 640, H = 230, L = 20, R = 620, T = 30, B = 190;
+        var xmin = -4, xmax = Math.max(7, d + 4);
+        function X(x) { return L + (x - xmin) / (xmax - xmin) * (R - L); }
+        var zoom = 20;
+        var ymax = NNEG * phi(0);
+        function Y(y) { return B - y / ymax * (B - T); }
+        var negPts = [], posPts = [], shadeNeg = [], shadePos = [];
+        for (var i = 0; i <= 200; i++) {
+          var x = xmin + (xmax - xmin) * i / 200;
+          var yn = NNEG * phi(x), yp = NPOS * zoom * phi(x - d);
+          negPts.push(X(x).toFixed(1) + ',' + Y(yn).toFixed(1));
+          posPts.push(X(x).toFixed(1) + ',' + Y(yp).toFixed(1));
+        }
+        // shade area right of threshold under negatives (false positives)
+        var xsC = Math.min(Math.max(xs, xmin), xmax);
+        var poly = [X(xsC).toFixed(1) + ',' + B];
+        for (var j = 0; j <= 100; j++) {
+          var xx = xsC + (xmax - xsC) * j / 100;
+          poly.push(X(xx).toFixed(1) + ',' + Y(NNEG * phi(xx)).toFixed(1));
+        }
+        poly.push(X(xmax).toFixed(1) + ',' + B);
+        svg.appendChild(svgEl('rect', { x: X(xsC), y: T - 10, width: Math.max(0, R - X(xsC)), height: B - T + 10, fill: '#ececec' }));
+        svg.appendChild(svgEl('polygon', { points: poly.join(' '), fill: '#000', opacity: '1' }));
+        svg.appendChild(svgEl('polyline', { points: negPts.join(' '), fill: 'none', stroke: '#000', 'stroke-width': 2.5 }));
+        svg.appendChild(svgEl('polyline', { points: posPts.join(' '), fill: 'none', stroke: '#000', 'stroke-width': 2.5, 'stroke-dasharray': '7,5' }));
+        svg.appendChild(svgEl('line', { x1: L, y1: B, x2: R, y2: B, stroke: '#000', 'stroke-width': 2 }));
+        if (xs >= xmin && xs <= xmax) {
+          svg.appendChild(svgEl('line', { x1: X(xs), y1: T - 12, x2: X(xs), y2: B, stroke: '#000', 'stroke-width': 3 }));
+        }
+        svg.appendChild(svgEl('text', { x: L + 4, y: 18, 'font-size': 13, 'font-family': 'sans-serif' }, 'solid: legit (9,900)   dashed: fraud (100, drawn 20x taller)   grey zone: flagged'));
+        svg.appendChild(svgEl('text', { x: L, y: B + 18, 'font-size': 12, 'font-family': 'sans-serif' }, 'x = ' + xmin));
+        svg.appendChild(svgEl('text', { x: R, y: B + 18, 'font-size': 12, 'font-family': 'sans-serif', 'text-anchor': 'end' }, 'x = ' + xmax.toFixed(1)));
+        svg.appendChild(svgEl('text', { x: (L + R) / 2, y: B + 34, 'font-size': 12, 'font-family': 'sans-serif', 'text-anchor': 'middle' }, 'feature x (higher = more suspicious); black sliver under solid curve = false positives'));
+      }
+
+      function update() {
+        var t = tFromSlider(+tSlider.value), d = getD(), C = costs();
+        document.getElementById('t-val').textContent = t < 0.01 ? t.toFixed(4) : t.toFixed(3);
+        document.getElementById('d-val').textContent = d.toFixed(1);
+        var c = counts(t, d), m = metrics(c);
+        document.getElementById('cm-tp').textContent = 'TP ' + fmt(c.tp, 1);
+        document.getElementById('cm-fn').textContent = 'FN ' + fmt(c.fn, 1);
+        document.getElementById('cm-fp').textContent = 'FP ' + fmt(c.fp, 1);
+        document.getElementById('cm-tn').textContent = 'TN ' + fmtInt(c.tn);
+        document.getElementById('st-p').textContent = fmt(m.p, 3);
+        document.getElementById('st-r').textContent = fmt(m.r, 3);
+        document.getElementById('st-f1').textContent = fmt(m.f1, 3);
+        document.getElementById('st-mcc').textContent = fmt(m.mcc, 3);
+        document.getElementById('st-acc').textContent = (m.acc * 100).toFixed(2) + '%';
+        var cost = C.fp * c.fp + C.fn * c.fn;
+        document.getElementById('st-cost').textContent = fmtInt(cost);
+        var tstar = (C.fp + C.fn) > 0 ? C.fp / (C.fp + C.fn) : 0.5;
+        var best = scan(d, C);
+        document.getElementById('thresh-note').innerHTML =
+          'Formula: t* = ' + C.fp + ' / (' + C.fp + ' + ' + C.fn + ') = <strong>' + tstar.toFixed(4) + '</strong>. ' +
+          'Grid search minimum cost: t = ' + best.tc.toFixed(4) + ' (cost ' + fmtInt(best.cost) + '). ' +
+          'Best F1: t = ' + best.tf.toFixed(3) + ' (F1 ' + best.f1.toFixed(3) + '). ' +
+          'You flag ' + fmtInt(c.tp + c.fp) + ' transactions; each true catch comes with ' + (c.tp > 0.05 ? (c.fp / c.tp).toFixed(1) : 'n/a') + ' false alarms.';
+        draw(d, c.xs);
+      }
+      function setT(t) {
+        t = Math.min(Math.max(t, tFromSlider(0)), tFromSlider(1000));
+        tSlider.value = sliderFromT(t);
+        update();
+      }
+      tSlider.addEventListener('input', update);
+      dSlider.addEventListener('input', update);
+      cfpIn.addEventListener('input', update);
+      cfnIn.addEventListener('input', update);
+      document.getElementById('t-default').addEventListener('click', function () { setT(0.5); });
+      document.getElementById('t-cost').addEventListener('click', function () {
+        var C = costs();
+        setT((C.fp + C.fn) > 0 ? C.fp / (C.fp + C.fn) : 0.5);
+      });
+      document.getElementById('t-f1').addEventListener('click', function () { setT(scan(getD(), costs()).tf); });
+      update();
+    })();
+
+    // WIDGET 3: class weight calculator
+    (function () {
+      var ids = ['cw-a', 'cw-b', 'cw-c'], names = ['A', 'B', 'C'];
+      function update() {
+        var counts = [], labels = [];
+        ids.forEach(function (id, i) {
+          var v = Math.max(0, Math.floor(+document.getElementById(id).value || 0));
+          if (v > 0) { counts.push(v); labels.push(names[i]); }
+        });
+        var tbl = document.getElementById('cw-table');
+        var note = document.getElementById('cw-note');
+        if (counts.length < 2) {
+          tbl.innerHTML = '';
+          note.textContent = 'Need at least two classes with a positive count.';
+          return;
+        }
+        var n = counts.reduce(function (a, b) { return a + b; }, 0), k = counts.length;
+        var html = '<tr><th>Class</th><th>n_c</th><th>Share</th><th>w = n / (k n_c)</th><th>Weight</th><th>n_c x w</th></tr>';
+        var ws = [];
+        counts.forEach(function (c, i) {
+          var w = n / (k * c);
+          ws.push(w);
+          html += '<tr><td>' + labels[i] + '</td><td>' + fmtInt(c) + '</td><td>' + (100 * c / n).toFixed(2) + '%</td>' +
+                  '<td>' + fmtInt(n) + ' / (' + k + ' x ' + fmtInt(c) + ')</td><td><strong>' + (w < 10 ? w.toFixed(3) : w.toFixed(1)) + '</strong></td>' +
+                  '<td>' + fmtInt(c * w) + '</td></tr>';
+        });
+        tbl.innerHTML = html;
+        var maxW = Math.max.apply(null, ws), minW = Math.min.apply(null, ws);
+        var txt = 'Every class ends up with total weight n / k = ' + fmtInt(n / k) + '. Largest to smallest weight ratio: ' + (maxW / minW).toFixed(1) + '.';
+        if (k === 2) {
+          var neg = Math.max(counts[0], counts[1]), pos = Math.min(counts[0], counts[1]);
+          txt += ' For XGBoost/LightGBM, scale_pos_weight = #neg / #pos = ' + fmtInt(neg) + ' / ' + fmtInt(pos) + ' = ' + (neg / pos).toFixed(2) +
+                 '. A softer value to try: sqrt = ' + Math.sqrt(neg / pos).toFixed(2) + '.';
+        }
+        note.textContent = txt;
+      }
+      ids.forEach(function (id) { document.getElementById(id).addEventListener('input', update); });
+      update();
+    })();
+
+    // WIDGET 4: focal loss explorer
+    (function () {
+      var slider = document.getElementById('g-slider');
+      var svg = document.getElementById('focal-svg');
+      var pts = [0.05, 0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99];
+      function fl(p, g) { return -Math.pow(1 - p, g) * Math.log(p); }
+      function draw(g) {
+        while (svg.firstChild) { svg.removeChild(svg.firstChild); }
+        var L = 55, R = 620, T = 20, B = 220, ymax = 3;
+        function X(p) { return L + p * (R - L); }
+        function Y(y) { return B - Math.min(y, ymax) / ymax * (B - T); }
+        // axes and grid
+        for (var gy = 0; gy <= 3; gy++) {
+          svg.appendChild(svgEl('line', { x1: L, y1: Y(gy), x2: R, y2: Y(gy), stroke: '#bbb', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: L - 8, y: Y(gy) + 4, 'font-size': 12, 'text-anchor': 'end', 'font-family': 'sans-serif' }, gy.toFixed(0)));
+        }
+        for (var gx = 0; gx <= 10; gx += 2) {
+          svg.appendChild(svgEl('text', { x: X(gx / 10), y: B + 16, 'font-size': 12, 'text-anchor': 'middle', 'font-family': 'sans-serif' }, (gx / 10).toFixed(1)));
+        }
+        svg.appendChild(svgEl('line', { x1: L, y1: B, x2: R, y2: B, stroke: '#000', 'stroke-width': 2 }));
+        svg.appendChild(svgEl('line', { x1: L, y1: T, x2: L, y2: B, stroke: '#000', 'stroke-width': 2 }));
+        var ce = [], f = [];
+        for (var i = 1; i <= 200; i++) {
+          var p = i / 201;
+          ce.push(X(p).toFixed(1) + ',' + Y(-Math.log(p)).toFixed(1));
+          f.push(X(p).toFixed(1) + ',' + Y(fl(p, g)).toFixed(1));
+        }
+        svg.appendChild(svgEl('polyline', { points: ce.join(' '), fill: 'none', stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '6,5' }));
+        svg.appendChild(svgEl('polyline', { points: f.join(' '), fill: 'none', stroke: '#000', 'stroke-width': 3.5 }));
+        svg.appendChild(svgEl('text', { x: R, y: T + 10, 'font-size': 13, 'text-anchor': 'end', 'font-family': 'sans-serif' }, 'dashed: cross-entropy   solid: focal, gamma = ' + g.toFixed(1)));
+        svg.appendChild(svgEl('text', { x: (L + R) / 2, y: B + 34, 'font-size': 13, 'text-anchor': 'middle', 'font-family': 'sans-serif' }, 'p_t (probability given to the true class)'));
+        svg.appendChild(svgEl('text', { x: 14, y: (T + B) / 2, 'font-size': 13, 'text-anchor': 'middle', 'font-family': 'sans-serif', transform: 'rotate(-90 14 ' + ((T + B) / 2) + ')' }, 'loss'));
+      }
+      function update() {
+        var g = +slider.value / 10;
+        document.getElementById('g-val').textContent = g.toFixed(1);
+        var html = '<tr><th>p_t</th><th>CE = -ln p_t</th><th>(1-p_t)^g</th><th>FL</th><th>FL / CE</th></tr>';
+        pts.forEach(function (p) {
+          var c = -Math.log(p), m = Math.pow(1 - p, g), f = m * c;
+          html += '<tr><td>' + p + '</td><td>' + c.toFixed(4) + '</td><td>' + (m < 0.001 ? m.toExponential(2) : m.toFixed(4)) + '</td><td>' +
+                  (f < 0.001 ? f.toExponential(2) : f.toFixed(4)) + '</td><td>' + (m < 0.001 ? m.toExponential(1) : m.toFixed(3)) + '</td></tr>';
+        });
+        document.getElementById('focal-table').innerHTML = html;
+        var hard = fl(0.1, g), easy = fl(0.9, g);
+        var ceRatio = Math.log(0.1) / Math.log(0.9);
+        document.getElementById('focal-note').textContent =
+          'Hard (p_t = 0.1) vs easy (p_t = 0.9) loss ratio: ' + (hard / easy).toFixed(1) + 'x under focal loss, versus ' + ceRatio.toFixed(1) +
+          'x under plain cross-entropy. ' + (g === 0 ? 'At gamma = 0, focal loss is exactly cross-entropy.' :
+          'Ten thousand easy negatives at p_t = 0.99 now add up to ' + (10000 * fl(0.99, g)).toFixed(g >= 3 ? 5 : 3) + ' total loss, instead of ' + (10000 * -Math.log(0.99)).toFixed(1) + '.');
+        draw(g);
+      }
+      slider.addEventListener('input', update);
+      update();
+    })();
+
+    // WIDGET 5: SMOTE stepper
+    (function () {
+      var minority = { A: [2.0, 3.0], B: [4.0, 1.0], C: [1.0, 1.4], D: [4.6, 3.6], E: [2.8, 4.4] };
+      var majority = [[3.0, 2.0], [3.6, 2.6], [5.2, 1.8], [1.0, 4.4], [5.5, 4.5], [0.6, 2.6], [2.4, 0.6], [3.4, 3.8], [5.0, 0.5], [1.6, 2.2], [4.2, 4.6], [0.5, 0.5]];
+      var pairs = [['A', 'B'], ['A', 'C'], ['D', 'B']];
+      var generated = [];
+      var svg = document.getElementById('smote-svg');
+      var lamIn = document.getElementById('sm-lam');
+      var pairSel = document.getElementById('sm-pair');
+      var L = 50, R = 610, T = 20, B = 360, XMAX = 6, YMAX = 5;
+      function X(x) { return L + x / XMAX * (R - L); }
+      function Y(y) { return B - y / YMAX * (B - T); }
+      // small deterministic PRNG so the e-ink page doesn't change between taps unexpectedly
+      var seed = 12345;
+      function rand() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+
+      function nearestMinority(name, k) {
+        var p = minority[name];
+        return Object.keys(minority).filter(function (n) { return n !== name; }).map(function (n) {
+          var q = minority[n];
+          return { n: n, d: Math.hypot(q[0] - p[0], q[1] - p[1]) };
+        }).sort(function (a, b) { return a.d - b.d; }).slice(0, k).map(function (o) { return o.n; });
+      }
+
+      function draw(lam) {
+        while (svg.firstChild) { svg.removeChild(svg.firstChild); }
+        for (var gx = 0; gx <= XMAX; gx++) {
+          svg.appendChild(svgEl('line', { x1: X(gx), y1: T, x2: X(gx), y2: B, stroke: '#ddd', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: X(gx), y: B + 18, 'font-size': 13, 'text-anchor': 'middle', 'font-family': 'sans-serif' }, gx));
+        }
+        for (var gy = 0; gy <= YMAX; gy++) {
+          svg.appendChild(svgEl('line', { x1: L, y1: Y(gy), x2: R, y2: Y(gy), stroke: '#ddd', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: L - 10, y: Y(gy) + 4, 'font-size': 13, 'text-anchor': 'end', 'font-family': 'sans-serif' }, gy));
+        }
+        svg.appendChild(svgEl('rect', { x: L, y: T, width: R - L, height: B - T, fill: 'none', stroke: '#000', 'stroke-width': 2 }));
+        majority.forEach(function (m) {
+          svg.appendChild(svgEl('rect', { x: X(m[0]) - 8, y: Y(m[1]) - 8, width: 16, height: 16, fill: '#fff', stroke: '#000', 'stroke-width': 2.5 }));
+        });
+        generated.forEach(function (g) {
+          svg.appendChild(svgEl('circle', { cx: X(g[0]), cy: Y(g[1]), r: 6, fill: '#fff', stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '3,2' }));
+        });
+        var pr = pairs[+pairSel.value];
+        var a = minority[pr[0]], b = minority[pr[1]];
+        svg.appendChild(svgEl('line', { x1: X(a[0]), y1: Y(a[1]), x2: X(b[0]), y2: Y(b[1]), stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '8,6' }));
+        Object.keys(minority).forEach(function (n) {
+          var p = minority[n];
+          svg.appendChild(svgEl('circle', { cx: X(p[0]), cy: Y(p[1]), r: 10, fill: '#000' }));
+          svg.appendChild(svgEl('text', { x: X(p[0]) + 14, y: Y(p[1]) - 10, 'font-size': 16, 'font-weight': 'bold', 'font-family': 'sans-serif' }, n));
+        });
+        var nx = a[0] + lam * (b[0] - a[0]), ny = a[1] + lam * (b[1] - a[1]);
+        svg.appendChild(svgEl('circle', { cx: X(nx), cy: Y(ny), r: 11, fill: '#fff', stroke: '#000', 'stroke-width': 4 }));
+        svg.appendChild(svgEl('circle', { cx: X(nx), cy: Y(ny), r: 4, fill: '#000' }));
+        svg.appendChild(svgEl('text', { x: X(nx) + 14, y: Y(ny) + 22, 'font-size': 14, 'font-family': 'sans-serif' }, 'new (' + nx.toFixed(2) + ', ' + ny.toFixed(2) + ')'));
+        return [nx, ny, a, b, pr];
+      }
+
+      function update() {
+        var lam = +lamIn.value / 100;
+        document.getElementById('sm-lam-val').textContent = lam.toFixed(2);
+        var r = draw(lam);
+        var nx = r[0], ny = r[1], a = r[2], b = r[3], pr = r[4];
+        var nearestMaj = Infinity;
+        majority.forEach(function (m) { nearestMaj = Math.min(nearestMaj, Math.hypot(m[0] - nx, m[1] - ny)); });
+        var nearestMin = Infinity;
+        Object.keys(minority).forEach(function (n) { var p = minority[n]; nearestMin = Math.min(nearestMin, Math.hypot(p[0] - nx, p[1] - ny)); });
+        var dx = b[0] - a[0], dy = b[1] - a[1];
+        var warn = nearestMaj < nearestMin ? ' Its nearest real neighbour is a legit transaction (distance ' + nearestMaj.toFixed(2) + '): this synthetic fraud point sits in majority territory.' : '';
+        document.getElementById('sm-note').innerHTML =
+          'x_new = ' + pr[0] + ' + ' + lam.toFixed(2) + ' x (' + pr[1] + ' - ' + pr[0] + ')<br>' +
+          '= (' + a[0].toFixed(1) + ', ' + a[1].toFixed(1) + ') + ' + lam.toFixed(2) + ' x (' + dx.toFixed(1) + ', ' + dy.toFixed(1) + ')<br>' +
+          '= (' + a[0].toFixed(1) + ' + ' + (lam * dx).toFixed(2) + ', ' + a[1].toFixed(1) + ' + ' + (lam * dy).toFixed(2) + ') = <strong>(' + nx.toFixed(2) + ', ' + ny.toFixed(2) + ')</strong>.' + warn +
+          (generated.length ? '<br>' + generated.length + ' random synthetic points shown as small dashed circles.' : '');
+      }
+      function step(delta) {
+        var v = Math.min(100, Math.max(0, +lamIn.value + delta));
+        lamIn.value = v;
+        update();
+      }
+      lamIn.addEventListener('input', update);
+      pairSel.addEventListener('change', update);
+      document.getElementById('sm-dec').addEventListener('click', function () { step(-10); });
+      document.getElementById('sm-inc').addEventListener('click', function () { step(10); });
+      document.getElementById('sm-gen').addEventListener('click', function () {
+        var names = Object.keys(minority);
+        for (var i = 0; i < 10; i++) {
+          var base = names[Math.floor(rand() * names.length)];
+          var nbrs = nearestMinority(base, 2);
+          var nb = nbrs[Math.floor(rand() * nbrs.length)];
+          var lam = rand();
+          var p = minority[base], q = minority[nb];
+          generated.push([p[0] + lam * (q[0] - p[0]), p[1] + lam * (q[1] - p[1])]);
+        }
+        update();
+      });
+      document.getElementById('sm-clear').addEventListener('click', function () { generated = []; update(); });
+      update();
+    })();
+
+    // WIDGET 6: prior-shift corrector
+    (function () {
+      var pIn = document.getElementById('ps-p'), trIn = document.getElementById('ps-train'), tuIn = document.getElementById('ps-true');
+      function update() {
+        var p = +pIn.value / 100, pt = +trIn.value, pi = +tuIn.value;
+        document.getElementById('ps-p-val').textContent = p.toFixed(2);
+        var lp = logit(p), lpi = logit(pi), lpt = logit(pt);
+        var z = lp + lpi - lpt, out = sigmoid(z);
+        var a = pi / pt, b = (1 - pi) / (1 - pt);
+        var num = p * a, den = num + (1 - p) * b;
+        document.getElementById('ps-out').innerHTML =
+          'Logit route: logit(' + p.toFixed(2) + ') + logit(' + pi + ') - logit(' + pt + ') = ' + lp.toFixed(3) + ' + (' + lpi.toFixed(3) + ') - (' + lpt.toFixed(3) + ') = ' + z.toFixed(3) + '<br>' +
+          'Probability route: (' + p.toFixed(2) + ' x ' + a.toPrecision(3) + ') / (' + num.toPrecision(3) + ' + ' + (1 - p).toFixed(2) + ' x ' + b.toPrecision(4) + ') = ' + num.toPrecision(3) + ' / ' + den.toPrecision(4) + '<br>' +
+          'Corrected probability: <strong>' + (out < 0.001 ? out.toExponential(2) : out.toFixed(4)) + '</strong> (' + (out * 100).toPrecision(3) + '%), which is ' + (out / pi).toFixed(1) + 'x the base rate.';
+      }
+      pIn.addEventListener('input', update);
+      trIn.addEventListener('change', update);
+      tuIn.addEventListener('change', update);
+      update();
+    })();
+  </script>
+</body>
+</html>

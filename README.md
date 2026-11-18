@@ -24,7 +24,21 @@ These explainer articles are designed for the **Boox Go 10.3** (Carta 1200 E-ink
    - Interactive KL simulator & on-policy mixing slider
    - Comparison: GKD vs SFT vs RLHF / PPO
 
-3. **[Library Index](index.html)**:
+3. **[Dealing with Class Imbalance](class-imbalance.html)**:
+   - Why accuracy lies; precision, recall, F1, MCC, PR-AUC
+   - Threshold moving with cost-based thresholds
+   - Class weights and focal loss
+   - Random resampling, SMOTE and variants, balanced ensembles
+   - Calibration and prior-shift correction
+
+4. **[DeepConf: Deep Think with Confidence](deepconf.html)**:
+   - Token confidence from top-k log-probabilities
+   - Group, bottom-10%, lowest and tail confidence
+   - Offline confidence-filtered weighted voting
+   - Online early stopping with warmup thresholds and adaptive sampling
+   - Limitations: confidently wrong traces, diversity collapse
+
+5. **[Library Index](index.html)**:
    - Hub and quick navigation for all explainer articles.
 
 ## How to View on Boox Go 10.3
