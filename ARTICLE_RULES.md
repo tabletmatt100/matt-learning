@@ -34,6 +34,8 @@ Every article in `matt-learning` must be a **commitment, feedback, and retrieval
     - Export **5–8 spaced Q&A recall prompts** (`1d / 4d / 14d / 30d`).
 12. **No calculator required for any question.**
     - Every prediction hook, worked example, backward-faded step, retrieval prompt, and MCQ must be solvable in your head without a calculator. Use clean, mental-math-friendly numbers (small integers, simple fractions, powers of 2 or 10, clean percentages) or test conceptual reasoning directly.
+13. **Use distinct, traceable numbers in worked examples.**
+    - Avoid degenerate or repetitive values (such as matrices filled with `0`s and `1`s like `[1, 1, 0; 0, 0, 1]`) that obscure which input landed where. Use distinct, small numbers (such as `[0, 1, 2; 3, 4, 5]`) so every step of the calculation is easy to trace while staying mental-math friendly.
 
 ---
 
@@ -77,4 +79,4 @@ Follow this loop for every major concept:
 4. **Transient-Motion Audit**: Can every state transition be stepped through discretely with prior states still visible?
 5. **Blank-Sheet Test**: Does every major section force at least one eyes-off-the-solution generation (free recall, equation completion, or counterfactual prediction) with explanatory feedback?
 6. **Popover & MCQ Audit**: Are all unfamiliar concepts AND mathematical symbols/variables/operators clickable with anchored `.term` popovers, and are all MCQs collapsed by default in `<details class="mcq-box">`?
-7. **No-Calculator Audit**: Can every question, prediction prompt, worked example, and MCQ be solved mentally without a calculator?
+7. **No-Calculator & Traceable-Numbers Audit**: Can every question, prediction prompt, worked example, and MCQ be solved mentally without a calculator, and do worked examples use distinct numbers (e.g. `[0, 1, 2; 3, 4, 5]`, not `[1, 1, 0; 0, 0, 1]`) so every element is easy to trace?
