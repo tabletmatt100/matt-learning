@@ -32,8 +32,8 @@ body {
 }
 
 header {
-  border-bottom: 3px solid var(--border);
-  padding: 1rem 1rem;
+  border-bottom: 2px solid var(--border);
+  padding: 0.45rem 1rem;
   background: #ffffff;
 }
 
@@ -47,22 +47,59 @@ header {
   gap: 10px;
 }
 
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .nav-links a {
   color: var(--text);
-  text-decoration: underline;
+  text-decoration: none;
   font-weight: 600;
-  margin-right: 15px;
-  display: inline-block;
-  padding: 8px 0;
+  font-size: 0.88rem;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  line-height: 1.2;
+}
+
+.nav-links a:active {
+  background: var(--active-bg);
+  color: var(--active-text);
 }
 
 .font-controls {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
-.font-controls button, .btn {
+.font-controls button {
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  padding: 4px 11px;
+  font-size: 0.88rem;
+  font-weight: bold;
+  cursor: pointer;
+  min-height: 34px;
+  min-width: 36px;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.font-controls button + button {
+  border-left: 1px solid var(--border);
+}
+
+.btn {
   background: var(--bg);
   color: var(--text);
   border: var(--border-thick);
@@ -398,16 +435,6 @@ summary {
   margin: 1rem auto;
   border: 1px solid #000;
   background: #fff;
-}
-
-.tag {
-  display: inline-block;
-  border: 1px solid #000;
-  font-size: 12px;
-  font-weight: bold;
-  padding: 2px 6px;
-  margin-right: 6px;
-  text-transform: uppercase;
 }
 
 ol.checklist > li { margin-bottom: 1rem; }

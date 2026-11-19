@@ -63,8 +63,8 @@
     }
 
     header {
-      border-bottom: 3px solid var(--border);
-      padding: 1.5rem 1rem;
+      border-bottom: 2px solid var(--border);
+      padding: 0.45rem 1rem;
       background: #ffffff;
     }
 
@@ -74,18 +74,49 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 10px;
+    }
+
+    .site-title {
+      font-size: 0.95rem;
+      line-height: 1.2;
+    }
+
+    .site-subtitle {
+      font-size: 0.85em;
+      font-weight: normal;
+      margin-left: 4px;
+    }
+
+    .font-controls {
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
     }
 
     .font-controls button {
       background: var(--bg);
       color: var(--text);
-      border: var(--border-thin);
-      padding: 6px 14px;
-      font-size: 15px;
+      border: none;
+      padding: 4px 11px;
+      font-size: 0.88rem;
       font-weight: bold;
       cursor: pointer;
-      min-height: 40px;
-      min-width: 40px;
+      min-height: 34px;
+      min-width: 36px;
+      font-family: inherit;
+      line-height: 1;
+    }
+
+    .font-controls button + button {
+      border-left: 1px solid var(--border);
+    }
+
+    .font-controls button:active {
+      background: var(--active-bg);
+      color: var(--active-text);
     }
 
     main {
@@ -138,17 +169,6 @@
       background: #555;
     }
 
-    .tag {
-      display: inline-block;
-      border: 1px solid #000;
-      font-size: 12px;
-      font-weight: bold;
-      padding: 2px 6px;
-      margin-right: 6px;
-      margin-bottom: 8px;
-      text-transform: uppercase;
-    }
-
     code, pre {
       font-family: var(--font-mono);
       background: var(--highlight-bg);
@@ -173,12 +193,12 @@
 
   <header>
     <div class="header-inner">
-      <div>
-        <strong>matt-learning</strong> (Boox Go 10.3 Edition)
+      <div class="site-title">
+        <strong>matt-learning</strong><span class="site-subtitle">&middot; Boox Go 10.3</span>
       </div>
       <div class="font-controls">
-        <button id="font-dec">A-</button>
-        <button id="font-inc">A+</button>
+        <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <button id="font-inc" aria-label="Increase font size">A+</button>
       </div>
     </div>
   </header>
@@ -191,11 +211,6 @@
 
     <!-- ARTICLE 1 -->
     <div class="article-card">
-      <div>
-        <span class="tag">Architecture</span>
-        <span class="tag">Transformers</span>
-        <span class="tag">Interactive Calculator</span>
-      </div>
       <h3>1. How Attention Works: From First Principles to Multi-Head Math</h3>
       <p>
         An exhaustive, intuitive guide to the Scaled Dot-Product and Multi-Head Attention mechanisms that power modern LLMs. Includes full step-by-step vector/matrix calculations for a 3-token sentence, interactive attention matrix heatmap inspector, and PyTorch implementations.
@@ -205,11 +220,6 @@
 
     <!-- ARTICLE 2 -->
     <div class="article-card">
-      <div>
-        <span class="tag">Alignment</span>
-        <span class="tag">Distillation</span>
-        <span class="tag">Divergence Math</span>
-      </div>
       <h3>2. Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</h3>
       <p>
         A deep breakdown of the DeepMind GKD paper. Explains why classical supervised distillation fails in autoregressive language generation due to exposure bias, the crucial difference between Forward KL (mode-covering) and Reverse KL (mode-seeking), and on-policy student trajectory rollouts.
@@ -219,11 +229,6 @@
 
     <!-- ARTICLE 3 -->
     <div class="article-card">
-      <div>
-        <span class="tag">Classification</span>
-        <span class="tag">Evaluation</span>
-        <span class="tag">6-part series</span>
-      </div>
       <h3>3. Dealing with Class Imbalance in Classification (6-Part Series)</h3>
       <p>
         Split into six focused guides with interactive widgets, tappable term definitions, and 80+ comprehension checks:
@@ -241,11 +246,6 @@
 
     <!-- ARTICLE 4 -->
     <div class="article-card">
-      <div>
-        <span class="tag">LLM Reasoning</span>
-        <span class="tag">Test-Time Compute</span>
-        <span class="tag">Paper</span>
-      </div>
       <h3>4. DeepConf: Deep Think with Confidence</h3>
       <p>
         How Meta's DeepConf uses token log-probabilities to drop or stop weak reasoning traces, beating plain majority voting while generating far fewer tokens. Covers group confidence, offline filtering, and online early stopping.
@@ -255,11 +255,6 @@
 
     <!-- ARTICLE 5 -->
     <div class="article-card">
-      <div>
-        <span class="tag">Meta</span>
-        <span class="tag">Golden Template</span>
-        <span class="tag">Boox Go 10.3</span>
-      </div>
       <h3>5. How to Write an Article for This Repo (Golden Template)</h3>
       <p>
         A short, meta reference written for AI authors. Shows off the repo's E-ink layout, contrast math, interactive draft linter, tappable concept popovers, collapsible skeleton, and comprehension checks.

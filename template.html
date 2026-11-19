@@ -50,8 +50,8 @@
     }
 
     header {
-      border-bottom: 3px solid var(--border);
-      padding: 1rem;
+      border-bottom: 2px solid var(--border);
+      padding: 0.45rem 1rem;
       background: var(--bg);
     }
 
@@ -65,30 +65,68 @@
       gap: 10px;
     }
 
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     .nav-links a {
       color: var(--text);
-      text-decoration: underline;
+      text-decoration: none;
       font-weight: 600;
-      margin-right: 15px;
-      display: inline-block;
-      padding: 8px 0;
+      font-size: 0.88rem;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      line-height: 1.2;
+    }
+
+    .nav-links a:active {
+      background: var(--active-bg);
+      color: var(--active-text);
     }
 
     .font-controls {
-      display: flex;
-      gap: 6px;
-      align-items: center;
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
     }
 
     .font-size-label {
       font-family: var(--font-mono);
-      font-size: 0.85rem;
-      min-width: 3.2em;
-      text-align: center;
-      font-weight: bold;
+      font-size: 0.8rem;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      font-weight: 600;
+      min-width: 3.4em;
     }
 
-    .font-controls button, .btn {
+    .font-controls button {
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      padding: 4px 11px;
+      font-size: 0.88rem;
+      font-weight: bold;
+      cursor: pointer;
+      min-height: 34px;
+      min-width: 36px;
+      font-family: inherit;
+      line-height: 1;
+    }
+
+    .btn {
       background: var(--bg);
       color: var(--text);
       border: var(--border-thick);
@@ -118,17 +156,6 @@
       max-width: 860px;
       margin: 0 auto;
       padding: 2rem 1.2rem 5rem 1.2rem;
-    }
-
-    .tag {
-      display: inline-block;
-      border: var(--border-thin);
-      font-size: 12px;
-      font-weight: bold;
-      padding: 2px 6px;
-      margin-right: 6px;
-      margin-bottom: 6px;
-      text-transform: uppercase;
     }
 
     h1 {
@@ -635,13 +662,7 @@
   </header>
 
   <main>
-    <!-- === 2. TAGS, TITLE & TL;DR === -->
-    <div>
-      <span class="tag">Meta</span>
-      <span class="tag">Golden Template</span>
-      <span class="tag">Boox Go 10.3</span>
-    </div>
-
+    <!-- === 2. TITLE & TL;DR === -->
     <h1>How to Write an Article for This Repo</h1>
 
     <div class="tldr">

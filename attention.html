@@ -67,8 +67,8 @@
     }
 
     header {
-      border-bottom: 3px solid var(--border);
-      padding: 1.5rem 1rem;
+      border-bottom: 2px solid var(--border);
+      padding: 0.45rem 1rem;
       background: #ffffff;
     }
 
@@ -82,20 +82,59 @@
       gap: 10px;
     }
 
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     .nav-links a {
       color: var(--text);
-      text-decoration: underline;
+      text-decoration: none;
       font-weight: 600;
-      margin-right: 15px;
+      font-size: 0.88rem;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      line-height: 1.2;
+    }
+
+    .nav-links a:active {
+      background: var(--active-bg);
+      color: var(--active-text);
     }
 
     .font-controls {
-      display: flex;
-      gap: 6px;
-      align-items: center;
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
     }
 
-    .font-controls button, .btn {
+    .font-controls button {
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      padding: 4px 11px;
+      font-size: 0.88rem;
+      font-weight: bold;
+      cursor: pointer;
+      min-height: 34px;
+      min-width: 36px;
+      font-family: inherit;
+      line-height: 1;
+    }
+
+    .font-controls button + button {
+      border-left: 1px solid var(--border);
+    }
+
+    .btn {
       background: var(--bg);
       color: var(--text);
       border: var(--border-thin);
@@ -389,15 +428,6 @@
       background: #fff;
     }
 
-    .tag {
-      display: inline-block;
-      border: 1px solid #000;
-      font-size: 12px;
-      font-weight: bold;
-      padding: 2px 6px;
-      margin-right: 6px;
-      text-transform: uppercase;
-    }
   </style>
 </head>
 <body>
@@ -409,7 +439,6 @@
         <a href="gkd.html">Next: GKD Guide →</a>
       </div>
       <div class="font-controls">
-        <span style="font-size:14px; font-weight:bold;">Text:</span>
         <button id="font-dec" title="Decrease font size">A-</button>
         <button id="font-inc" title="Increase font size">A+</button>
       </div>
@@ -417,12 +446,6 @@
   </header>
 
   <main>
-    <div style="margin-bottom: 1rem;">
-      <span class="tag">Deep Dive</span>
-      <span class="tag">Transformer Architecture</span>
-      <span class="tag">Interactive Math</span>
-    </div>
-
     <h1>How Attention Works: From First Principles to Multi-Head Math</h1>
 
     <p>
