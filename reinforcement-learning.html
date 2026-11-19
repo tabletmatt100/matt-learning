@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reinforcement Learning: From Delayed Rewards to TD Updates</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    html { font-size: var(--font-size); }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 1rem;
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    a { color: var(--text); }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem;
+      background: var(--bg);
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+      display: inline-block;
+      padding: 8px 0;
+    }
+
+    .font-controls { display: flex; gap: 6px; align-items: center; }
+
+    .font-size-label {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      min-width: 3.2em;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thick);
+      padding: 6px 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 48px;
+      min-width: 48px;
+      font-family: inherit;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    .btn-small {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 6px 12px;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    .tag {
+      display: inline-block;
+      border: var(--border-thin);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 2.05rem;
+      line-height: 1.25;
+      margin-top: 0.4rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+
+    h3 { font-size: 1.15rem; margin-top: 1.2rem; }
+
+    .tldr {
+      border: 2px solid var(--border);
+      padding: 1.1rem 1.3rem;
+      margin: 1.3rem 0 1.6rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .tldr h2 {
+      margin-top: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.2rem;
+    }
+
+    .tldr ul { margin: 0.6rem 0 0 0; padding-left: 1.3rem; }
+    .tldr li { margin-bottom: 0.45rem; }
+
+    .toc {
+      border: var(--border-thin);
+      padding: 0.8rem 1.2rem;
+      margin: 1.2rem 0 1.8rem 0;
+    }
+
+    .toc-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.85em;
+      margin-bottom: 0.4rem;
+    }
+
+    .toc ol { margin: 0.3rem 0 0 0; padding-left: 1.4rem; }
+    .toc li { margin-bottom: 0.25rem; }
+    .toc a { display: inline-block; padding: 4px 0; }
+
+    .worked {
+      border-left: 4px solid var(--border);
+      padding: 0.4rem 0 0.4rem 1.1rem;
+      margin: 1.3rem 0;
+    }
+
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.7rem 1rem;
+      margin: 1.3rem 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .refutation {
+      border: var(--border-thick);
+      border-left: 6px solid var(--border);
+      padding: 0.9rem 1.1rem;
+      margin: 1.2rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .refutation-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.82em;
+      margin-bottom: 0.3rem;
+    }
+
+    .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93em;
+    }
+
+    th, td {
+      border: var(--border-thin);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: var(--highlight-bg); font-weight: bold; }
+    .num { font-family: var(--font-mono); text-align: right; }
+
+    code, pre, textarea, input[type="text"] {
+      font-family: var(--font-mono);
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+    }
+
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: var(--border-thick);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      min-height: 48px;
+      border-radius: 0;
+    }
+
+    textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+
+    details {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin: 1.2rem 0;
+    }
+
+    summary { font-weight: bold; cursor: pointer; padding: 4px 0; }
+
+    /* Anchored Concept Popovers */
+    .term {
+      border-bottom: 2px dotted var(--border);
+      background: var(--highlight-bg);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .term:focus { outline: 2px solid var(--border); }
+    .term.term-open { background: var(--active-bg); color: var(--active-text); }
+
+    #popover-box {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: min(92vw, 440px);
+      max-height: 60vh;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      padding: 1rem 1.2rem;
+      z-index: 1000;
+    }
+
+    .popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
+      gap: 8px;
+    }
+
+    .popover-title { font-weight: bold; font-size: 1.1rem; }
+
+    /* Interactive Cards & Controls */
+    .interactive-card {
+      border: var(--border-thick);
+      padding: 1.25rem;
+      margin: 1.6rem 0;
+      background: var(--bg);
+    }
+
+    .widget-label {
+      display: inline-block;
+      background: var(--active-bg);
+      color: var(--active-text);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0.9rem 0;
+    }
+
+    .control-row label { font-weight: 600; min-width: 8rem; }
+
+    .control-row .val {
+      font-family: var(--font-mono);
+      font-weight: bold;
+      min-width: 4.2rem;
+      border: var(--border-thin);
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      min-width: 160px;
+      height: 44px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--border); }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px; height: 28px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+      margin-top: -11px;
+    }
+    input[type="range"]::-moz-range-track { height: 6px; background: var(--border); }
+    input[type="range"]::-moz-range-thumb {
+      width: 24px; height: 24px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+    }
+
+    .figure-box {
+      border: var(--border-thin);
+      padding: 0.8rem;
+      margin: 1rem 0;
+      text-align: center;
+    }
+
+    .figure-box svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 1rem 0;
+    }
+
+    .stat { border: var(--border-thick); padding: 8px 10px; }
+    .stat .k { font-size: 0.78rem; text-transform: uppercase; font-weight: bold; }
+    .stat .v { font-family: var(--font-mono); font-size: 1.2rem; font-weight: bold; }
+
+    .readout {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+      background: var(--highlight-bg);
+    }
+
+    .locked-note {
+      border: 2px dashed var(--border);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+    }
+
+    .small-multiples {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 1rem 0;
+    }
+
+    .sm-panel { border: var(--border-thin); padding: 0.6rem; }
+    .sm-panel.sm-active { border: 3px solid var(--border); background: var(--highlight-bg); }
+
+    @media (max-width: 680px) {
+      .small-multiples { grid-template-columns: 1fr; }
+    }
+
+    /* Collapsed MCQs */
+    details.mcq-box, .mcq-box {
+      border: var(--border-thick);
+      padding: 0.9rem 1.3rem;
+      margin: 1.3rem 0;
+    }
+
+    summary.mcq-title, .mcq-title {
+      font-size: 0.9em;
+      font-weight: bold;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    details.mcq-box[open] > summary.mcq-title {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.6rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: var(--border-thin);
+      padding: 0.75rem 0.9rem;
+      margin: 0.55rem 0;
+      cursor: pointer;
+      min-height: 48px;
+    }
+
+    .mcq-option input { margin-right: 10px; transform: scale(1.2); }
+    .mcq-option.picked { border-width: 2px; background: var(--highlight-bg); }
+    .mcq-option.right { border: 3px solid var(--border); background: var(--highlight-bg); }
+    .mcq-option.wrong { border: 2px dashed var(--border); }
+    .mcq-feedback { display: none; margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+
+    .score-bar {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin-top: 1.6rem;
+      background: var(--highlight-bg);
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .recall-card { border: var(--border-thin); padding: 0.8rem 1rem; margin: 0.8rem 0; }
+
+    footer.article-footer {
+      border-top: 2px solid var(--border);
+      margin-top: 3rem;
+      padding-top: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-block; }
+
+    @media print {
+      header, .font-controls, footer.article-footer { display: none; }
+      .mcq-box, .interactive-card, .worked, .tldr, details { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header id="top">
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Articles</a>
+      </div>
+      <div class="font-controls">
+        <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <span class="font-size-label" id="font-size-label">18px</span>
+        <button id="font-inc" aria-label="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
+    <div>
+      <span class="tag">Reinforcement Learning</span>
+      <span class="tag">MDPs &amp; TD</span>
+      <span class="tag">Boox Go 10.3</span>
+    </div>
+
+    <h1>Reinforcement Learning: From Delayed Rewards to TD Updates</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>Problem:</strong> Unlike supervised learning, an <span class="term" data-term="agent">agent</span> receives no label for the best <span class="term" data-term="action">action</span>; it only gets sparse, delayed scalar <span class="term" data-term="reward">rewards</span> from an <span class="term" data-term="environment">environment</span>.</li>
+        <li><strong>Core mechanism:</strong> The agent estimates expected discounted <span class="term" data-term="return">return</span> $G_t$ using the <span class="term" data-term="bellman-equation">Bellman equation</span> and updates <span class="term" data-term="value-function">value estimates</span> online via <span class="term" data-term="td-error">TD error</span> $\delta_t = R_{t+1} + \gamma V(S_{t+1}) - V(S_t)$.</li>
+        <li><strong>Where it breaks:</strong> Poorly shaped rewards cause <span class="term" data-term="reward-hacking">reward hacking</span>, and aggressive <span class="term" data-term="discount-factor">discounting</span> ($\gamma$ too low) makes the agent ignore large future payoffs.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Typical Range</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>$S_t, A_t$</td><td>Current <span class="term" data-term="state">state</span> and <span class="term" data-term="action">action</span> at step $t$</td><td class="num">discrete / continuous</td></tr>
+          <tr><td>$R_{t+1}$</td><td>Immediate <span class="term" data-term="reward">reward</span> after taking $A_t$</td><td class="num">$\mathbb{R}$</td></tr>
+          <tr><td>$\gamma$</td><td><span class="term" data-term="discount-factor">Discount factor</span> weighting future rewards</td><td class="num">$[0, 1)$</td></tr>
+          <tr><td>$V(s)$</td><td><span class="term" data-term="value-function">State value</span>: expected return starting in $s$</td><td class="num">$\mathbb{E}[G_t \mid S_t=s]$</td></tr>
+          <tr><td>$\delta_t$</td><td><span class="term" data-term="td-error">TD error</span>: surprise between target and current $V(S_t)$</td><td class="num">$\mathbb{R}$</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="interactive-card" id="fast-forward-box">
+      <div class="widget-label">Expert Fast-Forward Check</div>
+      <p style="margin-top:0.3rem;">Already comfortable with discounted returns and TD updates? Compute $G_0$ for rewards $[0, 0, 10]$ at $\gamma = 0.9$ to collapse Stages 1&ndash;3.</p>
+      <div class="control-row">
+        <label for="ff-input">$G_0 =$</label>
+        <input type="text" id="ff-input" placeholder="e.g. 8.1" style="flex:1; min-width:160px;">
+        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
+      </div>
+      <div id="ff-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#stage-1">Stage 1 &amp; 2: Predict the Discounting Trap</a></li>
+        <li><a href="#stage-3">Stage 3: Returns, Bellman Bootstrapping, and Small Multiples</a></li>
+        <li><a href="#stage-4">Stage 4: Backward-Faded TD Update and Free Recall</a></li>
+        <li><a href="#stage-5">Stage 5: Contrastive Matrix, Interleaved Checks, and Recall Cards</a></li>
+      </ol>
+    </nav>
+
+    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
+    <div id="scaffolding-section">
+      <h2 id="stage-1">1. Predict first: immediate +4 or delayed +10?</h2>
+      <p>
+        An <span class="term" data-term="agent">agent</span> in state $S_0$ faces two doors in a <span class="term" data-term="mdp">Markov Decision Process (MDP)</span> with <span class="term" data-term="discount-factor">discount factor</span> $\gamma = 0.7$. Door 1 pays <code>+4</code> immediately and ends the episode. Door 2 pays <code>0, 0, 0, +10</code> over four steps.
+      </p>
+
+      <div class="interactive-card" id="poe-widget">
+        <div class="widget-label">Stage 1: Predict-Observe-Explain (Guess First)</div>
+        <h3>Which door has higher discounted return at $\gamma = 0.7$?</h3>
+        <p>Commit to a prediction before running the math.</p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runPOE('A')">A) Door 2 (+10 beats +4)</button>
+          <button class="btn btn-small" onclick="runPOE('B')">B) Door 1 (+4 beats delayed +10)</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) Both are equal</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="poe-reveal" style="display:none;">
+          <div class="figure-box">
+            <svg id="poe-svg" viewBox="0 0 460 120" width="460" height="120" role="img" aria-label="Predicted vs actual discounted return"></svg>
+          </div>
+          <div class="refutation" id="poe-refutation"></div>
+        </div>
+      </div>
+
+      <!-- === STAGE 3: SEGMENTED MECHANISM + WORKED EXAMPLE + STEPPER === -->
+      <h2 id="stage-3">2. Returns and how values propagate backward</h2>
+      <p>
+        An RL agent maximizes the discounted <span class="term" data-term="return">return</span> $G_t$, not the raw sum of future rewards. Discounting keeps infinite-horizon sums finite and encodes urgency: every extra step multiplies future reward by $\gamma$.
+      </p>
+
+      <div class="worked">
+        <p><strong>Concrete trace:</strong> Suppose an episode produces rewards $R_1 = 0$, $R_2 = 0$, $R_3 = 10$ with $\gamma = 0.9$.</p>
+        <p>
+          $G_2 = R_3 = 10.00$<br>
+          $G_1 = R_2 + 0.9\,G_2 = 0 + 0.9(10.00) = 9.00$<br>
+          $G_0 = R_1 + 0.9\,G_1 = 0 + 0.9(9.00) = 8.10$
+        </p>
+      </div>
+
+      <div class="math-block">
+        $$G_t = \sum_{k=0}^{\infty} \gamma^k R_{t+k+1} = R_{t+1} + \gamma G_{t+1}$$
+      </div>
+
+      <p>
+        Waiting until the end of a long episode to compute $G_t$ is slow. Instead, <span class="term" data-term="td-error">Temporal-Difference (TD) learning</span> uses <span class="term" data-term="bootstrapping">bootstrapping</span>: it updates $V(S_t)$ immediately after one step using $R_{t+1} + \gamma V(S_{t+1})$. Step through three episodes on a 4-state corridor <code>[S0]&rarr;[S1]&rarr;[S2]&rarr;[Goal +10]</code> ($\gamma = 0.9, \alpha = 0.5$) to watch values march backward.
+      </p>
+
+      <div class="interactive-card" id="stepper-widget">
+        <div class="widget-label">Stage 3: Discrete Stepper + Persistent Small Multiples</div>
+        <h3>How TD(0) Propagates Value Backward</h3>
+        <div class="control-row">
+          <button class="btn btn-small active" id="step-btn-0" onclick="setStep(0)">Step 1: Episode 1</button>
+          <button class="btn btn-small" id="step-btn-1" onclick="setStep(1)">Step 2: Episode 2</button>
+          <button class="btn btn-small" id="step-btn-2" onclick="setStep(2)">Step 3: Converged</button>
+        </div>
+
+        <div class="small-multiples" id="sm-grid"></div>
+        <div class="readout" id="step-explain"></div>
+
+        <div id="slider-gate" class="locked-note">
+          Complete the prediction above (or click through all 3 steps) to unlock the discount-factor crossover slider.
+        </div>
+        <div id="slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
+          <div class="control-row">
+            <label for="gamma-slider">Discount $\gamma$</label>
+            <input type="range" id="gamma-slider" min="0.10" max="0.99" step="0.01" value="0.70">
+            <span class="val" id="gamma-val">0.70</span>
+          </div>
+          <div class="control-row">
+            <button class="btn btn-small" onclick="setGamma(0.30)">Short-sighted (0.30)</button>
+            <button class="btn btn-small" onclick="setGamma(0.74)">Crossover (~0.74)</button>
+            <button class="btn btn-small" onclick="setGamma(0.95)">Far-sighted (0.95)</button>
+          </div>
+          <div class="figure-box">
+            <svg id="gamma-svg" viewBox="0 0 460 110" width="460" height="110" role="img" aria-label="Door 1 vs Door 2 discounted return"></svg>
+          </div>
+          <div class="stat-grid">
+            <div class="stat"><div class="k">Door 1 (+4 now)</div><div class="v" id="stat-d1">4.00</div></div>
+            <div class="stat"><div class="k">Door 2 (+10 @ t=3)</div><div class="v" id="stat-d2">-</div></div>
+            <div class="stat"><div class="k">Optimal Choice</div><div class="v" id="stat-win">-</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === STAGE 4: BACKWARD-FADED EXAMPLE + CLOSED-BOOK RETRIEVAL === -->
+    <h2 id="stage-4">3. Faded TD practice and closed-book recall</h2>
+    <p>
+      The <span class="term" data-term="bellman-equation">Bellman</span> TD(0) update rule is $V(S_t) \leftarrow V(S_t) + \alpha \big[R_{t+1} + \gamma V(S_{t+1}) - V(S_t)\big]$. Trace the full worked example, then finish Step 3 of the second one yourself.
+    </p>
+
+    <div class="worked">
+      <p><strong>Example 1 (full):</strong> $V(S_1) = 2.0$, transition $S_1 \to S_2$ gives $R = 0$, $V(S_2) = 9.0$, with $\gamma = 0.9, \alpha = 0.5$.</p>
+      <p>
+        1. Target: $0 + 0.9 \times 9.0 = 8.10$.<br>
+        2. TD error: $\delta = 8.10 - 2.0 = +6.10$.<br>
+        3. Update: $V_{\text{new}}(S_1) = 2.0 + 0.5(6.10) = 5.05$.
+      </p>
+    </div>
+
+    <div class="interactive-card" id="faded-widget">
+      <div class="widget-label">Stage 4: Backward-Faded Worked Example</div>
+      <h3>Example 2: Complete Step 3 for $S_0 \to S_1$</h3>
+      <p>
+        Given $V(S_0) = 1.0$, $R = 0$, $V(S_1) = 5.05$, $\gamma = 0.9$, $\alpha = 0.5$:<br>
+        <strong>Step 1 (Target):</strong> $0 + 0.9 \times 5.05 = 4.545$.<br>
+        <strong>Step 2 (TD error):</strong> $\delta = 4.545 - 1.0 = +3.545$.<br>
+        <strong>Step 3 (Your turn):</strong> Compute $V_{\text{new}}(S_0) = 1.0 + 0.5 \times 3.545$.
+      </p>
+      <div class="control-row">
+        <label for="fade-input">$V_{\text{new}}(S_0) \approx$</label>
+        <input type="number" id="fade-input" step="0.01" placeholder="0.00" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+      </div>
+      <div id="fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-widget">
+      <div class="widget-label">Stage 4: Closed-Book Retrieval (Blank-Sheet Test)</div>
+      <h3>Explain Bootstrapping Without Looking Up</h3>
+      <p>In one or two sentences, why does TD learning update $V(S_t)$ using $R_{t+1} + \gamma V(S_{t+1})$ instead of waiting for the full return $G_t$?</p>
+      <textarea id="recall-input" placeholder="Write your answer from memory..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-feedback" class="readout" style="display:none;">
+        <strong>Canonical answer:</strong> TD <span class="term" data-term="bootstrapping">bootstraps</span> off its own estimate $V(S_{t+1})$ so it can update immediately after every single step—even in infinite or very long episodes—trading a small initial bias for much lower variance than <span class="term" data-term="monte-carlo">Monte Carlo</span>.
+      </div>
+    </div>
+
+    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
+    <h2 id="stage-5">4. Algorithm comparison, interleaved checks, and spaced cards</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Algorithm</th>
+            <th>Update Target</th>
+            <th><span class="term" data-term="on-policy">On</span> / <span class="term" data-term="off-policy">Off</span>-Policy</th>
+            <th>Bias vs Variance</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="monte-carlo">Monte Carlo</span></strong></td>
+            <td>Full episode return $G_t$</td>
+            <td>On-policy</td>
+            <td>Zero bias, high variance</td>
+            <td>Short episodic tasks with clear termination</td>
+          </tr>
+          <tr>
+            <td><strong>TD(0) / SARSA</strong></td>
+            <td>$R_{t+1} + \gamma Q(S_{t+1}, A_{t+1})$</td>
+            <td>On-policy</td>
+            <td>Some bias, low variance</td>
+            <td>Safe online control when <span class="term" data-term="exploration-exploitation">exploration</span> risk matters</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="q-function">Q-Learning</span></strong></td>
+            <td>$R_{t+1} + \gamma \max_a Q(S_{t+1}, a)$</td>
+            <td><span class="term" data-term="off-policy">Off-policy</span></td>
+            <td>Some bias, low variance</td>
+            <td>Learning optimal greedy policy from exploratory/replay data</td>
+          </tr>
+          <tr>
+            <td><strong>Policy Gradient</strong></td>
+            <td>$\nabla \log \pi(A_t \mid S_t)\, G_t$</td>
+            <td>On-policy</td>
+            <td>Zero bias, high variance</td>
+            <td>Continuous actions or stochastic <span class="term" data-term="policy">policies</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="mcq-box" id="mcq-1" data-correct="C" data-topic="Interleaved: Reward Hacking">
+      <summary class="mcq-title"></summary>
+      <p>You give a cleaning robot $+1$ every time it picks up dust, and no penalty for dropping dust. What happens?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Discounting slows infinite loops slightly, but positive reward per cycle still beats stopping.">A) It cleans the room once and parks cleanly.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Q-learning still maximizes cumulative reward; the bug is the reward function, not the optimizer.">B) Q-learning fails to converge to any policy.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. This is classic reward hacking: dropping dust and picking it back up yields unbounded positive return.">C) It dumps dust and picks it up repeatedly to farm infinite $+1$ rewards.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-2" data-correct="B" data-topic="Interleaved: Choosing the right learner">
+      <summary class="mcq-title"></summary>
+      <p>A datacenter cooling controller runs continuously for months without episode resets. Which update method cannot be applied directly?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="TD(0) updates after every single step and works naturally on continuing tasks.">A) TD(0)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Correct. Pure Monte Carlo requires the episode to terminate so it can sum the full return G_t.">B) Pure Monte Carlo</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Q-learning bootstraps one step ahead and does not need episode termination.">C) Q-Learning</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-3" data-correct="A" data-topic="Cumulative: TD Error Sign">
+      <summary class="mcq-title"></summary>
+      <p>An agent expects $V(S_t) = 6.0$. It receives $R_{t+1} = 0$ and lands in $S_{t+1}$ with $V(S_{t+1}) = 5.0$ ($\gamma = 0.9$). What happens to $V(S_t)$?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Correct. Target is 0 + 0.9 * 5.0 = 4.5, so TD error is 4.5 - 6.0 = -1.5, pulling V(S_t) downward.">A) It decreases because $\delta_t = 4.5 - 6.0 = -1.5 &lt; 0$.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="V(S_{t+1}) = 5.0 is positive, but discounted (4.5) it is still lower than the old expectation (6.0).">B) It increases because $V(S_{t+1}) = 5.0$ is positive.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Zero immediate reward does not mean zero TD error when V(S_t) != gamma * V(S_{t+1}).">C) It stays at $6.0$ because $R_{t+1} = 0$.</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <div class="score-bar">
+      <span id="mcq-score">Checks answered: 0 of 3.</span>
+      <button class="btn btn-small" onclick="resetMCQs()">Reset checks</button>
+    </div>
+
+    <div class="interactive-card" id="spaced-widget">
+      <div class="widget-label">Stage 5: Spaced Recall Export (1d / 4d / 14d / 60d)</div>
+      <h3>5 Core Retrieval Prompts</h3>
+      <p>Tap any card to test yourself, or copy all 5 Q&amp;A pairs into your spaced-repetition deck.</p>
+      <div id="spaced-list"></div>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>
+        <span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>
+      </div>
+    </div>
+
+    <footer class="article-footer">
+      <a href="index.html">&larr; All Articles</a>
+      <a href="#top">&uarr; Back to top</a>
+    </footer>
+  </main>
+
+  <div id="popover-box" role="region" aria-labelledby="popover-term-name">
+    <div class="popover-header">
+      <span class="popover-title" id="popover-term-name">Term</span>
+      <div>
+        <button class="btn btn-small" id="popover-back" style="display:none;">Back</button>
+        <button class="btn btn-small" onclick="closePopover()">Close</button>
+      </div>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    /* ---------- Utilities ---------- */
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+    function fmt(x, d) { return Number(x).toFixed(d === undefined ? 2 : d); }
+
+    /* ---------- Font Controls ---------- */
+    var FONT_KEY = 'matt_learning_font_px';
+    var currentFontSize = 18;
+    try {
+      var savedFont = parseInt(localStorage.getItem(FONT_KEY), 10);
+      if (savedFont >= 14 && savedFont <= 28) { currentFontSize = savedFont; }
+    } catch (e) {}
+
+    function applyFontSize(px) {
+      currentFontSize = clamp(px, 14, 28);
+      document.documentElement.style.setProperty('--font-size', currentFontSize + 'px');
+      var lbl = document.getElementById('font-size-label');
+      if (lbl) { lbl.textContent = currentFontSize + 'px'; }
+      try { localStorage.setItem(FONT_KEY, String(currentFontSize)); } catch (e) {}
+    }
+
+    document.getElementById('font-inc').addEventListener('click', function () { applyFontSize(currentFontSize + 2); });
+    document.getElementById('font-dec').addEventListener('click', function () { applyFontSize(currentFontSize - 2); });
+    applyFontSize(currentFontSize);
+
+    /* ---------- KaTeX ---------- */
+    var katexOptions = {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    };
+    function renderMathIn(el) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(el, katexOptions);
+        return true;
+      }
+      return false;
+    }
+    function ensureMathRendered(tries) {
+      if (renderMathIn(document.body) || tries <= 0) { return; }
+      setTimeout(function () { ensureMathRendered(tries - 1); }, 250);
+    }
+
+    /* ---------- Anchored Glossary Popovers ---------- */
+    var GLOSSARY = {
+      'agent': { title: 'Agent', body: 'The decision-maker (policy + learner) that observes a <span class="term" data-term="state">state</span> and picks an <span class="term" data-term="action">action</span>.' },
+      'environment': { title: 'Environment', body: 'Everything outside the <span class="term" data-term="agent">agent</span>: it accepts an action and returns the next <span class="term" data-term="state">state</span> and <span class="term" data-term="reward">reward</span>.' },
+      'state': { title: 'State (S_t)', body: 'A snapshot of the <span class="term" data-term="environment">environment</span> containing all information needed to predict future transitions (the Markov property).' },
+      'action': { title: 'Action (A_t)', body: 'A choice made by the <span class="term" data-term="agent">agent</span> according to its <span class="term" data-term="policy">policy</span> $\\pi(a \\mid s)$.' },
+      'reward': { title: 'Reward (R_{t+1})', body: 'A scalar feedback signal emitted after one step. RL agents maximize cumulative discounted <span class="term" data-term="return">return</span>, not single-step reward.' },
+      'return': { title: 'Discounted Return (G_t)', body: 'Total future reward starting at step $t$: $G_t = \\sum_{k=0}^\\infty \\gamma^k R_{t+k+1}$, weighted by <span class="term" data-term="discount-factor">discount factor</span> $\\gamma$.' },
+      'discount-factor': { title: 'Discount Factor (gamma)', body: 'A number $\\gamma \\in [0, 1)$ that shrinks rewards $k$ steps in the future by $\\gamma^k$. Lower $\\gamma$ means more short-sighted behavior.' },
+      'mdp': { title: 'Markov Decision Process (MDP)', body: 'Formal framework $(S, A, P, R, \\gamma)$ where the next <span class="term" data-term="state">state</span> and <span class="term" data-term="reward">reward</span> depend only on the current state and <span class="term" data-term="action">action</span>.' },
+      'policy': { title: 'Policy (pi)', body: 'The <span class="term" data-term="agent">agent</span>\'s behavior rule mapping each <span class="term" data-term="state">state</span> to an <span class="term" data-term="action">action</span> (or probability distribution over actions).' },
+      'value-function': { title: 'State-Value Function V(s)', body: 'Expected <span class="term" data-term="return">return</span> starting in state $s$ and following <span class="term" data-term="policy">policy</span> $\\pi$: $V^\\pi(s) = \\mathbb{E}_\\pi[G_t \\mid S_t = s]$.' },
+      'q-function': { title: 'Action-Value Function Q(s, a)', body: 'Expected <span class="term" data-term="return">return</span> after taking <span class="term" data-term="action">action</span> $a$ in state $s$, then following $\\pi$. Q-learning updates $Q$ using $\\max_{a\'} Q(S_{t+1}, a\')$.' },
+      'bellman-equation': { title: 'Bellman Equation', body: 'Recursive identity linking a state\'s value to the immediate <span class="term" data-term="reward">reward</span> plus the discounted value of the next state: $V(s) = \\mathbb{E}[R_{t+1} + \\gamma V(S_{t+1})]$.' },
+      'td-error': { title: 'Temporal-Difference (TD) Error', body: 'One-step prediction surprise: $\\delta_t = R_{t+1} + \\gamma V(S_{t+1}) - V(S_t)$. Positive $\\delta_t$ pulls $V(S_t)$ up; negative pulls it down.' },
+      'bootstrapping': { title: 'Bootstrapping', body: 'Updating a <span class="term" data-term="value-function">value estimate</span> using another learned estimate ($V(S_{t+1})$) instead of waiting for the true final <span class="term" data-term="return">return</span> $G_t$.' },
+      'monte-carlo': { title: 'Monte Carlo (MC)', body: 'Learning values by averaging complete episode <span class="term" data-term="return">returns</span> $G_t$ after termination—zero bias, high variance, no <span class="term" data-term="bootstrapping">bootstrapping</span>.' },
+      'on-policy': { title: 'On-Policy Learning', body: 'Evaluating and improving the exact same <span class="term" data-term="policy">policy</span> that is generating the experience (e.g., SARSA).' },
+      'off-policy': { title: 'Off-Policy Learning', body: 'Learning the optimal greedy <span class="term" data-term="policy">policy</span> while behaving according to a separate exploratory policy (e.g., <span class="term" data-term="q-function">Q-Learning</span>).' },
+      'exploration-exploitation': { title: 'Exploration vs. Exploitation', body: 'The tradeoff between picking the best-known <span class="term" data-term="action">action</span> now vs. trying uncertain actions to discover higher <span class="term" data-term="reward">rewards</span>.' },
+      'reward-hacking': { title: 'Reward Hacking', body: 'When an <span class="term" data-term="agent">agent</span> exploits a loophole in the <span class="term" data-term="reward">reward</span> function to score high without solving the intended task.' }
+    };
+
+    var popBox = document.getElementById('popover-box');
+    var popBody = document.getElementById('popover-body');
+    var popTitle = document.getElementById('popover-term-name');
+    var backBtn = document.getElementById('popover-back');
+    var popHistory = [];
+    var anchorTermEl = null;
+
+    function positionPopover() {
+      if (!anchorTermEl || popBox.style.display !== 'block') { return; }
+      var rect = anchorTermEl.getBoundingClientRect();
+      var vw = document.documentElement.clientWidth;
+      var vh = window.innerHeight;
+      var boxW = popBox.offsetWidth;
+      var boxH = popBox.offsetHeight;
+      var gap = 8;
+      var left = clamp(rect.left + window.scrollX, 12 + window.scrollX, Math.max(12 + window.scrollX, vw - boxW - 12 + window.scrollX));
+      var spaceBelow = vh - rect.bottom;
+      var top = (spaceBelow >= boxH + gap + 8 || spaceBelow >= rect.top)
+        ? rect.bottom + window.scrollY + gap
+        : rect.top + window.scrollY - boxH - gap;
+      popBox.style.left = Math.round(left) + 'px';
+      popBox.style.top = Math.round(Math.max(12, top)) + 'px';
+    }
+
+    function showTerm(key, pushCurrent) {
+      var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
+      if (pushCurrent && popBox.style.display === 'block' && popBox.getAttribute('data-key')) {
+        popHistory.push(popBox.getAttribute('data-key'));
+      }
+      popBox.setAttribute('data-key', key);
+      popTitle.textContent = g.title;
+      popBody.innerHTML = '<p>' + g.body + '</p>';
+      popBody.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      backBtn.style.display = popHistory.length ? 'inline-block' : 'none';
+      popBox.style.display = 'block';
+      renderMathIn(popBody);
+      positionPopover();
+    }
+
+    function closePopover() {
+      popBox.style.display = 'none';
+      popBox.removeAttribute('data-key');
+      popHistory = [];
+      if (anchorTermEl) {
+        anchorTermEl.classList.remove('term-open');
+        if (typeof anchorTermEl.focus === 'function') { anchorTermEl.focus(); }
+        anchorTermEl = null;
+      }
+    }
+
+    backBtn.addEventListener('click', function () {
+      if (popHistory.length) { showTerm(popHistory.pop(), false); }
+    });
+
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest ? e.target.closest('.term') : null;
+      if (el) {
+        e.preventDefault();
+        if (popBox.contains(el)) { showTerm(el.getAttribute('data-term'), true); return; }
+        if (anchorTermEl === el && popBox.style.display === 'block') { closePopover(); return; }
+        if (anchorTermEl) { anchorTermEl.classList.remove('term-open'); }
+        anchorTermEl = el;
+        anchorTermEl.classList.add('term-open');
+        popHistory = [];
+        showTerm(el.getAttribute('data-term'), false);
+        return;
+      }
+      if (popBox.style.display === 'block' && !popBox.contains(e.target)) { closePopover(); }
+    });
+
+    window.addEventListener('resize', positionPopover);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closePopover(); }
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('term')) {
+        document.activeElement.click();
+      }
+    });
+
+    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
+    function checkFastForward() {
+      var val = parseFloat(document.getElementById('ff-input').value);
+      var fb = document.getElementById('ff-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 8.1) <= 0.05) {
+        fb.innerHTML = '<strong>Verified.</strong> $0 + 0.9(0) + 0.9^2(10) = 8.1$. Stages 1&ndash;3 collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Stages 1&ndash;3</button>';
+        toggleScaffolding(false);
+        unlockSlider();
+      } else {
+        fb.innerHTML = 'Not quite (hint: $G_0 = 0.9^2 \\times 10$). Work through Stages 1&ndash;3 below.';
+      }
+      renderMathIn(fb);
+    }
+
+    function toggleScaffolding(show) {
+      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
+    }
+
+    /* ---------- Stage 1 & 2: POE + Refutation ---------- */
+    var stepsVisited = { 0: true };
+
+    function unlockSlider() {
+      document.getElementById('slider-gate').style.display = 'none';
+      document.getElementById('slider-unlocked').style.display = 'block';
+      updateGammaWidget();
+    }
+
+    function runPOE(choice) {
+      document.getElementById('poe-reveal').style.display = 'block';
+      var svg = document.getElementById('poe-svg');
+      var d1 = 4.00, d2 = 10 * Math.pow(0.7, 3);
+      var guessText = choice === 'A' ? 'Your guess: Door 2 wins' : choice === 'B' ? 'Your guess: Door 1 wins' : choice === 'C' ? 'Your guess: Equal' : 'Skipped guess';
+
+      var html = '';
+      html += '<text x="10" y="24" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + guessText + '</text>';
+      html += '<text x="10" y="56" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Door 1 (+4 now)</text>';
+      html += '<rect x="165" y="40" width="160" height="22" fill="#000"/>';
+      html += '<text x="335" y="56" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(d1, 2) + '</text>';
+      html += '<text x="10" y="92" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Door 2 (+10 @ t=3)</text>';
+      html += '<rect x="165" y="76" width="' + Math.round(160 * (d2 / d1)) + '" height="22" fill="#fff" stroke="#000" stroke-width="2"/>';
+      html += '<text x="315" y="92" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(d2, 2) + '</text>';
+      svg.innerHTML = html;
+
+      var ref = document.getElementById('poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Misconception Refutation</div>' +
+        '<p style="margin:0;">Most people guess <strong>Door 2</strong> because they compare raw rewards ($10 > 4$) and treat $\\gamma = 0.7$ as a mild tax. ' +
+        'That breaks because discounting compounds exponentially: three extra steps shrink $+10$ by $0.7^3 = 0.343$ down to <strong>3.43</strong>, which loses to Door 1\'s immediate <strong>4.00</strong>.</p>';
+      renderMathIn(ref);
+      unlockSlider();
+    }
+
+    /* ---------- Stage 3: Discrete Stepper + Small Multiples + Gamma Slider ---------- */
+    var TD_SNAPSHOTS = [
+      { title: 'Step 1: Episode 1', vals: [0.00, 0.00, 5.00, 10], note: 'First time reaching Goal (+10): only S2 touches the +10 transition, so V(S2) jumps from 0 to 0.5*(0 + 0.9*10) = 4.50... rounded here with R=10 directly at S2->G: V(S2) = 5.00 while S0 and S1 are still 0.00.' },
+      { title: 'Step 2: Episode 2', vals: [0.00, 2.25, 7.50, 10], note: 'On Episode 2, S1 sees V(S2)=5.00 and bootstraps to 0.5*(0 + 0.9*5.00) = 2.25. S2 climbs to 7.50. Value marches one step backward per episode.' },
+      { title: 'Step 3: Converged', vals: [8.10, 9.00, 10.0, 10], note: 'After repeated episodes, values converge to the exact Bellman fixed point: V(S2)=10.0, V(S1)=9.00, V(S0)=8.10.' }
+    ];
+
+    function setStep(idx) {
+      stepsVisited[idx] = true;
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('step-btn-' + i).classList.toggle('active', i === idx);
+      }
+      renderSmallMultiples(idx);
+      document.getElementById('step-explain').textContent = TD_SNAPSHOTS[idx].note;
+      if (Object.keys(stepsVisited).length === 3) { unlockSlider(); }
+    }
+
+    function renderSmallMultiples(activeIdx) {
+      var grid = document.getElementById('sm-grid');
+      var names = ['S0', 'S1', 'S2', 'G'];
+      grid.innerHTML = TD_SNAPSHOTS.map(function (snap, idx) {
+        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
+        var svg = '<svg viewBox="0 0 210 68" width="210" height="68" role="img" aria-label="' + snap.title + '">';
+        snap.vals.forEach(function (v, k) {
+          var x = 4 + k * 52;
+          var fill = (k === 3 || v > 0) ? '#e8e8e8' : '#fff';
+          svg += '<rect x="' + x + '" y="10" width="44" height="44" fill="' + fill + '" stroke="#000" stroke-width="1.5"/>';
+          svg += '<text x="' + (x + 22) + '" y="26" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000">' + names[k] + '</text>';
+          svg += '<text x="' + (x + 22) + '" y="44" text-anchor="middle" font-family="monospace" font-size="11" fill="#000">' + fmt(v, v === 10 ? 0 : 2) + '</text>';
+        });
+        svg += '</svg>';
+        return '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.85em; margin-bottom:4px;">' + snap.title + '</div>' + svg + '</div>';
+      }).join('');
+    }
+
+    function setGamma(g) {
+      document.getElementById('gamma-slider').value = g;
+      updateGammaWidget();
+    }
+
+    function updateGammaWidget() {
+      var slider = document.getElementById('gamma-slider');
+      var svg = document.getElementById('gamma-svg');
+      if (!slider || !svg) { return; }
+      var g = parseFloat(slider.value);
+      document.getElementById('gamma-val').textContent = fmt(g, 2);
+
+      var d1 = 4.0;
+      var d2 = 10.0 * Math.pow(g, 3);
+      document.getElementById('stat-d2').textContent = fmt(d2, 2);
+      document.getElementById('stat-win').textContent = d2 > d1 ? 'Door 2 (+10)' : 'Door 1 (+4)';
+
+      var maxV = 10.0;
+      var w1 = Math.round((d1 / maxV) * 240);
+      var w2 = Math.max(2, Math.round((d2 / maxV) * 240));
+      var out = '';
+      out += '<text x="10" y="34" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Door 1 (+4 now)</text>';
+      out += '<rect x="150" y="16" width="240" height="24" fill="#fff" stroke="#000"/>';
+      out += '<rect x="150" y="16" width="' + w1 + '" height="24" fill="' + (d1 >= d2 ? '#000' : '#ccc') + '"/>';
+      out += '<text x="400" y="34" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(d1, 2) + '</text>';
+
+      out += '<text x="10" y="76" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Door 2 (+10 @ t=3)</text>';
+      out += '<rect x="150" y="58" width="240" height="24" fill="#fff" stroke="#000"/>';
+      out += '<rect x="150" y="58" width="' + w2 + '" height="24" fill="' + (d2 > d1 ? '#000' : '#ccc') + '"/>';
+      out += '<text x="400" y="76" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(d2, 2) + '</text>';
+      svg.innerHTML = out;
+    }
+
+    /* ---------- Stage 4: Faded Step & Closed-Book Recall ---------- */
+    function checkFaded() {
+      var val = parseFloat(document.getElementById('fade-input').value);
+      var fb = document.getElementById('fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 2.7725) <= 0.03) {
+        fb.innerHTML = '<strong>Correct.</strong> $1.0 + 0.5(3.545) = 2.7725 \\approx 2.77$.';
+      } else {
+        fb.innerHTML = 'Not quite. Compute $1.0 + 0.5 \\times 3.545 = 2.77$.';
+      }
+      renderMathIn(fb);
+    }
+
+    function revealRecall() {
+      var fb = document.getElementById('recall-feedback');
+      fb.style.display = 'block';
+      renderMathIn(fb);
+    }
+
+    /* ---------- Stage 5: Collapsed Interleaved MCQs ---------- */
+    var mcqResults = {};
+    function updateScore() {
+      var total = document.querySelectorAll('.mcq-box').length;
+      var answered = 0, right = 0;
+      for (var id in mcqResults) {
+        if (Object.prototype.hasOwnProperty.call(mcqResults, id)) {
+          answered++;
+          if (mcqResults[id].first) { right++; }
+        }
+      }
+      document.getElementById('mcq-score').textContent =
+        'Checks answered: ' + answered + ' of ' + total + '. Right on first try: ' + right + '.';
+    }
+
+    function checkMCQ(boxId) {
+      var box = document.getElementById(boxId);
+      var correct = box.getAttribute('data-correct');
+      var selected = box.querySelector('input[type="radio"]:checked');
+      var fb = box.querySelector('.mcq-feedback');
+      fb.style.display = 'block';
+      if (!selected) { fb.innerHTML = '<p>Pick an option first.</p>'; return; }
+      if (!mcqResults[boxId]) { mcqResults[boxId] = { first: selected.value === correct }; }
+      box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('right', 'wrong'); });
+      var rightOpt = box.querySelector('input[value="' + correct + '"]');
+      rightOpt.closest('.mcq-option').classList.add('right');
+      var html = (selected.value === correct)
+        ? '<p><strong>Correct.</strong> ' + selected.getAttribute('data-explain') + '</p>'
+        : '<p><strong>Not quite (' + selected.value + ').</strong> ' + selected.getAttribute('data-explain') + '</p><p><strong>Answer: ' + correct + '.</strong> ' + rightOpt.getAttribute('data-explain') + '</p>';
+      html += '<details><summary>Why each option is right or wrong</summary><ul>';
+      box.querySelectorAll('input[type="radio"]').forEach(function (o) {
+        html += '<li><strong>' + o.value + ':</strong> ' + o.getAttribute('data-explain') + '</li>';
+      });
+      html += '</ul></details>';
+      fb.innerHTML = html;
+      renderMathIn(fb);
+      updateScore();
+    }
+
+    function resetMCQs() {
+      mcqResults = {};
+      document.querySelectorAll('.mcq-box').forEach(function (box) {
+        box.removeAttribute('open');
+        box.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked', 'right', 'wrong'); });
+        var fb = box.querySelector('.mcq-feedback');
+        fb.style.display = 'none';
+        fb.innerHTML = '';
+      });
+      updateScore();
+    }
+
+    /* ---------- Stage 5: Spaced Recall Cards ---------- */
+    var SPACED_CARDS = [
+      { q: 'Write the recursive definition of discounted return G_t.', a: 'G_t = R_{t+1} + gamma * G_{t+1}.' },
+      { q: 'Write the 1-step TD error delta_t.', a: 'delta_t = R_{t+1} + gamma * V(S_{t+1}) - V(S_t).' },
+      { q: 'What is the key difference between SARSA and Q-Learning?', a: 'SARSA is on-policy using Q(S_{t+1}, A_{t+1}); Q-learning is off-policy using max_a Q(S_{t+1}, a).' },
+      { q: 'Why does Monte Carlo fail on continuing (non-episodic) tasks?', a: 'MC must wait until an episode ends to compute G_t, whereas TD bootstraps after every step.' },
+      { q: 'What happens if a reward function gives +1 for a reversible action?', a: 'Reward hacking: the agent repeats the reversible loop to farm unbounded positive return.' }
+    ];
+
+    function renderSpacedCards() {
+      document.getElementById('spaced-list').innerHTML = SPACED_CARDS.map(function (c, i) {
+        return '<details class="recall-card"><summary>Card ' + (i + 1) + ': ' + c.q + '</summary><p style="margin:0.5rem 0 0 0;">' + c.a + '</p></details>';
+      }).join('');
+    }
+
+    function copySpacedCards() {
+      var text = SPACED_CARDS.map(function (c, i) {
+        return 'Q' + (i + 1) + ': ' + c.q + '\nA' + (i + 1) + ': ' + c.a;
+      }).join('\n\n');
+      var st = document.getElementById('copy-status');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          st.textContent = 'Copied 5 cards (review at 1d, 4d, 14d, 60d).';
+        }, function () { st.textContent = 'Clipboard blocked; select cards manually.'; });
+      } else {
+        st.textContent = 'Clipboard unavailable in this browser.';
+      }
+    }
+
+    /* ---------- Init ---------- */
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      document.querySelectorAll('.mcq-option input').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          var box = inp.closest('.mcq-box');
+          box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+          inp.closest('.mcq-option').classList.add('picked');
+        });
+      });
+      var boxes = document.querySelectorAll('.mcq-box');
+      boxes.forEach(function (box, i) {
+        var t = box.querySelector('.mcq-title');
+        var topic = box.getAttribute('data-topic');
+        if (t) {
+          t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length +
+            (topic ? ': ' + topic : '') + ' (tap to expand)';
+        }
+      });
+      var gammaSlider = document.getElementById('gamma-slider');
+      if (gammaSlider) { gammaSlider.addEventListener('input', updateGammaWidget); }
+      setStep(0);
+      renderSpacedCards();
+      updateScore();
+      ensureMathRendered(10);
+    });
+    window.addEventListener('load', function () { renderMathIn(document.body); });
+  </script>
+</body>
+</html>
