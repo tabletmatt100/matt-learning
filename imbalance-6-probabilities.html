@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixing probabilities, other angles, and a checklist | Class Imbalance, Part 6</title>
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="imbalance-style.css">
+  <script src="imbalance-common.js"></script>
+  <style>
+    table.data-table td.left, table.data-table th.left { text-align: left; }
+    .wf-row { border: 1px solid #000; padding: 0.6rem 0.8rem; margin: 0.6rem 0; }
+    .wf-row label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+    .wf-row select { width: 100%; max-width: 22rem; }
+    #wf-out { border-width: 2px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Guides</a>
+        <a href="class-imbalance.html">Series overview</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">Class imbalance &middot; Part 6</span>
+      <span class="tag">Calibration</span>
+    </div>
+
+    <h1>Fixing probabilities, other angles, and a checklist</h1>
+
+    <nav class="series-nav" id="series-nav"></nav>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li>Undersampling, oversampling, class weights and focal loss all inflate predicted probabilities. Ranking survives; the numbers themselves don't.</li>
+        <li>If you only changed the class balance, an exact fix exists: subtract $\text{logit}(\pi') - \text{logit}(\pi)$ from the model's log-odds. A 50:50-trained "0.8" is really about 0.039 at a 1% base rate.</li>
+        <li>When that shortcut isn't enough (SMOTE, boosted trees, focal loss), fit Platt scaling or isotonic regression on held-out data with the real class balance. With around 100 positives, use Platt.</li>
+        <li>Check calibration with a reliability diagram and the Brier score. AUC can't tell you anything here, because calibration doesn't change the ranking.</li>
+        <li>Other levers: anomaly detection for unseen patterns, more real positives, augmentation, two-stage models, and reframing the label.</li>
+        <li>The checklist at the end is the order I'd work in on a new problem, with links back to every part of the series.</li>
+      </ul>
+    </div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <ol>
+        <li><a href="#s1">Why rebalancing breaks probabilities</a></li>
+        <li><a href="#s-prior">Prior-shift correction</a></li>
+        <li><a href="#s-calib">Platt scaling and isotonic regression</a></li>
+        <li><a href="#s-check">Checking calibration: reliability diagrams and Brier score</a></li>
+        <li><a href="#s-other">Other angles</a></li>
+        <li><a href="#s-checklist">Order of operations</a></li>
+      </ol>
+    </div>
+
+    <!-- SECTION 1 -->
+    <h2 id="s1">1. Why rebalancing breaks probabilities</h2>
+
+    <p>
+      The running example, in case you landed here first: a card-fraud model scoring 10,000 transactions, of which 100 are fraud (a 1% <span class="term" data-term="base-rate">base rate</span>, 99:1). At its tuned threshold it gets TP = 80, FN = 20, FP = 320, TN = 9,580 (see the <span class="term" data-term="confusion-matrix">confusion matrix</span> in <a href="imbalance-1-metrics.html#s1">part 1</a>).
+    </p>
+    <p>
+      If you only need a ranking, or a yes/no decision with a tuned <span class="term" data-term="threshold">threshold</span>, you can skip most of this page. But if anything downstream uses the number as a probability (expected loss, pricing, combining with other models, showing "12% risk" to a doctor), then resampling and weighting have broken it. A model trained on 50:50 data believes fraud is 50% common, and its outputs reflect that belief. <span class="term" data-term="calibration">Calibration</span> is the property you need to restore.
+    </p>
+    <p>
+      The mechanism is simple. A classifier trained with log loss learns $P(\text{fraud} \mid x)$ <em>for the data it was shown</em>. <span class="term" data-term="undersampling">Undersampling</span> the 9,900 legit transactions down to 100 doesn't change what fraud looks like; it changes how often fraud appears. So the learned odds are the true odds multiplied by a constant: $(0.5/0.5)/(0.01/0.99) = 99$. <span class="term" data-term="class-weight">Class weights</span> do the same thing through the loss, and <span class="term" data-term="focal-loss">focal loss</span> does something similar but messier, because it reweights by difficulty rather than by class.
+    </p>
+
+    <div class="mcq-box" id="mcq-1" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>A model trained on a 50:50 undersample scores next month's 10,000 transactions. Finance adds up the predicted probabilities to forecast how many frauds to expect. The sum is about 2,800. The real count turns out to be about 100. What's the most likely explanation?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Overfitting usually shows up as a gap between training and validation ranking quality. Here the gap is a factor of 28 in the average probability, which is exactly what training on the wrong prior does. More trees would not fix it.">A) The model is overfit; retrain with fewer trees and stronger regularisation.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Ranking quality and probability level are separate things. A model can have a ROC-AUC of 0.86 and still overstate every probability, because AUC only cares about order. Nothing here says the order is bad.">B) The model ranks badly, so its <span class='term' data-term='roc-auc'>ROC-AUC</span> must be low.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Right. The model learned odds 99 times too high, so every probability is inflated, and the inflation is worst in the middle of the range. A transaction whose true risk is 1% gets scored 0.5. Summing those gives roughly 2,800 instead of 100. The widget in section 4 reproduces this number.">C) Training at a 50% fraud rate inflated every predicted probability; the sum is a calibration question, not a ranking one.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="D" data-explain="The threshold only affects which transactions get flagged. Summing probabilities doesn't involve a threshold at all, so moving it can't change the 2,800.">D) The decision threshold is set too low, so too many transactions are being counted.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-2" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>You trained with balanced class weights and never corrected the outputs. Which of these uses of the score is still fine?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="A patient told 12% will plan around 12%. If the model was trained at a balanced prior, the true figure might be well under 1%. Any number shown to a human as a risk needs calibrating.">A) Showing each customer a "risk of fraud: 12%" figure.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Correct. Class weights shift every log-odds by the same constant, which is a strictly increasing transform. The top 300 by raw score are the same 300 as by calibrated score, so a review queue is unaffected.">B) Sending the 300 highest-scoring transactions per day to a review team.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Expected loss multiplies the probability by the amount. If $p$ is inflated 10 to 25 times, so is the expected loss, and any cost-based decision built on it is wrong. See the <span class='term' data-term='expected-loss'>expected loss</span> rule in part 3.">C) Computing expected loss as $p \times$ transaction amount and blocking when it exceeds a fee.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="D" data-explain="Combining probabilities (multiplying odds, averaging, Bayes updates) assumes each input means what it says. An inflated input dominates the combination.">D) Multiplying its odds with another model's odds to combine the two signals.</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2 id="s-prior">2. Prior-shift correction</h2>
+
+    <p>
+      If the only thing you changed was the class balance (undersampling, <span class="term" data-term="oversampling">oversampling</span>, or class weights), there's an exact fix, usually called <span class="term" data-term="prior-shift">prior-shift correction</span>. Training with positive rate $\pi'$ instead of the true $\pi$ shifts the model's <span class="term" data-term="logit">log-odds</span> by a constant. Undo it:
+    </p>
+    <div class="math-block">
+      $$\text{logit}(p) = \text{logit}(p') + \text{logit}(\pi) - \text{logit}(\pi'), \qquad \text{logit}(x) = \ln\frac{x}{1-x}$$
+    </div>
+    <p>Equivalently, in probability form:</p>
+    <div class="math-block">
+      $$p = \frac{p' \,\frac{\pi}{\pi'}}{p'\,\frac{\pi}{\pi'} + (1-p')\,\frac{1-\pi}{1-\pi'}}$$
+    </div>
+    <div class="worked">
+      <p>We undersampled to 50:50 ($\pi' = 0.5$). The real rate is $\pi = 0.01$. The model outputs $p' = 0.8$ for a transaction.</p>
+      <p>Ratios: $\pi/\pi' = 0.01/0.5 = 0.02$ and $(1-\pi)/(1-\pi') = 0.99/0.5 = 1.98$.</p>
+      <p>Numerator: $0.8 \times 0.02 = 0.016$.</p>
+      <p>Denominator: $0.016 + 0.2 \times 1.98 = 0.016 + 0.396 = 0.412$.</p>
+      <p>$p = 0.016 / 0.412 \approx 0.039$.</p>
+      <p>The model's "80% fraud" is really about 3.9%. Still four times the base rate, so a useful signal, but nowhere near 80%. Check via logits: $\text{logit}(0.8) = 1.386$, $\text{logit}(0.01) = -4.595$, $\text{logit}(0.5) = 0$. Sum: $1.386 - 4.595 - 0 = -3.209$. Then the <span class="term" data-term="sigmoid">sigmoid</span> gives $\sigma(-3.209) = 0.039$.</p>
+    </div>
+
+    <h3>The class weight version</h3>
+    <p>
+      For class weights, use the same formula with the implied training prior. Weights $w_1, w_0$ multiply the odds by $w_1/w_0$, so subtract $\ln(w_1/w_0)$ from the logit. "Balanced" weights at 99:1 give $\ln 99 = 4.595$, the same as undersampling to 50:50.
+    </p>
+    <div class="worked">
+      <p>sklearn's balanced weights for our data: $w_1 = 10{,}000/(2 \times 100) = 50$ and $w_0 = 10{,}000/(2 \times 9{,}900) = 0.505$. Ratio: $50/0.505 = 99$. Correction: subtract $\ln 99 = 4.595$, identical to the 50:50 case, so a weighted "0.8" also becomes 0.039.</p>
+      <p>A gentler weight, <code>class_weight={0: 1, 1: 10}</code>: subtract $\ln 10 = 2.303$. For $p' = 0.8$: $1.386 - 2.303 = -0.916$, and $\sigma(-0.916) = 0.286$. The implied training prior is $10/(99+10) = 0.092$, which is close to the 0.0909 (10:1) option in the widget below.</p>
+    </div>
+
+    <div class="interactive-card" id="w-prior">
+      <div class="widget-label">Widget 1</div>
+      <h3>Prior-shift corrector</h3>
+      <div class="control-row">
+        <label for="ps-p">Model output $p'$</label>
+        <input type="range" id="ps-p" min="1" max="99" step="1" value="80">
+        <span class="val" id="ps-p-val">0.80</span>
+      </div>
+      <div class="control-row">
+        <label for="ps-train">Training rate $\pi'$</label>
+        <select id="ps-train">
+          <option value="0.5" selected>0.50 (fully balanced)</option>
+          <option value="0.25">0.25</option>
+          <option value="0.1">0.10</option>
+          <option value="0.0909">0.0909 (10:1)</option>
+          <option value="0.01">0.01 (no resampling)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="ps-true">True rate $\pi$</label>
+        <select id="ps-true">
+          <option value="0.1">0.10</option>
+          <option value="0.01" selected>0.01</option>
+          <option value="0.001">0.001</option>
+          <option value="0.0001">0.0001</option>
+        </select>
+      </div>
+      <div class="readout" id="ps-out"></div>
+    </div>
+
+    <details>
+      <summary>Aside: the same formula in Dal Pozzolo's notation</summary>
+      <p>
+        <span class="term" data-term="dal-pozzolo">Dal Pozzolo et al. (2015)</span> write the undersampling correction in terms of $\beta$, the probability that a negative is kept: $p = \beta p_s / (\beta p_s - p_s + 1)$. We kept 100 of 9,900 legit transactions, so $\beta = 100/9{,}900 = 0.0101$. With $p_s = 0.8$: numerator $0.0101 \times 0.8 = 0.00808$; denominator $0.00808 - 0.8 + 1 = 0.20808$; $p = 0.0388$. Same answer as above, as it must be: it's the same algebra with the sampling rate in place of the two priors.
+      </p>
+      <p>
+        Their paper also makes a point worth remembering: undersampling increases the variance of the classifier (fewer rows), so the corrected probabilities are unbiased but noisier. That's one reason bagging several undersampled models (a <span class="term" data-term="balanced-ensemble">balanced ensemble</span>, <a href="imbalance-5-resampling.html">part 5</a>) tends to beat a single one.
+      </p>
+    </details>
+
+    <div class="mcq-box" id="mcq-3" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>You trained on data undersampled to 50:50. The true positive rate is 1%. For some input the model outputs exactly 0.5. What's the corrected probability?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="0.5 is the model's belief under a 50:50 world. It hasn't been corrected for the real 1% rate.">A) 0.5</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Close, but not exact. The correction acts on log-odds: logit(0.5) = 0, so the corrected logit is exactly logit(0.01), which gives 0.01, not 0.0098.">B) 0.0098</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="This would mean the input made fraud less likely than the base rate, but an output of 0.5 under balanced training means the evidence was neutral.">C) 0.001</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="D" data-explain="Correct. logit(0.5) = 0, so the corrected logit is just logit(0.01). An output of 0.5 on balanced data means no evidence either way, so you fall back to the base rate.">D) 0.01</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-4" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>You trained logistic regression on the original 99:1 data with <code>class_weight={0: 1, 1: 10}</code>. A transaction gets $p' = 0.8$. What is the corrected probability at the true 1% rate?</p>
+      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Correct. Weight ratio 10 means subtract $\ln 10 = 2.303$ from the logit: $1.386 - 2.303 = -0.916$, and $\sigma(-0.916) = 0.286$. The training data already had the real 99:1 balance; only the weights shifted it.">A) About 0.286</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="0.039 is the answer for balanced weights (ratio 99, subtract 4.595). With a weight ratio of only 10, the shift is $\ln 10$, so the correction is much smaller.">B) About 0.039</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="Dividing the probability by the weight is a common shortcut, but the weight acts on the odds, not the probability. $0.8/10 = 0.08$ is too low; the correct route via odds gives 0.286.">C) 0.08</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="D" data-explain="Weights do change the probabilities: the weighted loss is minimised by odds that are $w_1/w_0$ times the true odds. That is the whole reason this page exists.">D) 0.8, since weights don't affect probabilities</label>
+      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 3 -->
+    <h2 id="s-calib">3. Platt scaling and isotonic regression</h2>
+    <p>
+      The prior-shift formula assumes the model was calibrated on its training distribution to begin with. <span class="term" data-term="gradient-boosting">Boosted trees</span>, SVMs, focal-loss networks and <span class="term" data-term="smote">SMOTE</span>-trained models often aren't, and SMOTE also changes the shape of the minority distribution, not just its frequency. In those cases, fit a calibration map on a held-out set that has the true class balance:
+    </p>
+    <ul>
+      <li><span class="term" data-term="platt">Platt scaling</span>: fit a logistic regression $p = \sigma(a s + b)$ on the model score $s$. Two parameters, works with little data. Note that it can learn the prior-shift offset itself (that's the $b$).</li>
+      <li><span class="term" data-term="isotonic">Isotonic regression</span>: fit any monotone step function. More flexible, but needs more data, and with only a few hundred positives it overfits. With 100 positives I'd use Platt.</li>
+    </ul>
+    <p>
+      The held-out part is the whole game. If the calibration set has been resampled, or contains synthetic rows, the calibrator learns the training prior all over again. The same <span class="term" data-term="leakage">leakage</span> rules from <a href="imbalance-2-evaluation.html#s-leakage">part 2</a> apply: calibration data must come from untouched, real-balance data, kept apart from both training and test.
+    </p>
+    <div class="worked">
+      <p>How Platt absorbs the prior shift. Suppose the model's score is the log-odds from a 50:50-trained model, $s = \text{logit}(p')$. The exact correction is $\text{logit}(p) = s - 4.595$. That's a Platt map with $a = 1$, $b = -4.595$. For our $p' = 0.8$: $s = 1.386$, so $\sigma(1 \times 1.386 - 4.595) = \sigma(-3.209) = 0.039$. If the model was also overconfident, Platt would fit $a$ below 1 to shrink the scores toward each other as well.</p>
+    </div>
+    <p>
+      For multiclass neural networks, the usual one-parameter cousin is <span class="term" data-term="temperature-scaling">temperature scaling</span>. It fixes overconfidence but not a prior shift, since it can't add a per-class offset; for that you'd add a bias per class (vector scaling).
+    </p>
+
+    <details>
+      <summary>Code: prior correction and calibration</summary>
+<pre><code>import numpy as np
+from scipy.special import logit, expit
+
+def correct_prior(p_train, pi_train, pi_true):
+    return expit(logit(p_train) + logit(pi_true) - logit(pi_train))
+
+correct_prior(0.8, 0.5, 0.01)   # -> 0.0388
+
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+from sklearn.metrics import brier_score_loss
+
+# Option 1: wrap and calibrate with internal CV (calibration folds keep true prior
+# as long as resampling lives inside the base estimator's pipeline)
+cal = CalibratedClassifierCV(pipe, method="sigmoid", cv=5).fit(X_train, y_train)
+
+# Option 2: prefit model + separate untouched calibration set
+from sklearn.frozen import FrozenEstimator        # sklearn >= 1.6
+cal = CalibratedClassifierCV(FrozenEstimator(model), method="isotonic").fit(X_cal, y_cal)
+
+p = cal.predict_proba(X_test)[:, 1]
+print("Brier", brier_score_loss(y_test, p))
+frac_pos, mean_pred = calibration_curve(y_test, p, n_bins=10, strategy="quantile")</code></pre>
+      <p>
+        <span class="term" data-term="calibratedclassifiercv">CalibratedClassifierCV</span> with <code>method="sigmoid"</code> is Platt; <code>"isotonic"</code> is isotonic. <span class="term" data-term="frozenestimator">FrozenEstimator</span> replaced the old <code>cv="prefit"</code> option. <span class="term" data-term="calibration-curve">calibration_curve</span> returns the points of a reliability diagram; use <code>strategy="quantile"</code> on imbalanced data, otherwise most bins near 1 are empty.
+      </p>
+    </details>
+
+    <div class="mcq-box" id="mcq-5" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>Spot the bug. A colleague's pipeline: (1) SMOTE the whole training set up to 50:50; (2) hold out 20% of that SMOTEd set as a calibration set; (3) train gradient boosting on the other 80%; (4) fit isotonic regression on the calibration set; (5) report calibrated probabilities on the untouched test set. The test-set probabilities still come out far too high. Why?</p>
+      <label class="mcq-option"><input type="radio" name="q5" value="A" data-explain="Platt would be a better choice with few positives, but switching methods doesn't fix the real problem. A Platt map fitted on 50:50 data would learn the 50:50 prior just as faithfully.">A) Isotonic regression always overestimates; Platt scaling would have fixed it.</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="B" data-explain="Gradient boosting is often miscalibrated, but that is exactly what step 4 is meant to repair. The calibrator can only repair it toward whatever balance its own data has.">B) Gradient boosting can't be calibrated; use logistic regression instead.</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="C" data-explain="Right. The calibration set was carved out after SMOTE, so it is 50:50 and half of its positives are synthetic. Isotonic learns to map scores to the frequencies in that set, which means a 50% prior. Calibration data must be real, untouched and at the production balance. There is also leakage: synthetic calibration rows were interpolated from training positives.">C) The calibration set was cut from SMOTEd data, so it has a 50:50 balance and synthetic rows; the calibrator learned the wrong prior.</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="D" data-explain="The test set is the one part done right: untouched, real balance. Probabilities look too high on it precisely because it reflects reality.">D) The test set should also have been SMOTEd so it matches the training balance.</label>
+      <button class="btn" onclick="checkMCQ('mcq-5')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <h2 id="s-check">4. Checking calibration: reliability diagrams and Brier score</h2>
+    <p>
+      Check the result with a <span class="term" data-term="reliability-diagram">reliability diagram</span> and the <span class="term" data-term="brier">Brier score</span>, not with AUC. Calibration doesn't change ranking, so AUC won't move.
+    </p>
+    <p>
+      A reliability diagram groups predictions into bins, then plots the average predicted probability in each bin (x) against the fraction that were actually positive (y). A calibrated model sits on the diagonal. A model trained at 50:50 and deployed at 1% sits far below it: it says 0.5 where the truth is 0.01. On imbalanced data most points crowd into the bottom-left corner, which is fine and expected, since most transactions are low risk.
+    </p>
+    <p>
+      The Brier score is the mean squared error of the probabilities:
+    </p>
+    <div class="math-block">
+      $$\text{Brier} = \frac{1}{n}\sum_{i=1}^{n} (p_i - y_i)^2$$
+    </div>
+    <div class="worked">
+      <p>Baseline first: predict 1% for every transaction, no model at all.</p>
+      <p>Each of the 100 frauds contributes $(0.01 - 1)^2 = 0.9801$, total $98.01$.</p>
+      <p>Each of the 9,900 legit transactions contributes $(0.01 - 0)^2 = 0.0001$, total $0.99$.</p>
+      <p>Brier $= (98.01 + 0.99)/10{,}000 = 99/10{,}000 = 0.0099$. That's $\pi(1-\pi)$, and it's the number any model must beat.</p>
+      <p>Now one transaction where our 50:50-trained model says 0.8 and it turns out legit. Raw: $(0.8 - 0)^2 = 0.64$. Corrected to 0.039: $(0.039 - 0)^2 = 0.0015$. The raw model pays 400 times as much for that one row.</p>
+    </div>
+    <p>
+      Brier is a <span class="term" data-term="proper-scoring">proper scoring rule</span>, so honest probabilities minimise it, and it rewards both ranking and calibration. <span class="term" data-term="log-loss">Log loss</span> is the other common one; it punishes confident mistakes much harder. People sometimes also quote <span class="term" data-term="ece">expected calibration error</span>, which is just the weighted gap between the dots and the diagonal.
+    </p>
+
+    <div class="interactive-card" id="w-rel">
+      <div class="widget-label">Widget 2</div>
+      <h3>Reliability diagram and Brier score, bin by bin</h3>
+      <p>
+        The 10,000 transactions are grouped into five score bins, A (lowest risk) to E (highest). The observed fraud rates are fixed: 20 of 8,000, 15 of 1,500, 20 of 400, 21 of 70, 24 of 30, which adds up to our 100 frauds. Pick which set of predictions to score.
+      </p>
+      <div class="control-row">
+        <label for="rel-model">Predictions</label>
+        <select id="rel-model">
+          <option value="raw" selected>Raw model trained at 50:50</option>
+          <option value="half">Corrected with the wrong prior ($\pi'$ = 0.1)</option>
+          <option value="fix">Prior-corrected ($\pi'$ = 0.5 to $\pi$ = 0.01)</option>
+          <option value="const">No model: 1% for everyone</option>
+        </select>
+      </div>
+      <svg class="diagram-svg" id="rel-svg" viewBox="0 0 340 330" style="max-width:420px;" role="img" aria-label="Reliability diagram"></svg>
+      <p style="font-size:0.85em;">Dashed line: perfect calibration. Black squares joined by a solid line: the chosen predictions, labelled by bin.</p>
+      <div class="table-wrap" id="rel-table"></div>
+      <div class="readout" id="rel-out"></div>
+    </div>
+
+    <p>
+      Two things to notice in the widget. First, the raw model's Brier score (0.102) is about ten times worse than predicting 1% for everyone (0.0099), even though it ranks transactions well. Second, the AUC is 0.857 for the raw model, the wrongly corrected one and the properly corrected one. That's the next point.
+    </p>
+
+    <h3>Why calibration doesn't change AUC</h3>
+    <p>
+      <span class="term" data-term="roc-auc">ROC-AUC</span> is the probability that a random fraud scores higher than a random legit transaction. It only looks at order. Prior-shift correction subtracts the same constant from every logit, and Platt scaling with $a &gt; 0$ is a strictly increasing function, so the order of every pair is unchanged and AUC is identical to the last decimal. The same goes for <span class="term" data-term="pr-auc">PR-AUC</span>, since precision and recall at each cut depend only on which transactions are above it.
+    </p>
+    <p>
+      Isotonic regression is the one exception, and a small one: its step function maps a range of scores to the same value, creating ties. Ties count as half, so AUC usually drops a little (often in the third decimal). If you see a big AUC change after calibrating, something else changed too.
+    </p>
+
+    <div class="mcq-box" id="mcq-6" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>Four transactions. Predicted probabilities and outcomes: 0.9 (fraud), 0.2 (legit), 0.1 (legit), 0.6 (fraud). What is the Brier score?</p>
+      <label class="mcq-option"><input type="radio" name="q6" value="A" data-explain="Correct. Squared errors: $(0.9-1)^2 = 0.01$, $(0.2-0)^2 = 0.04$, $(0.1-0)^2 = 0.01$, $(0.6-1)^2 = 0.16$. Sum $0.22$, divided by 4 gives $0.055$.">A) 0.055</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="B" data-explain="0.22 is the sum of squared errors. Brier is the mean, so divide by the 4 transactions: 0.055.">B) 0.22</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="C" data-explain="0.2 is the mean absolute error: $(0.1 + 0.2 + 0.1 + 0.4)/4$. Brier squares the errors, which shrinks small ones and makes the 0.4 miss count most.">C) 0.20</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="D" data-explain="$1 - 0.055 = 0.945$. Brier is an error, lower is better, and it is not usually reported as one minus anything. (A related Brier skill score compares against a baseline like the 0.0099 constant-1% model.)">D) 0.945</label>
+      <button class="btn" onclick="checkMCQ('mcq-6')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-7" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>After fitting Platt scaling on an untouched calibration set, test ROC-AUC is 0.912 before and 0.912 after. Brier went from 0.130 to 0.008. A colleague says calibration "did nothing, AUC didn't budge". Who's right?</p>
+      <label class="mcq-option"><input type="radio" name="q7" value="A" data-explain="This treats AUC as the measure of everything. AUC can't see calibration at all, so an unchanged AUC is the expected outcome, not evidence that nothing improved.">A) The colleague: if AUC is unchanged, the probabilities can't have improved.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="B" data-explain="Correct. A fitted Platt map with $a$ greater than 0 is strictly increasing, so every pair keeps its order and AUC is exactly the same. The 16-fold drop in Brier shows the probabilities themselves got much closer to the truth.">B) Neither AUC nor ranking should move; the Brier drop shows the probabilities got far better.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="C" data-explain="Calibration is never expected to raise AUC. A monotone map can't reorder anything. If AUC had gone up noticeably, I'd suspect the calibration data leaked into the test set.">C) Something is broken: Platt scaling should have raised the AUC.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="D" data-explain="Lower Brier is better. A drop from 0.130 to 0.008 is an improvement, and 0.008 is now below the constant-prior baseline of about 0.0099 at a 1% rate.">D) The Brier change means calibration made things worse, since Brier should go up.</label>
+      <button class="btn" onclick="checkMCQ('mcq-7')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <h2 id="s-other">5. Other angles</h2>
+
+    <h3 id="s-anomaly">Treat it as anomaly detection</h3>
+    <p>
+      When positives are extremely rare (dozens in millions), or when new kinds of positives keep appearing that look nothing like the old ones, a supervised classifier has little to learn from. Modelling "normal" and flagging deviations can work better: <span class="term" data-term="isolation-forest">Isolation Forest</span>, <span class="term" data-term="one-class-svm">one-class SVM</span>, <span class="term" data-term="autoencoder">autoencoder</span> reconstruction error, or plain density estimates. These won't beat a supervised model on the fraud patterns you've labelled, but they can catch the ones you haven't. In fraud teams it's common to run both and send the union to review.
+    </p>
+
+    <h3 id="s-more">Get more minority data</h3>
+    <p>
+      Boring and usually the biggest win. Some ways: extend the time window, pull in related labelled datasets, mine your false negatives (<span class="term" data-term="label-mining">the cases that were caught later by other means</span>), and use <span class="term" data-term="active-learning">active learning</span> to send the most uncertain unlabelled cases to annotators. An extra 200 real positives is worth more than 10,000 synthetic ones.
+    </p>
+    <p>
+      Active learning is cheap to try. With 1% fraud, a random sample of 1,000 transactions sent to annotators yields about 10 frauds. A batch picked from the scores near your threshold might be 10% to 30% fraud, so the same labelling budget buys ten times the positives, and the ones it finds are the confusing cases the model most needs.
+    </p>
+
+    <h3>Data augmentation</h3>
+    <p>
+      For images, audio and text, domain-aware <span class="term" data-term="augmentation">augmentation</span> (crops, flips, noise, pitch shift, <span class="term" data-term="back-translation">back-translation</span>, paraphrasing with an LLM) applied to the minority class is a much better version of oversampling than SMOTE, because the augmented examples stay on the <span class="term" data-term="data-manifold">data manifold</span>. Augment only training data, same rule as before.
+    </p>
+
+    <h3 id="s-twostage">Two-stage models</h3>
+    <p>
+      Use a cheap high-recall first stage to throw out the obvious negatives (say 95% of traffic), then train a second, more expensive model on what's left. The second stage sees a much less skewed problem: if stage one keeps 95 of 100 frauds and 500 of 9,900 legit, stage two works at $95/595 \approx 16\%$ positives instead of 1%. Search ranking and ad systems are built this way (a <span class="term" data-term="two-stage">cascade</span>). The cost is two models to maintain, and stage one's misses can never be recovered.
+    </p>
+
+    <div class="interactive-card" id="w-two">
+      <div class="widget-label">Widget 3</div>
+      <h3>Two-stage model calculator</h3>
+      <div class="control-row">
+        <label for="ts-fraud">Frauds stage one keeps (of 100)</label>
+        <input type="range" id="ts-fraud" min="50" max="100" step="1" value="95">
+        <span class="val" id="ts-fraud-val">95</span>
+      </div>
+      <div class="control-row">
+        <label for="ts-legit">Legit stage one keeps (of 9,900)</label>
+        <input type="range" id="ts-legit" min="50" max="5000" step="50" value="500">
+        <span class="val" id="ts-legit-val">500</span>
+      </div>
+      <div class="control-row">
+        <label for="ts-rec">Stage two recall on what it sees</label>
+        <input type="range" id="ts-rec" min="50" max="100" step="1" value="85">
+        <span class="val" id="ts-rec-val">85%</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Stage-two positive rate</div><div class="v" id="ts-rate"></div></div>
+        <div class="stat"><div class="k">Lost forever</div><div class="v" id="ts-lost"></div></div>
+        <div class="stat"><div class="k">Overall recall</div><div class="v" id="ts-overall"></div></div>
+      </div>
+      <div class="readout" id="ts-out"></div>
+    </div>
+
+    <h3>Reframe the label</h3>
+    <p>
+      Sometimes the rare class can be decomposed or merged. Predicting "<span class="term" data-term="chargeback">chargeback</span> within 90 days" might be rarer and noisier than predicting a precursor event that's more common. Grouping a dozen rare intents into an "other" class and handling it separately is another version of the same idea.
+    </p>
+
+    <div class="mcq-box" id="mcq-8" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>Your features are 768-dimensional <span class="term" data-term="sentence-embedding">sentence embeddings</span> and you have 60 positive examples of a rare complaint type. Which plan makes most sense first?</p>
+      <label class="mcq-option"><input type="radio" name="q8" value="A" data-explain="SMOTE in 768 dimensions interpolates through mostly empty space; nearest neighbours aren't very meaningful there. It's the weakest option on this list.">A) SMOTE the positives up to 50:50 and retrain.</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="B" data-explain="Correct. A weighted linear model is a strong cheap baseline, a tuned threshold costs nothing, and more real positives (active learning, paraphrasing the 60 you have) attacks the actual bottleneck.">B) Class-weighted logistic regression with a tuned threshold, plus active learning or text augmentation to get more positives.</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="C" data-explain="Undersampling to 60:60 throws away nearly all your negatives and leaves you with 120 training rows.">C) Undersample negatives to 60 to make it balanced.</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="D" data-explain="Accuracy will be near 100% for any model that predicts not-this-complaint, so it can't tell you whether anything worked. See <a href='imbalance-1-metrics.html'>part 1</a>.">D) Train as-is and judge by accuracy.</label>
+      <button class="btn" onclick="checkMCQ('mcq-8')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-9" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>A different stage one keeps 90 of the 100 frauds and 900 of the 9,900 legit transactions. What positive rate does stage two train on, and what is the best overall recall the system can ever reach?</p>
+      <label class="mcq-option"><input type="radio" name="q9" value="A" data-explain="$90/900 = 10\%$ uses only the legit count as the denominator. The rate is frauds over everything stage two sees: $90/(90+900)$. And no stage two can recover the 10 frauds already dropped, so 100% is impossible.">A) 10%, and up to 100% recall</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="B" data-explain="The rate is right ($90/990 = 9.1\%$), but stage two never sees the 10 frauds stage one dropped. However good it is, the ceiling is 90 of 100.">B) 9.1%, and up to 100% recall</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="C" data-explain="$90/9{,}900 \approx 0.9\%$ divides by the original legit count, not by what passed stage one. Stage two only sees 990 transactions.">C) 0.9%, and up to 90% recall</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="D" data-explain="Correct. Stage two sees $90 + 900 = 990$ transactions, of which $90/990 = 9.1\%$ are fraud (down from 99:1 to 10:1). The 10 frauds dropped by stage one are gone for good, so recall tops out at 90%.">D) 9.1%, and at most 90% recall</label>
+      <button class="btn" onclick="checkMCQ('mcq-9')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-10" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>Your supervised fraud model does well on known patterns. But fraudsters switch tactics every few weeks, and labels (chargebacks) arrive about 90 days late, so each new pattern runs for months before the model sees a single labelled example. What would you add?</p>
+      <label class="mcq-option"><input type="radio" name="q10" value="A" data-explain="Correct. An anomaly detector models normal behaviour, so it can flag a new tactic without any labels for it. It won't match the supervised model on known fraud, which is why you keep both and send the union to review.">A) An unsupervised anomaly detector, such as an <span class='term' data-term='isolation-forest'>Isolation Forest</span>, alongside the supervised model, sending the union of both alerts to review.</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="B" data-explain="SMOTE only interpolates between frauds you already have. It can't invent a tactic nobody has labelled yet.">B) More aggressive SMOTE so the model has more fraud examples to learn from.</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="C" data-explain="A bigger weight on the known positives makes the model chase known patterns harder. New, unlabelled patterns still look like legit traffic to it.">C) Raise the fraud class weight to 1,000.</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="D" data-explain="Replacing the supervised model throws away its advantage on the patterns you have labels for. Anomaly detectors are a complement here, not a substitute.">D) Replace the supervised model with an autoencoder, since anomaly detection handles new patterns.</label>
+      <button class="btn" onclick="checkMCQ('mcq-10')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 6 -->
+    <h2 id="s-checklist">6. Order of operations</h2>
+
+    <p>This is roughly the order I go in on a new imbalanced problem, and it doubles as a map of the series. Most projects stop somewhere around step 5.</p>
+
+    <ol class="checklist">
+      <li><strong>Decide what a mistake costs.</strong> Even rough numbers ("a miss is about 40 times worse than a false alarm") or a constraint ("we can review 300 cases a day") settle most later arguments. <a href="imbalance-3-thresholds.html">Part 3</a>.</li>
+      <li><strong>Set up honest evaluation.</strong> <span class="term" data-term="stratified">Stratified</span> (or time-based) splits, a test set with the production class balance, and metrics that see the minority class: PR-AUC, recall at your operating point, precision, <span class="term" data-term="mcc">MCC</span>. Put the always-majority baseline in the results table. <a href="imbalance-2-evaluation.html#s-stratify">Part 2</a> for splits, <a href="imbalance-1-metrics.html#s-metrics">part 1</a> for metrics.</li>
+      <li><strong>Train a plain strong model with no tricks.</strong> Gradient boosting for tabular, a pretrained backbone for images/text. Look at PR-AUC. Ranking quality is fixed at this point; everything else is about where you cut. <a href="imbalance-1-metrics.html#s-curves">Part 1: PR-AUC vs ROC-AUC</a>.</li>
+      <li><strong>Tune the threshold</strong> on validation data, from costs, a recall target, or a review budget. Often this alone solves the problem people were blaming on imbalance. <a href="imbalance-3-thresholds.html">Part 3</a>.</li>
+      <li><strong>Try class weights</strong> (or <span class="term" data-term="scale-pos-weight">scale_pos_weight</span>), searching a few values below and at the full ratio. Re-tune the threshold each time. <a href="imbalance-4-weights.html">Part 4</a>.</li>
+      <li><strong>Try focal loss</strong> if you're training a deep model with masses of easy negatives. <a href="imbalance-4-weights.html#s-focal">Part 4: focal loss</a>.</li>
+      <li><strong>Try resampling</strong> (undersampling for speed, SMOTE variants for low-dimensional numeric data, a balanced ensemble) inside the CV pipeline. Keep it only if it beats step 5 on validation. <a href="imbalance-5-resampling.html">Part 5</a>, and <a href="imbalance-2-evaluation.html#s-leakage">part 2 on leakage</a>.</li>
+      <li><strong>Fix probabilities</strong> if anything downstream needs them: prior-shift correction, then Platt or isotonic on untouched data. Check with a reliability diagram. <a href="#s-prior">This page, sections 2 to 4</a>.</li>
+      <li><strong>Get more positives.</strong> Really this belongs in parallel with everything above. Label mining, active learning, augmentation. <a href="#s-more">Section 5</a>.</li>
+      <li><strong>Consider reframing</strong>: anomaly detection for unseen patterns, two-stage models for extreme skew, or a different label. <a href="#s-anomaly">Section 5</a>.</li>
+    </ol>
+
+    <div class="interactive-card" id="w-fix">
+      <div class="widget-label">Widget 4</div>
+      <h3>Which fix first?</h3>
+      <p>Answer for your own project, top to bottom. The box at the bottom points at the first step you haven't done.</p>
+      <div class="wf-row">
+        <label for="wf-1">1. Can you put a rough cost on a miss vs a false alarm, or do you have a fixed review budget?</label>
+        <select id="wf-1"><option value="">Choose...</option><option value="y">Yes</option><option value="n">No</option></select>
+      </div>
+      <div class="wf-row">
+        <label for="wf-2">2. Is your test set at the production balance, split stratified or by time, with any resampling only inside training folds?</label>
+        <select id="wf-2"><option value="">Choose...</option><option value="y">Yes</option><option value="n">No / not sure</option></select>
+      </div>
+      <div class="wf-row">
+        <label for="wf-3">3. How does a plain model's PR-AUC compare with the base rate?</label>
+        <select id="wf-3"><option value="">Choose...</option><option value="well">Well above it</option><option value="close">Barely above it</option><option value="unk">Haven't measured</option></select>
+      </div>
+      <div class="wf-row">
+        <label for="wf-4">4. Have you tuned the threshold on validation data?</label>
+        <select id="wf-4"><option value="">Choose...</option><option value="y">Yes</option><option value="n">No, still using 0.5</option></select>
+      </div>
+      <div class="wf-row">
+        <label for="wf-5">5. At that threshold, are recall and precision good enough for the business?</label>
+        <select id="wf-5"><option value="">Choose...</option><option value="y">Yes</option><option value="n">No</option></select>
+      </div>
+      <div class="wf-row">
+        <label for="wf-6">6. Does anything downstream use the scores as probabilities, and did you train with resampling, weights or focal loss?</label>
+        <select id="wf-6"><option value="">Choose...</option><option value="y">Yes to both</option><option value="n">No</option></select>
+      </div>
+      <div class="readout" id="wf-out"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-11" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>A team has a sound evaluation setup and a plain gradient boosting model with PR-AUC 0.45 (base rate 1%). At the default threshold of 0.5 it catches only 20 of 100 frauds. They're about to spend a week trying SMOTE variants. What would you do first?</p>
+      <label class="mcq-option"><input type="radio" name="q11" value="A" data-explain="SMOTE might help a little, but it is step 7 for a reason. It costs a week, adds leakage risk, and the low recall is most likely a threshold problem, which costs minutes to check.">A) Go ahead with SMOTE; low recall means the model needs more positive examples.</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="B" data-explain="Calibration fixes the probability values, not the decisions. With the threshold still at 0.5, a calibrated model at a 1% base rate would flag even fewer transactions, since few true probabilities exceed 0.5.">B) Calibrate the probabilities with isotonic regression.</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="C" data-explain="Focal loss is meant for deep models swamped by easy negatives. It is a training-time change for a different situation, and still leaves the threshold untouched.">C) Switch to focal loss.</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="D" data-explain="Correct. A PR-AUC of 0.45 is 45 times the base rate, so the ranking is decent. Recall of 20% at 0.5 suggests the cut is in the wrong place. Pick the threshold from costs or a review budget on validation data and see where recall lands before touching the training data.">D) Tune the threshold on validation data from the costs or a review budget.</label>
+      <button class="btn" onclick="checkMCQ('mcq-11')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <p>
+      One last opinion. "Imbalance" is often blamed for problems that are really about weak features or too few positives in absolute terms. 100 positives at 1% and 100 positives at 0.01% are harder for very different reasons; the second has the same amount of signal but far more chances for false alarms. If PR-AUC from step 3 is close to the base rate, no rebalancing trick will save you, and the next hour is better spent on features or labels.
+    </p>
+
+    <div class="mcq-box" id="mcq-12" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>Your plain model's PR-AUC on a stratified validation set is 0.012. The base rate is 1%. What's the best use of the next day?</p>
+      <label class="mcq-option"><input type="radio" name="q12" value="A" data-explain="Rebalancing changes where the model puts its effort, not what information the features contain. With PR-AUC barely above a random scorer, there is little ranking signal for SMOTE or weights to amplify.">A) Combine SMOTE with balanced class weights to force the model to focus on fraud.</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="B" data-explain="Moving the threshold trades precision against recall along the same curve. If the curve is near the random baseline everywhere, every threshold is bad.">B) Lower the threshold to 0.01 so more frauds get caught.</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="C" data-explain="Correct. A random scorer gets PR-AUC equal to the base rate, 0.01. A score of 0.012 means the model has almost no signal. That is a features or labels problem: better features, cleaner labels, more positives. No rebalancing trick creates signal that isn't there.">C) Work on features and label quality; the model barely beats random ranking.</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="D" data-explain="Calibration rescales probabilities but can't improve ranking. A calibrated useless model just gives honest, nearly constant probabilities near 1%.">D) Calibrate with Platt scaling so the probabilities become meaningful.</label>
+      <button class="btn" onclick="checkMCQ('mcq-12')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <details id="s-refs">
+      <summary>References and further reading</summary>
+      <ul>
+        <li>Chawla et al., 2002. SMOTE: Synthetic Minority Over-sampling Technique. JAIR.</li>
+        <li>Lin et al., 2017. Focal Loss for Dense Object Detection. ICCV.</li>
+        <li>Saito and Rehmsmeier, 2015. The Precision-Recall Plot Is More Informative than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets. PLoS ONE.</li>
+        <li>Chicco and Jurman, 2020. The advantages of the Matthews correlation coefficient over F1 score and accuracy. BMC Genomics.</li>
+        <li>Dal Pozzolo, Caelen, Johnson and Bontempi, 2015. Calibrating Probability with Undersampling for Unbalanced Classification. IEEE SSCI.</li>
+        <li>Liu, Wu and Zhou, 2009. Exploratory Undersampling for Class-Imbalance Learning (EasyEnsemble).</li>
+        <li>Elor and Averbuch-Elor, 2022. To SMOTE, or not to SMOTE?</li>
+        <li>Elkan, 2001. The Foundations of Cost-Sensitive Learning. IJCAI.</li>
+        <li>Platt, 1999. Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods.</li>
+        <li>Zadrozny and Elkan, 2002. Transforming Classifier Scores into Accurate Multiclass Probability Estimates. KDD (isotonic calibration).</li>
+        <li>Niculescu-Mizil and Caruana, 2005. Predicting Good Probabilities With Supervised Learning. ICML.</li>
+        <li>Guo, Pleiss, Sun and Weinberger, 2017. On Calibration of Modern Neural Networks. ICML (temperature scaling).</li>
+        <li>Liu, Ting and Zhou, 2008. Isolation Forest. ICDM.</li>
+        <li>imbalanced-learn documentation: imbalanced-learn.org</li>
+      </ul>
+    </details>
+
+    <div class="score-box" id="mcq-score"></div>
+
+    <div class="prev-next" id="prev-next"></div>
+  </main>
+
+  <!-- POPOVER (keep exactly) -->
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box" role="dialog" aria-modal="true">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()" aria-label="Close">&times;</button>
+    </div>
+    <button id="popover-back">&larr; Back</button>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    var glossary = {
+      'prior-shift': {
+        title: 'Prior-shift correction',
+        body: 'Undoing the effect of training at one class balance and deploying at another, by adding $\\text{logit}(\\pi) - \\text{logit}(\\pi\')$ to the model\'s log-odds. It is exact only when the classes look the same in both settings and only their frequencies differ (the label-shift assumption). At 50:50 training and 1% reality the shift is $-4.595$, so odds drop by a factor of 99. Also used when the deployment base rate drifts, for example fraud rising in December.',
+        more: { href: '#s-prior', label: 'Worked example on this page' }
+      },
+      'sigmoid': {
+        title: 'Sigmoid',
+        body: '$\\sigma(z) = 1/(1+e^{-z})$, the inverse of the <span class="term" data-term="logit">logit</span>. It turns log-odds back into a probability. A few values worth remembering: $\\sigma(0) = 0.5$, $\\sigma(-3.209) \\approx 0.039$, $\\sigma(-4.595) = 0.01$.'
+      },
+      'platt': {
+        title: 'Platt scaling',
+        body: 'Calibration by fitting a 1-D logistic regression $\\sigma(a s + b)$ on the model\'s score $s$, using held-out data. Two parameters, so it needs little data, but it can only fix S-shaped distortions. John Platt proposed it in 1999 to turn SVM margins into probabilities. The intercept $b$ can absorb a <span class="term" data-term="prior-shift">prior shift</span> on its own.',
+        more: { href: '#s-calib', label: 'Platt absorbing the prior shift' }
+      },
+      'isotonic': {
+        title: 'Isotonic regression',
+        body: 'Calibration by fitting a non-decreasing step function from score to probability on held-out data (the pool-adjacent-violators algorithm). Handles any monotone distortion but overfits when positives are few (rule of thumb: want at least a thousand or so calibration examples, and a decent number of positives). Because it flattens score ranges into steps, it creates ties, which can nudge AUC down slightly.'
+      },
+      'reliability-diagram': {
+        title: 'Reliability diagram',
+        body: 'A plot of mean predicted probability (x) against observed positive rate (y), one point per bin of predictions. Perfect calibration is the diagonal. Points below the diagonal mean the model is overconfident about positives, which is what training at 50:50 does. On rare-class data, use quantile bins so each point rests on a reasonable number of rows.',
+        more: { href: '#w-rel', label: 'Widget 2 draws one' }
+      },
+      'brier': {
+        title: 'Brier score',
+        body: 'Mean of $(p_i - y_i)^2$ over all cases. Lower is better; 0 is perfect. On imbalanced data the raw number looks tiny for everyone, so always compare with the constant-prior baseline $\\pi(1-\\pi)$, which is $0.0099$ at 1% fraud. Glenn Brier introduced it in 1950 for weather forecasts. In sklearn: <code>brier_score_loss</code>.'
+      },
+      'log-loss': {
+        title: 'Log loss (cross-entropy)',
+        body: 'Mean of $-[y\\ln p + (1-y)\\ln(1-p)]$. Like Brier it is a <span class="term" data-term="proper-scoring">proper scoring rule</span>, but it is unbounded: predicting $0.001$ for a real fraud costs $-\\ln 0.001 = 6.9$, while Brier caps that row at about 1. It is what most classifiers are trained on, which is why training on the wrong prior gives the wrong probabilities.'
+      },
+      'proper-scoring': {
+        title: 'Proper scoring rule',
+        body: 'A score for probabilistic forecasts whose expected value is best when you report your true belief. Brier and log loss are proper. Accuracy and F1 at a threshold are not: you can often improve them by distorting probabilities. That is why calibration is judged with proper scores.'
+      },
+      'ece': {
+        title: 'Expected calibration error (ECE)',
+        body: 'The weighted average gap between predicted and observed rates across reliability-diagram bins: $\\sum_b \\frac{n_b}{n}|\\bar p_b - \\bar y_b|$. Easy to read, but it depends on the binning and can be gamed, so I treat it as a summary of the diagram, not a replacement for Brier.'
+      },
+      'calibratedclassifiercv': {
+        title: 'CalibratedClassifierCV',
+        body: 'sklearn wrapper that fits a calibrator on top of a classifier. <code>method="sigmoid"</code> is Platt, <code>method="isotonic"</code> is isotonic. With <code>cv=5</code> it fits five model and calibrator pairs on different folds and averages them. If resampling is inside the wrapped pipeline, each calibration fold keeps the real class balance.'
+      },
+      'frozenestimator': {
+        title: 'FrozenEstimator',
+        body: 'Added in sklearn 1.6. Wraps an already-trained model so that calling <code>fit</code> on the outer object leaves it alone. Pass it to CalibratedClassifierCV to calibrate a prefit model on a separate calibration set. It replaces the deprecated <code>cv="prefit"</code>.'
+      },
+      'calibration-curve': {
+        title: 'calibration_curve',
+        body: 'sklearn function returning the observed fraction of positives and mean predicted probability per bin, i.e. the points of a <span class="term" data-term="reliability-diagram">reliability diagram</span>. With <code>strategy="uniform"</code> on 1% data, most bins above 0.2 hold a handful of rows; <code>strategy="quantile"</code> gives equal-count bins.'
+      },
+      'dal-pozzolo': {
+        title: 'Dal Pozzolo et al. (2015)',
+        body: 'Andrea Dal Pozzolo and colleagues worked on real card-fraud data with Worldline, and their 2015 paper "Calibrating Probability with Undersampling for Unbalanced Classification" derived $p = \\beta p_s/(\\beta p_s - p_s + 1)$, where $\\beta$ is the fraction of negatives kept. They also showed the corrected probabilities keep the same ranking, so they can be thresholded at the usual cost-based value. Their credit-card dataset on Kaggle (492 frauds in 284,807 transactions) is the standard teaching set for this topic.'
+      },
+      'temperature-scaling': {
+        title: 'Temperature scaling',
+        body: 'Divide a neural network\'s logits by a single learned $T$ before the softmax (Guo et al., 2017). $T$ greater than 1 softens overconfident predictions. One parameter, fitted on validation data, ranking unchanged. It cannot fix a class-prior shift on its own, because that needs a different offset per class.'
+      },
+      'undersampling': {
+        title: 'Random undersampling',
+        body: 'Throwing away majority-class rows until the classes are closer to balanced. Getting to 50:50 here means keeping 100 of 9,900 legit transactions, about 1%. Fast, but the model sees far less data and its probabilities shift by the full prior ratio.',
+        more: { href: 'imbalance-5-resampling.html', label: 'Part 5: resampling' }
+      },
+      'oversampling': {
+        title: 'Random oversampling',
+        body: 'Duplicating minority rows until the classes are closer to balanced. To reach 50:50 here, each of the 100 frauds is copied about 99 times. Same probability shift as undersampling, plus a strong tendency to memorise those exact rows.',
+        more: { href: 'imbalance-5-resampling.html', label: 'Part 5: resampling' }
+      },
+      'balanced-ensemble': {
+        title: 'Balanced ensemble',
+        body: 'Train several models, each on all the positives plus a different random undersample of negatives, and average them (EasyEnsemble, BalancedRandomForest, BalancedBaggingClassifier in imbalanced-learn). Averaging cancels much of the variance undersampling adds. The averaged output still carries the training prior and needs correcting.',
+        more: { href: 'imbalance-5-resampling.html', label: 'Part 5: balanced ensembles' }
+      },
+      'scale-pos-weight': {
+        title: 'scale_pos_weight',
+        body: 'The XGBoost and LightGBM parameter that multiplies the weight of positive rows. The usual starting value is negatives/positives, here $9{,}900/100 = 99$. It shifts the log-odds just like a class weight, so subtract $\\ln(\\text{scale\\_pos\\_weight})$ to correct the probabilities.',
+        more: { href: 'imbalance-4-weights.html', label: 'Part 4: class weights' }
+      },
+      'gradient-boosting': {
+        title: 'Gradient boosting',
+        body: 'An ensemble of shallow decision trees, each fitted to the errors of the ones before (XGBoost, LightGBM, CatBoost). Usually the strongest plain model on tabular data like transactions. Trained with log loss it is often fairly well calibrated, but heavy regularisation, early stopping or weights can push its probabilities away from the truth.'
+      },
+      'isolation-forest': {
+        title: 'Isolation Forest',
+        body: 'An unsupervised anomaly detector (Liu, Ting and Zhou, 2008). It builds random trees that split on random features at random values; unusual points get isolated in fewer splits, so a short average path length means anomalous. Fast and needs no labels. In sklearn: <code>IsolationForest</code>, whose <code>contamination</code> setting is a guess at the anomaly rate.',
+        more: { href: '#s-anomaly', label: 'Anomaly detection on this page' }
+      },
+      'one-class-svm': {
+        title: 'One-class SVM',
+        body: 'Learns a boundary around the normal data (Schoelkopf et al., 2001) and flags points outside it. Works with kernels, so the boundary can be curved, but training scales badly beyond tens of thousands of rows and it is sensitive to feature scaling. I would try an <span class="term" data-term="isolation-forest">Isolation Forest</span> first on tabular data.'
+      },
+      'autoencoder': {
+        title: 'Autoencoder',
+        body: 'A neural network trained to compress its input and reconstruct it. Train it on normal transactions only; at scoring time, a large reconstruction error means the input looks unlike anything it learned. Useful for high-dimensional inputs like sequences or images, where tree-based detectors struggle.'
+      },
+      'active-learning': {
+        title: 'Active learning',
+        body: 'Choosing which unlabelled cases to send to annotators, instead of sampling at random. Uncertainty sampling picks cases with scores near the threshold. At 1% fraud a random 1,000 yields about 10 positives; an uncertainty batch can yield ten times that. Watch out: the labelled set is no longer a random sample, so don\'t use it as a test set.',
+        more: { href: '#s-more', label: 'Getting more positives' }
+      },
+      'label-mining': {
+        title: 'False-negative mining',
+        body: 'Going back through cases the model scored as safe and finding the ones later confirmed positive by other routes: customer complaints, chargebacks, manual audits. These are the model\'s blind spots, so they are worth more per example than random new positives. Also check whether some "negatives" were simply never investigated.'
+      },
+      'augmentation': {
+        title: 'Data augmentation',
+        body: 'Creating new training examples by applying label-preserving changes to real ones: crops and flips for images, noise and pitch shift for audio, <span class="term" data-term="back-translation">back-translation</span> or paraphrasing for text. Unlike <span class="term" data-term="smote">SMOTE</span>, it uses knowledge of the domain about what changes keep the label the same.'
+      },
+      'back-translation': {
+        title: 'Back-translation',
+        body: 'Translate a sentence into another language and back again to get a paraphrase with the same meaning: "my card was charged twice" might come back as "I was billed two times on my card". A cheap way to multiply rare text examples. Check a sample by hand, because some round trips change the meaning.'
+      },
+      'data-manifold': {
+        title: 'Data manifold',
+        body: 'The idea that real data occupies a thin, curved region of feature space rather than filling it. Real photos of cats are a tiny subset of all possible pixel arrays. Interpolating between two real points (as SMOTE does) can land off that region, producing examples that look like nothing real.'
+      },
+      'two-stage': {
+        title: 'Cascade (two-stage model)',
+        body: 'A cheap first model filters most of the traffic and a more expensive second model scores the rest. Viola and Jones used a cascade for face detection in 2001; recommender systems use retrieval followed by ranking. The second stage needs its own <span class="term" data-term="threshold">threshold</span> and its own calibration, since it sees a different base rate.',
+        more: { href: '#w-two', label: 'Widget 3: the arithmetic' }
+      },
+      'chargeback': {
+        title: 'Chargeback',
+        body: 'When a cardholder disputes a transaction and the bank reverses it. Often used as the fraud label, but it arrives weeks or months late, and it mixes real fraud with "friendly fraud" (customers disputing purchases they made). Both problems make it a noisy, delayed label.'
+      },
+      'sentence-embedding': {
+        title: 'Sentence embedding',
+        body: 'A fixed-length vector (here 768 numbers) produced by a pretrained language model to represent a piece of text. Similar meanings land near each other. In 768 dimensions, distances between points tend to bunch together, which makes nearest-neighbour methods like SMOTE unreliable.'
+      },
+      'expected-loss': {
+        title: 'Expected loss',
+        body: 'Probability times cost: block a transaction when $p \\times \\text{cost of a miss}$ exceeds the cost of a false alarm. This only works if $p$ is calibrated. With an uncorrected 50:50 model, $p$ might be 20 times too high, and you would block far too much.',
+        more: { href: 'imbalance-3-thresholds.html', label: 'Part 3: cost-based thresholds' }
+      }
+    };
+
+    // WIDGET 1: prior-shift corrector
+    (function () {
+      var pIn = document.getElementById('ps-p'), trIn = document.getElementById('ps-train'), tuIn = document.getElementById('ps-true');
+      function update() {
+        var p = +pIn.value / 100, pt = +trIn.value, pi = +tuIn.value;
+        document.getElementById('ps-p-val').textContent = p.toFixed(2);
+        var lp = logit(p), lpi = logit(pi), lpt = logit(pt);
+        var z = lp + lpi - lpt, out = sigmoid(z);
+        var a = pi / pt, b = (1 - pi) / (1 - pt);
+        var num = p * a, den = num + (1 - p) * b;
+        document.getElementById('ps-out').innerHTML =
+          'Logit route: logit(' + p.toFixed(2) + ') + logit(' + pi + ') - logit(' + pt + ') = ' + lp.toFixed(3) + ' + (' + lpi.toFixed(3) + ') - (' + lpt.toFixed(3) + ') = ' + z.toFixed(3) + '<br>' +
+          'Probability route: (' + p.toFixed(2) + ' x ' + a.toPrecision(3) + ') / (' + num.toPrecision(3) + ' + ' + (1 - p).toFixed(2) + ' x ' + b.toPrecision(4) + ') = ' + num.toPrecision(3) + ' / ' + den.toPrecision(4) + '<br>' +
+          'Corrected probability: <strong>' + (out < 0.001 ? out.toExponential(2) : out.toFixed(4)) + '</strong> (' + (out * 100).toPrecision(3) + '%), which is ' + (out / pi).toFixed(1) + 'x the base rate.';
+      }
+      pIn.addEventListener('input', update);
+      trIn.addEventListener('change', update);
+      tuIn.addEventListener('change', update);
+      update();
+    })();
+
+    // WIDGET 2: reliability diagram and Brier score
+    (function () {
+      var BINS = [
+        { name: 'A', n: 8000, pos: 20 },
+        { name: 'B', n: 1500, pos: 15 },
+        { name: 'C', n: 400, pos: 20 },
+        { name: 'D', n: 70, pos: 21 },
+        { name: 'E', n: 30, pos: 24 }
+      ];
+      var TOTAL = 10000, POS = 100, NEG = 9900;
+      var L99 = Math.log(99);
+      var sel = document.getElementById('rel-model'), svg = document.getElementById('rel-svg');
+      // raw 50:50 model output per bin = true rate with log-odds shifted up by ln 99
+      function preds(kind) {
+        return BINS.map(function (b) {
+          var r = b.pos / b.n, raw = sigmoid(logit(r) + L99);
+          if (kind === 'raw') { return raw; }
+          if (kind === 'fix') { return sigmoid(logit(raw) + logit(0.01) - logit(0.5)); }
+          if (kind === 'half') { return sigmoid(logit(raw) + logit(0.01) - logit(0.1)); }
+          return 0.01;
+        });
+      }
+      function fq(q) { return q < 0.01 ? q.toFixed(4) : q.toFixed(3); }
+      function auc(q) {
+        // P(score of random fraud > score of random legit) + half of ties
+        var s = 0, i, j;
+        for (i = 0; i < BINS.length; i++) {
+          for (j = 0; j < BINS.length; j++) {
+            var pi = BINS[i].pos, nj = BINS[j].n - BINS[j].pos;
+            if (q[i] > q[j] + 1e-12) { s += pi * nj; }
+            else if (Math.abs(q[i] - q[j]) <= 1e-12) { s += 0.5 * pi * nj; }
+          }
+        }
+        return s / (POS * NEG);
+      }
+      function X(v) { return 40 + v * 280; }
+      function Y(v) { return 300 - v * 280; }
+      function draw(q) {
+        clearSvg(svg);
+        svg.appendChild(svgEl('rect', { x: 40, y: 20, width: 280, height: 280, fill: 'none', stroke: '#000', 'stroke-width': 1.5 }));
+        [0, 0.25, 0.5, 0.75, 1].forEach(function (t) {
+          svg.appendChild(svgEl('line', { x1: X(t), y1: 300, x2: X(t), y2: 305, stroke: '#000' }));
+          svg.appendChild(svgEl('text', { x: X(t), y: 318, 'font-size': 11, 'text-anchor': 'middle' }, String(t)));
+          svg.appendChild(svgEl('line', { x1: 35, y1: Y(t), x2: 40, y2: Y(t), stroke: '#000' }));
+          svg.appendChild(svgEl('text', { x: 32, y: Y(t) + 4, 'font-size': 11, 'text-anchor': 'end' }, String(t)));
+        });
+        svg.appendChild(svgEl('text', { x: 180, y: 330, 'font-size': 11, 'text-anchor': 'middle' }, 'mean predicted probability'));
+        svg.appendChild(svgEl('text', { x: 10, y: 160, 'font-size': 11, 'text-anchor': 'middle', transform: 'rotate(-90 10 160)' }, 'observed fraud rate'));
+        svg.appendChild(svgEl('line', { x1: X(0), y1: Y(0), x2: X(1), y2: Y(1), stroke: '#000', 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }));
+        var pts = BINS.map(function (b, i) { return X(q[i]).toFixed(1) + ',' + Y(b.pos / b.n).toFixed(1); }).join(' ');
+        svg.appendChild(svgEl('polyline', { points: pts, fill: 'none', stroke: '#000', 'stroke-width': 2 }));
+        BINS.forEach(function (b, i) {
+          var x = X(q[i]), y = Y(b.pos / b.n);
+          svg.appendChild(svgEl('rect', { x: x - 4, y: y - 4, width: 8, height: 8, fill: '#000' }));
+          var lx = x + 7, ly = y - 8 - (i % 2) * 12;
+          if (lx > 312) { lx = x - 16; }
+          svg.appendChild(svgEl('text', { x: lx, y: ly, 'font-size': 12, 'font-weight': 'bold' }, b.name));
+        });
+      }
+      function update() {
+        var q = preds(sel.value);
+        draw(q);
+        var rows = '<table class="data-table"><tr><th>Bin</th><th>n</th><th>Frauds</th><th>Predicted</th><th>Observed</th><th class="left">Squared error, summed over the bin</th></tr>';
+        var total = 0, sumP = 0;
+        BINS.forEach(function (b, i) {
+          var r = b.pos / b.n, neg = b.n - b.pos;
+          var c = b.pos * Math.pow(1 - q[i], 2) + neg * q[i] * q[i];
+          total += c; sumP += b.n * q[i];
+          rows += '<tr><td>' + b.name + '</td><td>' + fmtInt(b.n) + '</td><td>' + b.pos + '</td><td>' + fq(q[i]) + '</td><td>' + fq(r) + '</td>' +
+            '<td class="left">' + b.pos + ' x (1 - ' + fq(q[i]) + ')&sup2; + ' + fmtInt(neg) + ' x ' + fq(q[i]) + '&sup2; = ' + fmt(c, 2) + '</td></tr>';
+        });
+        rows += '</table>';
+        document.getElementById('rel-table').innerHTML = rows;
+        var brier = total / TOTAL, a = auc(q);
+        var verdict = brier < 0.0099 ? 'better than' : 'worse than';
+        document.getElementById('rel-out').innerHTML =
+          'Sum of squared errors: ' + fmt(total, 2) + '. Brier = ' + fmt(total, 2) + ' / 10,000 = <strong>' + fmt(brier, 4) + '</strong>, ' +
+          verdict + ' the constant-1% baseline of 0.0099' + (sel.value === 'const' ? ' (this is that baseline)' : '') + '.<br>' +
+          'Sum of predicted probabilities (a forecast of the fraud count): <strong>' + fmtInt(sumP) + '</strong> vs 100 actual.<br>' +
+          'ROC-AUC from the bins (ties count half): <strong>' + fmt(a, 3) + '</strong>.' +
+          (sel.value === 'const' ? ' Everyone gets the same score, so it is a coin flip.' : ' Same for every correction, because each one is a strictly increasing map of the raw score.');
+      }
+      sel.addEventListener('change', update);
+      update();
+    })();
+
+    // WIDGET 3: two-stage model calculator
+    (function () {
+      var fIn = document.getElementById('ts-fraud'), lIn = document.getElementById('ts-legit'), rIn = document.getElementById('ts-rec');
+      function update() {
+        var f = +fIn.value, l = +lIn.value, r2 = +rIn.value / 100;
+        document.getElementById('ts-fraud-val').textContent = f;
+        document.getElementById('ts-legit-val').textContent = fmtInt(l);
+        document.getElementById('ts-rec-val').textContent = Math.round(r2 * 100) + '%';
+        var seen = f + l, rate = f / seen, lost = 100 - f, caught = f * r2, overall = caught / 100;
+        document.getElementById('ts-rate').textContent = fmt(rate * 100, 1) + '%';
+        document.getElementById('ts-lost').textContent = lost + ' fraud' + (lost === 1 ? '' : 's');
+        document.getElementById('ts-overall').textContent = fmt(overall * 100, 1) + '%';
+        document.getElementById('ts-out').innerHTML =
+          'Stage two sees ' + f + ' + ' + fmtInt(l) + ' = ' + fmtInt(seen) + ' transactions, so stage one removed 10,000 - ' + fmtInt(seen) + ' = ' + fmtInt(10000 - seen) + ' (' + fmt((10000 - seen) / 100, 1) + '% of traffic).<br>' +
+          'Stage-two positive rate: ' + f + ' / ' + fmtInt(seen) + ' = ' + fmt(rate * 100, 1) + '%, a ratio of ' + fmt(l / f, 1) + ':1 instead of 99:1.<br>' +
+          'Frauds lost forever: 100 - ' + f + ' = ' + lost + '. Even a perfect stage two tops out at ' + f + '% recall.<br>' +
+          'Stage two catches ' + Math.round(r2 * 100) + '% of ' + f + ' = ' + fmt(caught, 1) + ' frauds. Overall recall = ' + fmt(f / 100, 2) + ' x ' + fmt(r2, 2) + ' = ' + fmt(overall * 100, 1) + '%.<br>' +
+          'If stage two outputs probabilities, they are relative to its own ' + fmt(rate * 100, 1) + '% base rate, which is the right rate for transactions that got through stage one.';
+      }
+      fIn.addEventListener('input', update);
+      lIn.addEventListener('input', update);
+      rIn.addEventListener('input', update);
+      update();
+    })();
+
+    // WIDGET 4: which fix first?
+    (function () {
+      var ids = ['wf-1', 'wf-2', 'wf-3', 'wf-4', 'wf-5', 'wf-6'];
+      var out = document.getElementById('wf-out');
+      function v(i) { return document.getElementById(ids[i]).value; }
+      function update() {
+        var msg;
+        if (v(0) === '') { msg = 'Start with question 1.'; }
+        else if (v(0) === 'n') { msg = 'Step 1: get rough costs or a review budget before anything else. Without them there is no right threshold and no way to compare fixes. See <a href="imbalance-3-thresholds.html">part 3</a>.'; }
+        else if (v(1) === '') { msg = 'Next, question 2.'; }
+        else if (v(1) === 'n') { msg = 'Step 2: fix evaluation first. Every later comparison depends on it. Stratify or split by time, keep the test set at the real balance, and resample only inside training folds. See <a href="imbalance-2-evaluation.html#s-stratify">part 2</a> and <a href="imbalance-1-metrics.html#s-metrics">part 1 on metrics</a>.'; }
+        else if (v(2) === '') { msg = 'Next, question 3.'; }
+        else if (v(2) === 'unk') { msg = 'Step 3: train a plain strong model with no tricks and compare its PR-AUC with the base rate. That number decides whether the rest of the list is worth doing. See <a href="imbalance-1-metrics.html#s-curves">part 1</a>.'; }
+        else if (v(2) === 'close') { msg = 'The model has little signal. Skip the rebalancing tricks: spend the time on features, label quality and getting more real positives (<a href="#s-more">section 5</a>), or reframe the problem (<a href="#s-anomaly">anomaly detection, a different label</a>).'; }
+        else if (v(3) === '') { msg = 'Next, question 4.'; }
+        else if (v(3) === 'n') { msg = 'Step 4: tune the threshold on validation data from your costs or budget. It takes minutes and often fixes what looked like an imbalance problem. See <a href="imbalance-3-thresholds.html">part 3</a>.'; }
+        else if (v(4) === '') { msg = 'Next, question 5.'; }
+        else if (v(4) === 'n') { msg = 'Steps 5 to 7, in order: class weights (<a href="imbalance-4-weights.html">part 4</a>), focal loss if it is a deep model with masses of easy negatives (<a href="imbalance-4-weights.html#s-focal">part 4</a>), then resampling inside the CV pipeline (<a href="imbalance-5-resampling.html">part 5</a>). Re-tune the threshold after each, and get more positives in parallel. Then come back to question 6.'; }
+        else if (v(5) === '') { msg = 'Last one, question 6.'; }
+        else if (v(5) === 'y') { msg = 'Step 8: correct the probabilities. Prior-shift correction if you only changed the balance, Platt or isotonic on untouched real-balance data otherwise, then check with a reliability diagram and Brier score. See <a href="#s-prior">sections 2 to 4</a>.'; }
+        else { msg = 'You are in decent shape. Keep collecting real positives (<a href="#s-more">section 5</a>), and consider an anomaly detector alongside the model if new patterns keep appearing.'; }
+        out.innerHTML = msg;
+      }
+      ids.forEach(function (id) { document.getElementById(id).addEventListener('change', update); });
+      update();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resampling, SMOTE and balanced ensembles | Class Imbalance, Part 5</title>
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="imbalance-style.css">
+  <script src="imbalance-common.js"></script>
+  <style>
+    .legend-row { font-size: 0.9rem; margin: 0.4rem 0; }
+    .btn-small { min-width: 56px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Guides</a>
+        <a href="class-imbalance.html">Series overview</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">Class imbalance &middot; Part 5</span>
+      <span class="tag">Resampling</span>
+    </div>
+
+    <h1>Resampling, SMOTE and balanced ensembles</h1>
+
+    <nav class="series-nav" id="series-nav"></nav>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li>Resampling changes the training data instead of the loss. Most people reach for it first. I'd put it third, after a tuned threshold and class weights.</li>
+        <li>Random undersampling to 1:1 on our data throws away 9,800 of 9,900 legit rows. Partial undersampling is mainly a speed trick.</li>
+        <li>Random oversampling to 1:1 copies every fraud row 99 times. For logistic regression that gives exactly the same objective as a class weight of 99, on a dataset twice the size.</li>
+        <li>SMOTE makes new fraud points on the line between two real ones. It never looks at the majority class, so where the classes overlap it paints fraud labels onto legit territory. It also struggles with one-hot features and high dimensions.</li>
+        <li>Benchmarks with tuned gradient boosting and a tuned threshold find SMOTE adds little. It has to beat that baseline on your folds before you keep it.</li>
+        <li>Every resampler shifts the training prior, so raw probabilities need correcting (<a href="imbalance-6-probabilities.html">Part 6</a>), and resampling must happen inside the training folds only (<a href="imbalance-2-evaluation.html#s-leakage">Part 2</a>).</li>
+        <li>Balanced ensembles undersample many times. Ten balanced subsets see only about 956 distinct legit rows out of 9,900. You need 227 subsets to see 90% of them.</li>
+      </ul>
+    </div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <ol>
+        <li><a href="#s1">Random under- and oversampling</a></li>
+        <li><a href="#s-smote">SMOTE</a></li>
+        <li><a href="#s-variants">SMOTE variants and cleaning methods</a></li>
+        <li><a href="#s-hurts">When SMOTE hurts, and how to run it safely</a></li>
+        <li><a href="#s-ensembles">Ensembles built for imbalance</a></li>
+        <li><a href="#s-gbm">Gradient boosting with scale_pos_weight</a></li>
+      </ol>
+    </div>
+
+    <p>
+      Same setup as the rest of the series: a card-fraud model trained on 10,000 transactions, 100 of them fraud (1%, a 99:1 ratio). When I say "negatives" I mean the 9,900 legit transactions. If you need the metrics background, <a href="imbalance-1-metrics.html#s1">Part 1</a> covers why accuracy is useless here and what to watch instead.
+    </p>
+
+    <!-- SECTION 1 -->
+    <h2 id="s1">1. Random under- and oversampling</h2>
+
+    <p>
+      Resampling changes the training data instead of the loss. It's the approach most people reach for first, and in my experience it should be about third. The two simplest versions are opposites: delete majority rows, or copy minority rows. Both are one line in <span class="term" data-term="imblearn">imbalanced-learn</span>.
+    </p>
+
+    <h3>Random undersampling</h3>
+    <p>
+      <span class="term" data-term="rus">Random undersampling</span> throws away majority examples until the classes are closer. Going all the way to 100:100 on our data discards 9,800 of 9,900 legit transactions, 99% of your negatives. That's a lot of information about what normal looks like. Partial undersampling (say to 10:1) is more reasonable, and it does have one real advantage: training gets much faster. On a billion-row click log, <span class="term" data-term="negative-downsampling">downsampling negatives</span> is standard practice for that reason alone, followed by a probability correction (<a href="imbalance-6-probabilities.html">Part 6</a>).
+    </p>
+    <div class="worked">
+      <p>Undersample to 10:1. Keep all 100 fraud rows and $100 \times 10 = 1{,}000$ legit rows.</p>
+      <p>Discarded: $9{,}900 - 1{,}000 = 8{,}900$ legit rows, which is $8{,}900 / 9{,}900 = 89.9\%$ of the negatives.</p>
+      <p>Training set: $1{,}000 + 100 = 1{,}100$ rows instead of 10,000, about 9 times fewer. The model now sees fraud at $100 / 1{,}100 = 9.09\%$ instead of 1%.</p>
+    </div>
+
+    <h3>Random oversampling</h3>
+    <p>
+      <span class="term" data-term="ros">Random oversampling</span> duplicates minority examples. To reach 50:50 here, each fraud row appears 99 times. Nothing is lost, but nothing new is added either, and flexible models (deep trees, <span class="term" data-term="knn">k-NN</span>) will memorise those 100 points. For a linear model, oversampling by a factor $r$ is the same as giving the class a <span class="term" data-term="class-weight">weight</span> of $r$, so you may as well use weights and skip the bigger dataset.
+    </p>
+    <div class="worked">
+      <p>Logistic regression minimises a sum of per-row losses $\ell_i$. With every fraud row copied 99 times:</p>
+      <p>$$L_{\text{dup}} = \sum_{\text{legit}} \ell_i + \sum_{\text{fraud}} (\underbrace{\ell_i + \dots + \ell_i}_{99\text{ copies}}) = \sum_{\text{legit}} \ell_i + 99 \sum_{\text{fraud}} \ell_i$$</p>
+      <p>That is term for term the weighted loss with $w_{\text{fraud}} = 99$, $w_{\text{legit}} = 1$. Total mass: $9{,}900 \times 1 + 100 \times 99 = 9{,}900 + 9{,}900$, so the model sees a 50:50 world either way.</p>
+      <p>Rows stored: 19,800 for the duplicated version, 10,000 for the weighted one.</p>
+    </div>
+    <details>
+      <summary>Where "the same" stops being exactly true</summary>
+      <p>The objectives match for full-batch solvers like sklearn's <code>lbfgs</code>, whose objective is $C\sum_i w_i \ell_i$ plus a penalty. They drift apart with minibatch SGD (a batch of duplicates gives a different gradient noise pattern than one weighted row), with <span class="term" data-term="bagging">bagging</span> (a <span class="term" data-term="bootstrap">bootstrap</span> sample can draw several copies of the same fraud row), and with trees that count rows, for example <code>min_samples_leaf=20</code> can be satisfied by 20 copies of one transaction. That last one is how oversampled trees memorise.</p>
+    </details>
+
+    <h3>What <code>sampling_strategy</code> means</h3>
+    <p>
+      In imbalanced-learn, a float <span class="term" data-term="sampling-strategy">sampling_strategy</span> is the minority/majority ratio you want after resampling, not a fraction of rows to keep. <code>RandomUnderSampler(sampling_strategy=0.1)</code> keeps majority rows until $100 / n_{\text{maj}} = 0.1$, so $n_{\text{maj}} = 1{,}000$. <code>RandomOverSampler(sampling_strategy=0.2)</code> adds fraud rows until $n_{\text{min}} / 9{,}900 = 0.2$, so $n_{\text{min}} = 1{,}980$. The calculator below does the bookkeeping, including the shifted <span class="term" data-term="training-prior">training prior</span>.
+    </p>
+
+    <div class="interactive-card" id="w-rcount">
+      <div class="widget-label">Widget 1 (new)</div>
+      <h3>Resampling count calculator</h3>
+      <p>Start from 9,900 legit and 100 fraud. Pick a method and a target ratio $r$ = fraud / legit after resampling.</p>
+      <div class="control-row">
+        <label for="rc-method">Method</label>
+        <select id="rc-method">
+          <option value="rus">Random undersampling</option>
+          <option value="ros">Random oversampling</option>
+          <option value="smote">SMOTE</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="rc-r">sampling_strategy $r$</label>
+        <button class="btn" id="rc-dec">&minus;</button>
+        <input type="range" id="rc-r" min="2" max="100" step="1" value="10">
+        <button class="btn" id="rc-inc">+</button>
+        <span class="val" id="rc-r-val">0.10</span>
+      </div>
+      <svg id="rc-svg" class="diagram-svg" viewBox="0 0 640 210" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="legend-row">Solid black: real rows kept. Dotted outline: legit rows thrown away. Dashed outline with diagonal lines: duplicated or synthetic fraud rows.</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Legit rows</div><div class="v" id="rc-maj"></div></div>
+        <div class="stat"><div class="k">Fraud rows</div><div class="v" id="rc-min"></div></div>
+        <div class="stat"><div class="k">Total</div><div class="v" id="rc-tot"></div></div>
+        <div class="stat"><div class="k">Training prior</div><div class="v" id="rc-prior"></div></div>
+      </div>
+      <div class="readout" id="rc-note"></div>
+    </div>
+
+    <p>
+      Notice that the training prior only depends on $r$, not the method: $\pi' = r / (1 + r)$. At $r = 0.1$ that is $0.1 / 1.1 = 0.0909$ whether you got there by deleting, copying or synthesising. The last line of the readout is a preview of the <a href="imbalance-6-probabilities.html">Part 6</a> correction: a raw score of 0.5 from a model trained at 1:1 means about 1% in the real world.
+    </p>
+
+    <div class="mcq-box" id="mcq-1" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>You run <code>RandomUnderSampler(sampling_strategy=0.25)</code> on the 9,900 legit / 100 fraud training set. How many legit rows are left?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="2,475 is $0.25 \times 9{,}900$, which reads sampling_strategy as the fraction of majority rows to keep. In imbalanced-learn it is the minority/majority ratio after resampling."> A) 2,475</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Right. Solve $100 / n_{maj} = 0.25$: $n_{maj} = 100 / 0.25 = 400$. That discards 9,500 rows (96% of negatives) and the training prior becomes $100 / 500 = 20\%$."> B) 400</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="9,500 is the number thrown away ($9{,}900 - 400$), not the number kept. Easy to mix up when reading the docs quickly."> C) 9,500</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="D" data-explain="25 would be $0.25 \times 100$, applying the ratio to the minority. That would leave fraud outnumbering legit 4 to 1, the imbalance flipped the other way."> D) 25</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-2" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>Version 1: copy every fraud row 99 times and fit sklearn <code>LogisticRegression(C=1.0)</code>. Version 2: original data with <code>class_weight={0: 1, 1: 99}</code>, same C, same solver. How do the fitted coefficients compare?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Right. The objective is $C\sum_i w_i \ell_i$ plus a penalty. Ninety-nine copies of a row add $99\,\ell_i$, exactly what a weight of 99 adds. Same objective, same minimum, up to solver tolerance. Only the dataset size differs (19,800 rows versus 10,000)."> A) The same, up to solver tolerance</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="It feels like a bigger dataset should dilute the penalty, but the data term is the same sum in both versions: 9,900 legit terms plus $99 \times 100$ fraud terms. The balance against the penalty does not move."> B) Version 1 is less regularised because it has more rows</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Both versions shift the intercept, and by the same amount, because both tell the model fraud is half the training mass. The shift is roughly $\ln 99 \approx 4.6$ on the <span class='term' data-term='logit'>logit</span> scale, and Part 6 shows how to remove it."> C) Version 2 has an intercept about $\ln 99$ lower</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="D" data-explain="Memorising duplicates is a real problem for k-NN and deep trees, which can isolate individual rows. A linear model only sees the summed loss, which is identical in both versions."> D) Version 1 overfits more because of the duplicates</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-3" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>A model trained after undersampling to 1:1 gives a transaction a score of 0.5. With the real prior of 1% fraud, roughly what probability does that score correspond to?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="0.5 is the raw score. The model learned in a world where fraud was half of everything, so its 0.5 means even odds in that world, not in production."> A) 0.5</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Halving has no basis. The correction works on odds and scales them by the ratio of real to training odds, which here is about 1/99, not 1/2."> B) 0.25</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Right. Training odds of fraud were 1 (100:100). Real odds are $100/9{,}900 = 0.0101$. Scale the score's odds: $1 \times 0.0101 / 1 = 0.0101$, so $p = 0.0101 / 1.0101 = 0.01$. Details in Part 6."> C) 0.01</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="D" data-explain="$0.5 \times 0.01 = 0.005$ multiplies the probability by the prior. The correct step adjusts the odds by the ratio of real to training odds, which gives 0.01 here."> D) 0.005</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2 id="s-smote">2. SMOTE</h2>
+    <p>
+      <span class="term" data-term="smote">SMOTE</span> (<span class="term" data-term="chawla-2002">Chawla et al., 2002</span>) creates new minority points instead of copying. For each minority point, find its $k$ <span class="term" data-term="knn">nearest minority neighbours</span> (default $k=5$), pick one, and place a new point at a random spot on the line segment between them:
+    </p>
+    <div class="math-block">
+      $$x_{\text{new}} = x_i + \lambda\,(x_{nn} - x_i), \qquad \lambda \sim \text{Uniform}(0, 1)$$
+    </div>
+    <div class="worked">
+      <p>Two fraud points with features (amount z-score, hour-of-day z-score): $x_i = (2.0,\ 3.0)$ and its neighbour $x_{nn} = (4.0,\ 1.0)$.</p>
+      <p>Difference: $x_{nn} - x_i = (2.0,\ -2.0)$.</p>
+      <p>Draw $\lambda = 0.3$: $x_{\text{new}} = (2.0 + 0.3 \times 2.0,\ 3.0 + 0.3 \times (-2.0)) = (2.6,\ 2.4)$.</p>
+      <p>The new point is 30% of the way from $x_i$ to its neighbour. It's plausible only if the space between two fraud cases is also fraud-like, which is the assumption SMOTE quietly makes.</p>
+    </div>
+    <p>
+      To reach a ratio of 0.2 on our data, SMOTE needs $0.2 \times 9{,}900 - 100 = 1{,}880$ new points, so each real fraud row seeds about 18.8 synthetic ones. With so few real points, those 1,880 all live on the segments between the same 100 rows.
+    </p>
+
+    <div class="interactive-card" id="w-smote">
+      <div class="widget-label">Widget 2</div>
+      <h3>SMOTE stepper</h3>
+      <p>Filled circles are minority (fraud), open squares are majority (legit). Pick a seed/neighbour pair and step $\lambda$. With only 5 fraud points, any other fraud point counts as a neighbour for $k = 4$, so A to B is a legal pair even though B is A's farthest. The random button uses $k = 2$.</p>
+      <div class="control-row">
+        <label for="sm-pair">Pair</label>
+        <select id="sm-pair">
+          <option value="0">A to B</option>
+          <option value="1">A to C</option>
+          <option value="2">D to B</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="sm-lam">$\lambda$</label>
+        <button class="btn" id="sm-dec">&minus; 0.1</button>
+        <input type="range" id="sm-lam" min="0" max="100" step="5" value="30">
+        <button class="btn" id="sm-inc">+ 0.1</button>
+        <span class="val" id="sm-lam-val">0.30</span>
+      </div>
+      <svg id="smote-svg" class="diagram-svg" viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="control-row">
+        <button class="btn" id="sm-gen">Generate 10 random synthetic points</button>
+        <button class="btn" id="sm-clear">Clear</button>
+      </div>
+      <div class="readout" id="sm-note"></div>
+    </div>
+
+    <p>
+      Try the A to B pair and push $\lambda$ to 0.5. The synthetic point lands right on top of a legit transaction at (3.0, 2.0). That's the overlap problem in one picture: SMOTE has no idea the majority class exists, so it happily paints minority labels into majority territory.
+    </p>
+
+    <div class="mcq-box" id="mcq-4" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>Seed $x_i = (1.0,\ 1.4)$ (point C in the widget), neighbour $x_{nn} = (2.0,\ 3.0)$ (point A), and SMOTE draws $\lambda = 0.25$. Where does the new point go?</p>
+      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="$(1.75,\ 2.60)$ is $x_{nn} - 0.25(x_{nn} - x_i)$: $\lambda$ measured from the neighbour's end. It is on the segment, but 75% of the way from C, not 25%."> A) (1.75, 2.60)</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="$(0.25,\ 0.40)$ is $\lambda(x_{nn} - x_i)$ on its own. That is the step, not the point. You still have to add it to $x_i$, otherwise you land near the origin, nowhere near either fraud case."> B) (0.25, 0.40)</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="$(1.50,\ 2.20)$ is the midpoint, which is what you get for $\lambda = 0.5$."> C) (1.50, 2.20)</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="D" data-explain="Right. Difference $(2.0 - 1.0,\ 3.0 - 1.4) = (1.0,\ 1.6)$. Times 0.25 gives $(0.25,\ 0.40)$. Add to the seed: $(1.25,\ 1.80)$, a quarter of the way from C toward A."> D) (1.25, 1.80)</label>
+      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-5" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>In the widget, A to B at $\lambda = 0.5$ produces a synthetic fraud point exactly on the legit transaction at (3.0, 2.0). Why doesn't plain SMOTE avoid this?</p>
+      <label class="mcq-option"><input type="radio" name="q5" value="A" data-explain="Right. Both the neighbour search and the interpolation use minority points only. The 12 legit points never enter the calculation, so nothing stops a synthetic point landing on one."> A) Its neighbour search and interpolation only use minority points</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="B" data-explain="$\lambda$ is drawn from Uniform(0, 1), so 0.5 is as likely as any other value. Values near 0.5 are also where a segment strays farthest from both real endpoints."> B) It would, but SMOTE never draws $\lambda = 0.5$ exactly</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="C" data-explain="With 4 other fraud points and $k = 4$, B is a legal neighbour. In real data, being among a point's 5 nearest fraud neighbours tells you nothing about what lies between them."> C) It does avoid it, because B is not one of A's nearest neighbours</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="D" data-explain="Plain SMOTE has no such check. Some later variants look at the majority class, Borderline-SMOTE for choosing seeds, for example, but the original algorithm is blind to it."> D) It does: SMOTE discards points closer to a legit point than a fraud point</label>
+      <button class="btn" onclick="checkMCQ('mcq-5')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 3 -->
+    <h2 id="s-variants">3. SMOTE variants and cleaning methods</h2>
+    <p>
+      Most variants try to fix the "blind to the majority" problem, either by choosing seeds more carefully or by cleaning up afterwards. I'll run each one on the 5 fraud and 12 legit points from the widget, because that toy is deliberately messy and it shows the differences clearly.
+    </p>
+    <ul>
+      <li><span class="term" data-term="borderline-smote">Borderline-SMOTE</span> only oversamples minority points near the decision boundary (those whose neighbourhoods are mostly majority), on the theory that interior points don't need help.</li>
+      <li><span class="term" data-term="adasyn">ADASYN</span> generates more synthetic points around minority examples that are harder to learn, weighted by how many majority neighbours each has. It can amplify noise if your "hard" points are mislabelled.</li>
+      <li><span class="term" data-term="tomek">Tomek links</span> is a cleaning method: find pairs of opposite-class points that are each other's nearest neighbour, and drop the majority one. It sharpens the boundary a little.</li>
+      <li><span class="term" data-term="enn">ENN</span> (Edited Nearest Neighbours) removes points whose class disagrees with their $k$ neighbours. More aggressive than Tomek. <span class="term" data-term="smote-combos">SMOTE+ENN and SMOTE+Tomek</span> combine oversampling with cleaning.</li>
+      <li><span class="term" data-term="smote-nc">SMOTE-NC</span> handles mixed numeric/categorical features by taking the majority category among neighbours instead of interpolating.</li>
+    </ul>
+
+    <h3>The variants on the toy data</h3>
+    <p>For each fraud point, count how many of its 5 nearest neighbours (any class) are legit. Distances are plain Euclidean.</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <tr><th>Fraud point</th><th>Legit among 5 nearest</th><th>Borderline-SMOTE label</th><th>ADASYN $r_i$</th><th>ADASYN points (of 21)</th></tr>
+        <tr><td>A (2.0, 3.0)</td><td>4</td><td>danger: seed</td><td>4/5 = 0.8</td><td>4</td></tr>
+        <tr><td>B (4.0, 1.0)</td><td>5</td><td>noise: skipped</td><td>5/5 = 1.0</td><td>5</td></tr>
+        <tr><td>C (1.0, 1.4)</td><td>4</td><td>danger: seed</td><td>4/5 = 0.8</td><td>4</td></tr>
+        <tr><td>D (4.6, 3.6)</td><td>5</td><td>noise: skipped</td><td>5/5 = 1.0</td><td>5</td></tr>
+        <tr><td>E (2.8, 4.4)</td><td>3</td><td>danger: seed</td><td>3/5 = 0.6</td><td>3</td></tr>
+      </table>
+    </div>
+    <div class="worked">
+      <p><strong>Borderline-SMOTE</strong> with $m = 5$: a point is "danger" if $m/2 \le n_{\text{legit}} &lt; m$, that is 3 or 4 legit neighbours. All 5 legit means "noise", and fewer than 3 means "safe". A, C and E are danger, so they become the seeds. B and D are written off as noise.</p>
+      <p><strong>ADASYN</strong> with $K = 5$: $r_i = n_{\text{legit}} / 5$. The sum is $0.8 + 1.0 + 0.8 + 1.0 + 0.6 = 4.2$. To make $G = 21$ points, point $i$ gets $g_i = 21 \times r_i / 4.2 = 5 r_i$: that's 4, 5, 4, 5, 3.</p>
+      <p>The two methods disagree completely about B and D. Borderline-SMOTE ignores them as noise, and ADASYN gives them the most points because they are the hardest. If B and D are mislabelled legit transactions, ADASYN just spent 10 of its 21 points amplifying label errors.</p>
+    </div>
+    <div class="worked">
+      <p><strong>Tomek links.</strong> Look for opposite-class pairs that are each other's nearest neighbour. There are four: A with (1.6, 2.2) at distance 0.894, B with (5.0, 0.5) at 1.118, D with (4.2, 4.6) at 1.077, and E with (3.4, 3.8) at 0.849. Check one: E's nearest point is (3.4, 3.8) at $\sqrt{0.6^2 + 0.6^2} = 0.849$, and that legit point's nearest is E right back. The default removes only the legit member of each pair, so 4 of the 12 legit points go.</p>
+      <p><strong>ENN</strong> with imbalanced-learn's defaults ($k = 3$, <code>kind_sel="all"</code>) removes a legit point if any one of its 3 nearest neighbours is fraud. On this toy, every one of the 12 legit points has a fraud point among its 3 nearest, so all 12 would go. With the classic majority-vote rule (<code>kind_sel="mode"</code>), only the 5 legit points with 2 or 3 fraud neighbours go. Real data is rarely this overlapped, but the strict default can delete far more than you expect.</p>
+    </div>
+
+    <div class="mcq-box" id="mcq-6" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>Point B has 5 legit points among its 5 nearest neighbours. What does Borderline-SMOTE (with $m = 5$) do with B?</p>
+      <label class="mcq-option"><input type="radio" name="q6" value="A" data-explain="Giving the hardest points the most synthetic samples is ADASYN, not Borderline-SMOTE. ADASYN gives B 5 of 21 points in the worked example."> A) Seeds extra synthetic points from it, since it is the hardest case</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="B" data-explain="Danger needs $m/2 \le n_{legit} &lt; m$, which is 3 or 4 out of 5. B has all 5, so it misses the danger band at the top."> B) Labels it danger and uses it as a seed</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="C" data-explain="Right. When every neighbour belongs to the other class, Borderline-SMOTE treats the point as probable noise and generates nothing from it. A, C and E are the seeds."> C) Labels it noise and generates nothing from it</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="D" data-explain="Borderline-SMOTE never deletes points, it only decides where to add them. Deletion is what cleaning methods like <span class='term' data-term='tomek'>Tomek links</span> and ENN do, and by default they remove legit points, not fraud."> D) Deletes B from the training set</label>
+      <button class="btn" onclick="checkMCQ('mcq-6')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-7" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>In the toy data, which of these is a Tomek link, and what does <code>TomekLinks()</code> remove by default?</p>
+      <label class="mcq-option"><input type="radio" name="q7" value="A" data-explain="A Tomek link needs points from opposite classes. A and E are both fraud. Also, A's nearest neighbour is the legit point at (1.6, 2.2), 0.894 away, closer than E at 1.612."> A) A and E (both fraud); both are removed</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="B" data-explain="Right. E's nearest point is (3.4, 3.8) at 0.849, and that point's nearest is E. Opposite classes, mutual nearest neighbours. With the default sampling_strategy, only the legit member is dropped."> B) E and the legit point (3.4, 3.8); only the legit point is removed</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="C" data-explain="A's nearest neighbour is (1.6, 2.2) at 0.894, not (3.0, 2.0) at 1.414, so they are not mutual nearest neighbours. And the default never removes the minority point."> C) A and the legit point (3.0, 2.0); A is removed</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="D" data-explain="B's nearest neighbour is (5.0, 0.5) at 1.118, closer than (5.2, 1.8) at 1.442. Even for a real link, removing both only happens with <code>sampling_strategy=&#39;all&#39;</code>."> D) B and the legit point (5.2, 1.8); both are removed</label>
+      <button class="btn" onclick="checkMCQ('mcq-7')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 4 -->
+    <h2 id="s-hurts">4. When SMOTE hurts, and how to run it safely</h2>
+    <ul>
+      <li><strong>High dimensions.</strong> Nearest neighbours become nearly meaningless in hundreds of dimensions (the <span class="term" data-term="curse-dim">curse of dimensionality</span>), and the segment between two points passes through empty space. Text embeddings and raw pixels are bad candidates.</li>
+      <li><strong>Categorical or <span class="term" data-term="one-hot">one-hot</span> features.</strong> Interpolating between "country = FR" and "country = DE" gives a row that's 0.3 French and 0.7 German. Use SMOTE-NC or don't use SMOTE.</li>
+      <li><strong>Overlapping classes.</strong> As in the widget, synthetic points land among the majority and teach the model to flag normal behaviour.</li>
+      <li><strong>Strong learners.</strong> Several benchmarks (for example <span class="term" data-term="elor-2022">Elor and Averbuch-Elor, 2022</span>) found that with tuned gradient boosting and a tuned <span class="term" data-term="threshold">threshold</span>, SMOTE adds little or nothing over no resampling at all. It helped most for weak learners like plain decision trees.</li>
+      <li><strong>Probabilities.</strong> Like all resampling, it shifts the training prior, so raw outputs overestimate the minority class and <span class="term" data-term="calibration">calibration</span> is gone.</li>
+    </ul>
+    <p>
+      I'm not anti-SMOTE, it just has to beat a weighted baseline with a tuned threshold on your validation folds before I'd keep it. Often it doesn't.
+    </p>
+
+    <h3>Resample inside the folds</h3>
+    <p>
+      The mistake I see most is running <code>fit_resample</code> on the whole dataset and then cross-validating. Synthetic points built from a fraud row end up in the validation fold while the real row sits in training, and the validation folds are 50:50 instead of 1%. Scores come out wonderful and mean nothing. That's <span class="term" data-term="leakage">leakage</span>, covered properly in <a href="imbalance-2-evaluation.html#s-leakage">Part 2</a>. The fix is an <span class="term" data-term="imblearn-pipeline">imbalanced-learn Pipeline</span>, which resamples during <code>fit</code> only and never touches data at predict time.
+    </p>
+
+    <details>
+      <summary>Code: imbalanced-learn samplers</summary>
+<pre><code>from imblearn.under_sampling import RandomUnderSampler, TomekLinks, EditedNearestNeighbours
+from imblearn.over_sampling import RandomOverSampler, SMOTE, BorderlineSMOTE, ADASYN, SMOTENC
+from imblearn.combine import SMOTETomek, SMOTEENN
+
+# sampling_strategy = desired minority/majority ratio after resampling
+rus   = RandomUnderSampler(sampling_strategy=0.1, random_state=0)   # to 10:1
+ros   = RandomOverSampler(sampling_strategy=0.2, random_state=0)
+smote = SMOTE(sampling_strategy=0.2, k_neighbors=5, random_state=0)
+bsm   = BorderlineSMOTE(kind="borderline-1", random_state=0)
+ada   = ADASYN(random_state=0)
+snc   = SMOTENC(categorical_features=[0, 3, 7], random_state=0)
+combo = SMOTEENN(random_state=0)
+
+# Outside a pipeline, only ever on training data:
+X_tr_res, y_tr_res = smote.fit_resample(X_train, y_train)</code></pre>
+    </details>
+
+    <details>
+      <summary>Code: SMOTE inside cross-validation, the safe way</summary>
+<pre><code>from imblearn.pipeline import Pipeline          # not sklearn.pipeline
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from lightgbm import LGBMClassifier
+
+pipe = Pipeline([
+    ("smote", SMOTE(sampling_strategy=0.2, random_state=0)),
+    ("clf", LGBMClassifier()),
+])
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+# SMOTE is refit on each training fold; validation folds stay at 1% fraud
+scores = cross_val_score(pipe, X_train, y_train, cv=cv, scoring="average_precision")</code></pre>
+    </details>
+
+    <div class="mcq-box" id="mcq-8" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>A colleague reports PR-AUC 0.97 on the fraud data with this code. What's wrong?</p>
+<pre><code>X_res, y_res = SMOTE(random_state=0).fit_resample(X, y)
+scores = cross_val_score(LGBMClassifier(), X_res, y_res,
+                         cv=StratifiedKFold(5), scoring="average_precision")</code></pre>
+      <label class="mcq-option"><input type="radio" name="q8" value="A" data-explain="PR-AUC is a good choice for a 1% positive class, better than ROC-AUC, which looks flattering when negatives dominate. The metric is fine. The data it is computed on is the problem."> A) It should use <code>scoring="roc_auc"</code></label>
+      <label class="mcq-option"><input type="radio" name="q8" value="B" data-explain="Stratification is what you want with rare positives: it keeps the fraud share equal across folds. See <span class='term' data-term='stratified'>stratified splits</span>."> B) <code>StratifiedKFold</code> should be plain <code>KFold</code></label>
+      <label class="mcq-option"><input type="radio" name="q8" value="C" data-explain="Fixing random_state only makes the run reproducible. It does not bias the score. Reproducibility is a good habit here."> C) <code>random_state=0</code> biases SMOTE toward easy points</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="D" data-explain="Right. SMOTE ran before the split, so validation folds hold synthetic points interpolated from fraud rows that are in training, and they are 50:50 instead of 1%. Both inflate PR-AUC. Put SMOTE in an imblearn Pipeline so it runs on each training fold only."> D) SMOTE ran before the split, so validation folds contain synthetic points and the wrong class balance</label>
+      <button class="btn" onclick="checkMCQ('mcq-8')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-9" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>The fraud features are amount, hour, a one-hot merchant category (180 columns) and a one-hot country (60 columns). A colleague wants plain SMOTE to 1:1. What would you do?</p>
+      <label class="mcq-option"><input type="radio" name="q9" value="A" data-explain="Right, and it is what I'd do. The weighted, threshold-tuned baseline is cheap and hard to beat. If oversampling still seems worth a try, SMOTE-NC with categorical_features listed handles the one-hot columns, and it stays only if it wins on validation folds."> A) Start with weighted gradient boosting and a tuned threshold; if you try oversampling, use SMOTE-NC and keep it only if it wins on the folds</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="B" data-explain="Trees will split on the fractional columns, but a row that is 0.3 FR and 0.7 DE never occurs at prediction time. The model can learn 'fractional one-hot means fraud', a pattern that exists only in the synthetic rows."> B) Plain SMOTE is fine; trees will just treat 0.3 FR / 0.7 DE as one country or the other</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="C" data-explain="ADASYN changes where points are generated, not how. It still interpolates every column, so the one-hot problem is exactly the same."> C) Switch to ADASYN, which handles categories better</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="D" data-explain="Merchant category and country are often among the strongest fraud signals. Throwing them away to suit a sampler is backwards."> D) Drop the categorical columns so SMOTE works cleanly</label>
+      <button class="btn" onclick="checkMCQ('mcq-9')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-10" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>You're detecting a rare complaint type from 768-dimensional sentence embeddings. SMOTE gives no gain at all over no resampling. What's the most likely reason?</p>
+      <label class="mcq-option"><input type="radio" name="q10" value="A" data-explain="More neighbours makes it worse: the 50th nearest neighbour is even farther away, so segments cross even more empty space."> A) $k = 5$ is too small; try $k = 50$</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="B" data-explain="SMOTE runs in any number of dimensions. The arithmetic is the same, it just stops producing realistic points."> B) SMOTE only works with two or three features</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="C" data-explain="Right. In hundreds of dimensions the nearest and farthest neighbours end up almost equally far away (<span class='term' data-term='curse-dim'>curse of dimensionality</span>), so the 'nearest' minority neighbour is close to arbitrary and the segment runs through regions with no real data."> C) Distances concentrate in high dimensions, so nearest neighbours mean little and the segments cross empty space</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="D" data-explain="This side effect is real: the midpoint of two orthogonal unit vectors has length $\sqrt{0.5} \approx 0.707$. But renormalising fixes it, and SMOTE still won't help, so this is not the main reason."> D) Interpolated embeddings are shorter than unit length, and that is the only problem</label>
+      <button class="btn" onclick="checkMCQ('mcq-10')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <h2 id="s-ensembles">5. Ensembles built for imbalance</h2>
+    <p>
+      Undersampling throws data away. Ensembles get it back by undersampling many times with different random subsets and combining the results, so more of the majority class gets used by some member.
+    </p>
+    <ul>
+      <li><span class="term" data-term="easyensemble">EasyEnsemble</span> (<span class="term" data-term="liu-2009">Liu, Wu and Zhou, 2009</span>): draw, say, 10 balanced subsets (all 100 fraud + 100 random legit each), train an <span class="term" data-term="adaboost">AdaBoost</span> model on each, average. Each member is cheap to train. The catch is coverage: 10 subsets make 1,000 draws, but only about 956 distinct legit rows. The widget below shows how many subsets you need to see most of them.</li>
+      <li><span class="term" data-term="brf">BalancedRandomForest</span>: a random forest where each tree's <span class="term" data-term="bootstrap">bootstrap</span> sample is drawn so the classes are balanced. Same idea at the level of individual trees. A good, hard-to-break baseline for tabular data.</li>
+      <li><span class="term" data-term="rusboost">RUSBoost</span> and <span class="term" data-term="balanced-bagging">BalancedBagging</span> follow the same pattern with boosting or arbitrary base estimators wrapped in <span class="term" data-term="bagging">bagging</span>.</li>
+    </ul>
+
+    <div class="worked">
+      <p>One subset draws 100 of 9,900 legit rows, so a given legit row is picked with probability $100 / 9{,}900 = 0.010101$ and missed with probability $0.989899$.</p>
+      <p>Missed by all 10 subsets: $0.989899^{10} = 0.90346$. Used at least once: $1 - 0.90346 = 0.09654$.</p>
+      <p>Expected distinct legit rows seen: $9{,}900 \times 0.09654 = 955.7$, about 956. The other 44 of the 1,000 draws are repeats.</p>
+      <p>Subsets for 90% coverage: solve $0.989899^n = 0.1$, so $n = \ln 0.1 / \ln 0.989899 = -2.302585 / -0.010152 = 226.8$. Round up to 227.</p>
+    </div>
+
+    <div class="interactive-card" id="w-easy">
+      <div class="widget-label">Widget 3 (new)</div>
+      <h3>EasyEnsemble coverage calculator</h3>
+      <p>Each subset keeps all 100 fraud rows and draws $m$ legit rows at random (without replacement inside a subset) from the 9,900. How much of the legit class does the ensemble ever see?</p>
+      <div class="control-row">
+        <label for="ee-m">Legit rows per subset</label>
+        <select id="ee-m">
+          <option value="100">100 (1:1 subsets)</option>
+          <option value="200">200 (2:1 subsets)</option>
+          <option value="500">500 (5:1 subsets)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="ee-n">Subsets $n$</label>
+        <button class="btn btn-small" id="ee-dec10">&minus;10</button>
+        <button class="btn btn-small" id="ee-dec1">&minus;1</button>
+        <input type="range" id="ee-n" min="1" max="500" step="1" value="10">
+        <button class="btn btn-small" id="ee-inc1">+1</button>
+        <button class="btn btn-small" id="ee-inc10">+10</button>
+        <span class="val" id="ee-n-val">10</span>
+      </div>
+      <svg id="ee-svg" class="diagram-svg" viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="legend-row">Solid curve: coverage as $n$ grows. Dashed lines: 90% and 99%. Large circle: your current $n$.</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Coverage</div><div class="v" id="ee-cov"></div></div>
+        <div class="stat"><div class="k">Distinct legit seen</div><div class="v" id="ee-seen"></div></div>
+        <div class="stat"><div class="k">For 90%</div><div class="v" id="ee-n90"></div></div>
+        <div class="stat"><div class="k">For 99%</div><div class="v" id="ee-n99"></div></div>
+      </div>
+      <div class="readout" id="ee-note"></div>
+    </div>
+
+    <p>
+      With 1:1 subsets you need 454 members to see 99% of the legit rows. That's still cheap, since each member trains on only 200 rows, but it is a lot more than the default <code>n_estimators=10</code>. Switching to 5:1 subsets gets you to 99% with 90 members and each one sees more variety of normal behaviour. I'd usually go that way rather than insist on perfect balance.
+    </p>
+
+    <div class="mcq-box" id="mcq-11" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>EasyEnsemble with 10 subsets, each holding all 100 fraud rows and 100 random legit rows. About how many distinct legit rows does the ensemble see?</p>
+      <label class="mcq-option"><input type="radio" name="q11" value="A" data-explain="1,000 is the number of draws, $10 \times 100$. Subsets are drawn independently, so some legit rows land in more than one, about 44 repeats in expectation."> A) 1,000</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="B" data-explain="Right. $1 - (1 - 100/9{,}900)^{10} = 1 - 0.98990^{10} = 1 - 0.90346 = 0.09654$, and $9{,}900 \times 0.09654 = 955.7$."> B) About 956</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="C" data-explain="Seeing every legit row takes far more subsets. Even 99% coverage needs $n = \ln 0.01 / \ln 0.989899 \approx 453.6$, so 454 subsets."> C) All 9,900</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="D" data-explain="100 is a single subset. The point of the ensemble is that each member sees a different random 100."> D) 100</label>
+      <button class="btn" onclick="checkMCQ('mcq-11')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 6 -->
+    <h2 id="s-gbm">6. Gradient boosting with scale_pos_weight</h2>
+    <p>
+      This one is not an ensemble of resamples, just a weighted loss inside <span class="term" data-term="gbm">XGBoost or LightGBM</span>. <span class="term" data-term="scale-pos-weight">scale_pos_weight</span> multiplies the loss of every positive row. The usual starting value is $\#\text{neg} / \#\text{pos} = 9{,}900/100 = 99$. Tune it: values well below the full ratio (like 10, or $\sqrt{99} \approx 9.95$) often do better on precision-heavy metrics. Also switch the <span class="term" data-term="early-stopping">early-stopping</span> metric to <span class="term" data-term="aucpr">aucpr</span>, since the default logloss or AUC will be dominated by the negatives.
+    </p>
+    <p>
+      On tabular problems my default stack is LightGBM or XGBoost, a moderate <code>scale_pos_weight</code>, early stopping on <span class="term" data-term="pr-auc">PR-AUC</span>, then threshold tuning (<a href="imbalance-3-thresholds.html">Part 3</a>). BalancedRandomForest is my second opinion. I rarely end up needing anything fancier. What I don't do is stack corrections: SMOTE to 1:1 plus <code>scale_pos_weight=99</code> on top flips the imbalance the other way.
+    </p>
+
+    <details>
+      <summary>Code: imbalanced ensembles and boosting</summary>
+<pre><code>from imblearn.ensemble import (
+    BalancedRandomForestClassifier, EasyEnsembleClassifier,
+    RUSBoostClassifier, BalancedBaggingClassifier,
+)
+
+brf = BalancedRandomForestClassifier(
+    n_estimators=500, sampling_strategy="all", replacement=True,
+    bootstrap=False, random_state=0,
+)
+eec = EasyEnsembleClassifier(n_estimators=10, random_state=0)  # AdaBoost members
+
+import lightgbm as lgb
+lgbm = lgb.LGBMClassifier(
+    n_estimators=2000, learning_rate=0.03,
+    scale_pos_weight=10,            # try 1, 10, 99
+)
+lgbm.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], eval_metric="average_precision",
+         callbacks=[lgb.early_stopping(100)])
+
+import xgboost as xgb
+xgbm = xgb.XGBClassifier(
+    n_estimators=2000, learning_rate=0.03,
+    scale_pos_weight=10, eval_metric="aucpr", early_stopping_rounds=100,
+)
+xgbm.fit(X_tr, y_tr, eval_set=[(X_val, y_val)])</code></pre>
+    </details>
+
+    <div class="mcq-box" id="mcq-12" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>A pipeline runs <code>SMOTE(sampling_strategy=1.0)</code> and then <code>LGBMClassifier(scale_pos_weight=99)</code>. What happens?</p>
+      <label class="mcq-option"><input type="radio" name="q12" value="A" data-explain="LightGBM applies scale_pos_weight whatever the class counts are. It has no idea SMOTE already balanced things."> A) Nothing; LightGBM ignores scale_pos_weight when classes are balanced</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="B" data-explain="They don't cancel. Both push in the same direction, toward fraud, so they compound."> B) The two corrections cancel out</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="C" data-explain="A tuned threshold can rescue decisions if the ranking survives, but the trees spent their splits on a fraud-heavy world, the probabilities are far off, and there was no reason to stack the corrections in the first place."> C) It's fine, because threshold tuning afterwards fixes everything</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="D" data-explain="Right. After SMOTE it is 9,900 vs 9,900. Weighting fraud by 99 gives $99 \times 9{,}900 = 980{,}100$ units of fraud mass against 9,900 legit: 99:1 the other way. Expect a flood of false positives at 0.5. Pick one correction."> D) The model trains as if fraud were 99 times more common than legit</label>
+      <button class="btn" onclick="checkMCQ('mcq-12')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-13" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>For our 9,900 legit / 100 fraud training set, what are the standard starting value of <code>scale_pos_weight</code> and the square-root alternative?</p>
+      <label class="mcq-option"><input type="radio" name="q13" value="A" data-explain="That is positives over negatives, $100/9{,}900$, the ratio upside down. A value below 1 down-weights fraud and makes the imbalance worse."> A) 0.0101 and 0.1</label>
+      <label class="mcq-option"><input type="radio" name="q13" value="B" data-explain="49.5 is half of 99, not its square root. $\sqrt{99} \approx 9.95$."> B) 99 and 49.5</label>
+      <label class="mcq-option"><input type="radio" name="q13" value="C" data-explain="Right. $9{,}900 / 100 = 99$, and $\sqrt{99} \approx 9.95$, so about 10. I'd grid over 1, 10 and 99 and pick by validation PR-AUC."> C) 99 and about 10</label>
+      <label class="mcq-option"><input type="radio" name="q13" value="D" data-explain="100 is total rows over positives ($10{,}000/100$). The rule is negatives over positives. Close in practice, but the formula is wrong, and on a 50% problem it would give 2 instead of 1."> D) 100 and 10</label>
+      <button class="btn" onclick="checkMCQ('mcq-13')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-14" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>XGBoost with early stopping on validation logloss stops at 40 trees. When you check, validation PR-AUC was still rising at 300 trees. What would you do?</p>
+      <label class="mcq-option"><input type="radio" name="q14" value="A" data-explain="Right. Logloss averages over 10,000 rows, 9,900 of them easy negatives, so it can bottom out while the ranking of the 100 positives is still improving. Early-stop on the metric you care about: <code>eval_metric=&#39;aucpr&#39;</code> in XGBoost, average_precision in LightGBM."> A) Early-stop on <code>aucpr</code> instead, since logloss is dominated by the negatives</label>
+      <label class="mcq-option"><input type="radio" name="q14" value="B" data-explain="If the model were overfitting after 40 trees, validation PR-AUC would be falling too. It is rising, so the two metrics simply disagree."> B) Trust logloss; the model is overfitting after 40 trees</label>
+      <label class="mcq-option"><input type="radio" name="q14" value="C" data-explain="A lower learning rate moves the stopping point to more trees, but the stopping rule still follows a metric dominated by negatives. It treats the symptom."> C) Lower the learning rate and keep logloss</label>
+      <label class="mcq-option"><input type="radio" name="q14" value="D" data-explain="Better than logloss, but ROC-AUC barely notices false positives when negatives outnumber positives 99 to 1. See <span class='term' data-term='roc-auc'>ROC-AUC</span> and Part 1 for why."> D) Early-stop on ROC-AUC instead</label>
+      <button class="btn" onclick="checkMCQ('mcq-14')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <p>
+      If you resampled or weighted anything on this page and something downstream reads the scores as probabilities, go to <a href="imbalance-6-probabilities.html">Part 6</a> next.
+    </p>
+
+    <div class="score-box" id="mcq-score"></div>
+
+    <div class="prev-next" id="prev-next"></div>
+  </main>
+
+  <!-- POPOVER (keep exactly) -->
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box" role="dialog" aria-modal="true">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()" aria-label="Close">&times;</button>
+    </div>
+    <button id="popover-back">&larr; Back</button>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    var glossary = {
+      'imblearn': {
+        title: 'imbalanced-learn (imblearn)',
+        body: 'A scikit-learn-compatible Python library (Lemaitre, Nogueira and Aridas, JMLR 2017) with samplers, cleaning methods and balanced ensembles. Install it as <code>imbalanced-learn</code>, import it as <code>imblearn</code>. Samplers expose <span class="term" data-term="fit-resample">fit_resample</span> rather than transform, which is why they need their own <span class="term" data-term="imblearn-pipeline">Pipeline</span>.'
+      },
+      'fit-resample': {
+        title: 'fit_resample',
+        body: 'The imblearn sampler method that returns a new <code>(X, y)</code> with rows added or removed. Unlike sklearn transformers it changes the number of rows, so it cannot run at predict time, and should not: you never resample the data you score. Call it on training data only, ideally from inside an imblearn Pipeline.'
+      },
+      'imblearn-pipeline': {
+        title: 'imblearn Pipeline',
+        body: '<code>imblearn.pipeline.Pipeline</code> works like sklearn\'s, but it knows that samplers only act during <code>fit</code>. Put it inside <code>cross_val_score</code> or <code>GridSearchCV</code> and the sampler is refit on each training fold, while validation folds keep the real 1% fraud rate. Using <code>sklearn.pipeline.Pipeline</code> with a sampler raises an error.',
+        more: { href: 'imbalance-2-evaluation.html#s-leakage', label: 'Part 2: resample only inside training folds' }
+      },
+      'sampling-strategy': {
+        title: 'sampling_strategy',
+        body: 'For a binary problem, a float means the minority/majority ratio after resampling. On 9,900 / 100: undersampling with 0.1 keeps 1,000 legit rows; oversampling with 0.2 grows fraud to 1,980. The float must be at least the current ratio (0.0101 here) or imblearn raises an error. Strings work too: <code>"auto"</code> balances fully, <code>"all"</code> resamples every class.'
+      },
+      'rus': {
+        title: 'Random undersampling',
+        body: 'Drop randomly chosen majority rows. In imblearn: <code>RandomUnderSampler</code>. Cheap and fast, and on huge data it is the only practical option, but every dropped row is information about normal behaviour you never use. <span class="term" data-term="easyensemble">EasyEnsemble</span> repeats it many times to get some of that back.'
+      },
+      'ros': {
+        title: 'Random oversampling',
+        body: 'Duplicate randomly chosen minority rows. In imblearn: <code>RandomOverSampler</code>, which also has a <code>shrinkage</code> option that adds small Gaussian noise to the copies (a smoothed bootstrap). For linear models it matches a <span class="term" data-term="class-weight">class weight</span>. For trees and k-NN it invites memorisation.'
+      },
+      'negative-downsampling': {
+        title: 'Negative downsampling',
+        body: 'Keeping only a fraction $w$ of negatives in a huge, very imbalanced dataset such as ad clicks. Facebook\'s 2014 ads paper (He et al.) recalibrates with $q = p / (p + (1-p)/w)$. Example: keep 1,000 of 9,900 legit rows, $w = 0.10101$; a raw $p = 0.5$ becomes $0.5 / (0.5 + 4.95) = 0.0917$.',
+        more: { href: 'imbalance-6-probabilities.html', label: 'Part 6: prior-shift correction' }
+      },
+      'training-prior': {
+        title: 'Training prior',
+        body: 'The positive share in the data the model was actually trained on, written $\\pi\'$ in this series. Resampling to ratio $r$ gives $\\pi\' = r/(1+r)$: 0.5 at 1:1, 0.0909 at $r = 0.1$. A model trained at $\\pi\'$ outputs probabilities for a world where fraud has that rate, not the real <span class="term" data-term="base-rate">base rate</span> of 1%.',
+        more: { href: 'imbalance-6-probabilities.html', label: 'Part 6: correcting for the training prior' }
+      },
+      'knn': {
+        title: 'k nearest neighbours',
+        body: 'The $k$ training points closest to a given point, usually by Euclidean distance. SMOTE uses $k = 5$ by default and searches among minority points only. Distances depend on feature scale, so standardise first, or an amount in dollars will swamp an hour-of-day feature. As a classifier, k-NN memorises duplicated rows, which is why random oversampling suits it badly.'
+      },
+      'chawla-2002': {
+        title: 'Chawla et al., 2002',
+        body: 'Chawla, Bowyer, Hall and Kegelmeyer, "SMOTE: Synthetic Minority Over-sampling Technique", Journal of Artificial Intelligence Research 16, pages 321 to 357. It is one of the most cited papers in machine learning. The same paper introduced <span class="term" data-term="smote-nc">SMOTE-NC</span> for mixed feature types. Its experiments used C4.5 decision trees and Ripper, weak learners by today\'s standards.'
+      },
+      'borderline-smote': {
+        title: 'Borderline-SMOTE',
+        body: 'Han, Wang and Mao, 2005. Each minority point looks at its $m$ nearest neighbours of any class. If 3 or 4 of 5 are majority it is "danger" and becomes a seed; all 5 majority means "noise" and it is skipped. Borderline-1 interpolates toward minority neighbours only; Borderline-2 also interpolates part of the way toward majority neighbours. imblearn default: <code>m_neighbors=10</code>.',
+        more: { href: '#s-variants', label: 'Worked example on the toy data' }
+      },
+      'adasyn': {
+        title: 'ADASYN',
+        body: 'Adaptive Synthetic sampling, He, Bai, Garcia and Li, 2008. Each minority point gets synthetic samples in proportion to the share of majority points among its $K$ neighbours. In the toy example, points with 5/5 legit neighbours get 5 of 21 samples each. Good when hard points are genuinely hard; bad when they are label noise, because it multiplies the noise.',
+        more: { href: '#s-variants', label: 'Worked example on the toy data' }
+      },
+      'tomek': {
+        title: 'Tomek link',
+        body: 'A pair of points from opposite classes that are each other\'s nearest neighbour (Tomek, 1976). Such pairs sit on the class boundary or are noise. imblearn\'s <code>TomekLinks</code> removes only the majority member by default. It removes very few rows (4 of 12 legit in the toy, usually far fewer on real data), so it is a light clean-up, not a balancing method.'
+      },
+      'enn': {
+        title: 'Edited Nearest Neighbours (ENN)',
+        body: 'Wilson, 1972. Remove a point if its class disagrees with its $k$ nearest neighbours. The classic rule is a majority vote; imblearn\'s default <code>kind_sel="all"</code> is stricter and removes a majority point if any of its 3 neighbours is minority. On heavily overlapped data that can delete most of the majority class. <code>RepeatedEditedNearestNeighbours</code> repeats it until nothing changes.'
+      },
+      'smote-combos': {
+        title: 'SMOTE+ENN and SMOTE+Tomek',
+        body: 'Run <span class="term" data-term="smote">SMOTE</span> first, then a cleaning step over the result: <code>SMOTEENN</code> or <code>SMOTETomek</code> in <code>imblearn.combine</code>. The cleaning can remove synthetic points that landed in majority territory, which partly fixes SMOTE\'s blindness. Batista, Prati and Monard (2004) found these combinations helped with few positives, again with decision trees.'
+      },
+      'smote-nc': {
+        title: 'SMOTE-NC',
+        body: 'SMOTE for Nominal and Continuous features. Numeric columns are interpolated as usual; each categorical column takes the most frequent value among the $k$ neighbours. Distance adds a penalty (the median standard deviation of the numeric features) for each categorical mismatch. In imblearn: <code>SMOTENC(categorical_features=[...])</code>. For all-categorical data there is <code>SMOTEN</code>.'
+      },
+      'one-hot': {
+        title: 'One-hot encoding',
+        body: 'Turning a category with $c$ values into $c$ columns of 0/1, exactly one of them 1. Interpolation breaks that rule: halfway between FR and DE is a row with 0.5 in both columns, which never occurs in real data. Any model that can isolate fractional values may learn that fractional means fraud.'
+      },
+      'curse-dim': {
+        title: 'Curse of dimensionality',
+        body: 'Richard Bellman\'s phrase for how space gets emptier as dimensions grow. For distances, Beyer et al. (1999) showed that under broad conditions the ratio of farthest to nearest neighbour distance tends to 1 as dimension grows. Then "nearest" is nearly arbitrary, which undermines <span class="term" data-term="knn">k-NN</span>, SMOTE and the cleaning methods alike.'
+      },
+      'elor-2022': {
+        title: 'Elor and Averbuch-Elor, 2022',
+        body: '"To SMOTE, or not to SMOTE?" (arXiv 2201.08528). They compared oversamplers across many imbalanced datasets and classifiers. With strong learners such as LightGBM, XGBoost and CatBoost, and a tuned decision threshold, balancing gave little or no improvement. Weak learners like a single decision tree or an SVM sometimes gained.'
+      },
+      'liu-2009': {
+        title: 'Liu, Wu and Zhou, 2009',
+        body: 'Xu-Ying Liu, Jianxin Wu and Zhi-Hua Zhou, "Exploratory undersampling for class-imbalance learning", IEEE Transactions on Systems, Man, and Cybernetics B. It introduced <span class="term" data-term="easyensemble">EasyEnsemble</span> and BalanceCascade. BalanceCascade drops majority rows the current ensemble already handles before drawing the next subset.'
+      },
+      'easyensemble': {
+        title: 'EasyEnsemble',
+        body: 'Draw $n$ balanced subsets (all minority rows plus an equal random set of majority rows), fit an <span class="term" data-term="adaboost">AdaBoost</span> model on each, average the scores. In imblearn: <code>EasyEnsembleClassifier</code>, default <code>n_estimators=10</code>. Coverage of the majority class grows as $1 - (1 - m/9{,}900)^n$.',
+        more: { href: '#w-easy', label: 'Coverage calculator on this page' }
+      },
+      'adaboost': {
+        title: 'AdaBoost',
+        body: 'Adaptive boosting (Freund and Schapire, 1997). Fits weak learners in sequence, usually shallow trees, increasing the weight of rows the previous learners got wrong. On a balanced 200-row subset it trains in a fraction of a second. sklearn: <code>AdaBoostClassifier</code>, 50 learners by default.'
+      },
+      'brf': {
+        title: 'BalancedRandomForest',
+        body: 'Chen, Liaw and Breiman, 2004. A <span class="term" data-term="bagging">bagged</span> forest where each tree is grown on a sample with equal numbers from each class, drawn with replacement. With 100 fraud rows, each tree sees about 100 fraud and 100 legit, but 500 trees together see most of the legit class. In imblearn: <code>BalancedRandomForestClassifier</code>.'
+      },
+      'rusboost': {
+        title: 'RUSBoost',
+        body: 'Seiffert, Khoshgoftaar, Van Hulse and Napolitano, 2010. AdaBoost where, before each boosting round, the majority class is randomly undersampled. Each round sees a fresh subset, so it covers the majority class like EasyEnsemble. In imblearn: <code>RUSBoostClassifier</code>.'
+      },
+      'balanced-bagging': {
+        title: 'BalancedBagging',
+        body: '<span class="term" data-term="bagging">Bagging</span> with a sampler applied to each bag, so any base estimator (logistic regression, an SVM, a small tree) gets balanced training sets. In imblearn: <code>BalancedBaggingClassifier(estimator=..., sampler=...)</code>; you can pass SMOTE as the sampler too. EasyEnsemble is built on it.'
+      },
+      'bagging': {
+        title: 'Bagging',
+        body: 'Bootstrap aggregating (Breiman, 1996). Train each model on a <span class="term" data-term="bootstrap">bootstrap</span> sample and average the predictions. Averaging reduces variance, which is why it helps high-variance learners like deep trees most. Random forests are bagging plus random feature subsets at each split.'
+      },
+      'bootstrap': {
+        title: 'Bootstrap sample',
+        body: 'Draw $n$ rows with replacement from $n$ rows (Efron, 1979). A given row is missed with probability $(1 - 1/n)^n \\approx e^{-1} = 0.368$, so a bootstrap sample holds about 63.2% of the distinct rows. It is the same arithmetic as the EasyEnsemble coverage formula on this page.'
+      },
+      'gbm': {
+        title: 'Gradient boosting (XGBoost, LightGBM)',
+        body: 'Trees fitted one after another, each to the gradient of the loss left by the ones before. XGBoost (Chen and Guestrin, 2016) and LightGBM (Microsoft, 2017) are the standard libraries, with CatBoost close behind. On tabular data they are usually the strongest single model, which is why they are the baseline any resampling trick has to beat.'
+      },
+      'scale-pos-weight': {
+        title: 'scale_pos_weight',
+        body: 'A multiplier on the gradient and hessian of every positive row in XGBoost and LightGBM, the boosting version of a <span class="term" data-term="class-weight">class weight</span>. The XGBoost docs suggest $\\#\\text{neg}/\\#\\text{pos}$ (99 here) as a starting value. In LightGBM it cannot be combined with <code>is_unbalance=True</code>, which sets the same ratio for you. Large values hurt calibration, as all weighting does.'
+      },
+      'early-stopping': {
+        title: 'Early stopping',
+        body: 'Stop adding trees when a validation metric has not improved for a set number of rounds (100 in the code here), then keep the best iteration. The metric decides the stopping point, so with 99% negatives a logloss-based stop can halt while the minority ranking is still improving. Never early-stop on the test set; that is a quiet form of <span class="term" data-term="leakage">leakage</span>.'
+      },
+      'aucpr': {
+        title: 'aucpr / average_precision',
+        body: 'XGBoost\'s name for area under the precision-recall curve is <code>aucpr</code>; LightGBM calls it <code>average_precision</code>. Both track how well the rare positives are ranked. The baseline for a random model is the positive rate, 0.01 here, so 0.30 is a big improvement, not a bad score.',
+        more: { href: 'imbalance-1-metrics.html#s-curves', label: 'Part 1: PR-AUC vs ROC-AUC' }
+      }
+    };
+
+    // WIDGET 1 (new): resampling count calculator
+    (function () {
+      var NMAJ = 9900, NMIN = 100;
+      var meth = document.getElementById('rc-method');
+      var rIn = document.getElementById('rc-r');
+      var svg = document.getElementById('rc-svg');
+      var methodName = { rus: 'Random undersampling', ros: 'Random oversampling', smote: 'SMOTE' };
+
+      function bar(y, x0, w, kind) {
+        if (w <= 0) { return; }
+        if (kind === 'real') {
+          svg.appendChild(svgEl('rect', { x: x0, y: y, width: w, height: 36, fill: '#000' }));
+        } else if (kind === 'gone') {
+          svg.appendChild(svgEl('rect', { x: x0, y: y, width: w, height: 36, fill: '#fff', stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '2,4' }));
+        } else {
+          svg.appendChild(svgEl('rect', { x: x0, y: y, width: w, height: 36, fill: '#fff', stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '8,4' }));
+          for (var xx = x0 + 8; xx < x0 + w; xx += 14) {
+            var x2 = Math.min(xx + 12, x0 + w);
+            svg.appendChild(svgEl('line', { x1: xx, y1: y + 34, x2: x2, y2: y + 34 - (x2 - xx) * 2.6, stroke: '#000', 'stroke-width': 1.5 }));
+          }
+        }
+      }
+
+      function update() {
+        var r = +rIn.value / 100;
+        document.getElementById('rc-r-val').textContent = r.toFixed(2);
+        var m = meth.value;
+        var maj = NMAJ, min = NMIN, lines = [];
+        lines.push('Start: 9,900 legit, 100 fraud. Current ratio 100 / 9,900 = 0.0101. Target ratio r = ' + r.toFixed(2) + '.');
+        if (m === 'rus') {
+          maj = Math.floor(NMIN / r + 1e-9);
+          lines.push('Keep all 100 fraud. Legit kept = 100 / r = 100 / ' + r.toFixed(2) + ' = ' + fmtInt(maj) + ' (rounded down).');
+          lines.push('Discarded: 9,900 &minus; ' + fmtInt(maj) + ' = <strong>' + fmtInt(NMAJ - maj) + '</strong> legit rows, ' + fmt((NMAJ - maj) / NMAJ * 100, 1) + '% of the negatives. Nothing copied or synthesised.');
+        } else {
+          min = Math.floor(r * NMAJ + 1e-9);
+          var added = min - NMIN;
+          lines.push('Keep all 9,900 legit. Fraud target = r &times; 9,900 = ' + r.toFixed(2) + ' &times; 9,900 = ' + fmtInt(min) + '.');
+          if (m === 'ros') {
+            lines.push('Duplicated: ' + fmtInt(min) + ' &minus; 100 = <strong>' + fmtInt(added) + '</strong> copies. Each real fraud row appears ' + fmtInt(min) + ' / 100 = ' + fmt(min / 100, 2) + ' times on average. Nothing discarded.');
+          } else {
+            lines.push('Synthesised: ' + fmtInt(min) + ' &minus; 100 = <strong>' + fmtInt(added) + '</strong> new points, about ' + fmtInt(added) + ' / 100 = ' + fmt(added / 100, 2) + ' per real fraud row, all on segments between the same 100 rows. Nothing discarded.');
+          }
+        }
+        var tot = maj + min, prior = min / tot;
+        lines.push('Training set: ' + fmtInt(maj) + ' + ' + fmtInt(min) + ' = ' + fmtInt(tot) + ' rows (originally 10,000).');
+        lines.push('Training prior &pi;&prime; = ' + fmtInt(min) + ' / ' + fmtInt(tot) + ' = <strong>' + fmt(prior, 4) + '</strong>, versus the real 0.0100.');
+        var trueOdds = NMIN / NMAJ, trainOdds = min / maj, mult = trueOdds / trainOdds, q = mult / (1 + mult);
+        lines.push('Raw score 0.5 = odds 1 in the training world. Real odds / training odds = 0.0101 / ' + fmt(trainOdds, 4) + ' = ' + fmt(mult, 4) + ', so it means about <strong>' + fmt(q, 4) + '</strong> in production (<a href="imbalance-6-probabilities.html">Part 6</a>).');
+        document.getElementById('rc-note').innerHTML = lines.join('<br>');
+        document.getElementById('rc-maj').textContent = fmtInt(maj);
+        document.getElementById('rc-min').textContent = fmtInt(min);
+        document.getElementById('rc-tot').textContent = fmtInt(tot);
+        document.getElementById('rc-prior').textContent = fmt(prior, 4);
+
+        clearSvg(svg);
+        var L = 20, W = 600, scale = W / NMAJ;
+        svg.appendChild(svgEl('text', { x: L, y: 22, 'font-size': 15, 'font-weight': 'bold', 'font-family': 'sans-serif' }, 'Legit: ' + fmtInt(maj) + ' kept' + (m === 'rus' ? ', ' + fmtInt(NMAJ - maj) + ' discarded' : '')));
+        bar(32, L, maj * scale, 'real');
+        bar(32, L + maj * scale, (NMAJ - maj) * scale, 'gone');
+        var extra = (m === 'rus') ? '' : (m === 'ros' ? ', +' + fmtInt(min - NMIN) + ' duplicates' : ', +' + fmtInt(min - NMIN) + ' synthetic');
+        svg.appendChild(svgEl('text', { x: L, y: 112, 'font-size': 15, 'font-weight': 'bold', 'font-family': 'sans-serif' }, 'Fraud: 100 real' + extra));
+        bar(122, L, NMIN * scale, 'real');
+        bar(122, L + NMIN * scale, (min - NMIN) * scale, 'added');
+        svg.appendChild(svgEl('line', { x1: L, y1: 175, x2: L + W, y2: 175, stroke: '#000', 'stroke-width': 1 }));
+        [0, 2500, 5000, 7500, 9900].forEach(function (t) {
+          svg.appendChild(svgEl('line', { x1: L + t * scale, y1: 172, x2: L + t * scale, y2: 180, stroke: '#000', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: L + t * scale, y: 197, 'font-size': 12, 'text-anchor': t === 9900 ? 'end' : (t === 0 ? 'start' : 'middle'), 'font-family': 'sans-serif' }, fmtInt(t)));
+        });
+      }
+      function step(d) {
+        rIn.value = Math.min(100, Math.max(2, +rIn.value + d));
+        update();
+      }
+      meth.addEventListener('change', update);
+      rIn.addEventListener('input', update);
+      document.getElementById('rc-dec').addEventListener('click', function () { step(-1); });
+      document.getElementById('rc-inc').addEventListener('click', function () { step(1); });
+      update();
+    })();
+
+    // WIDGET 2: SMOTE stepper
+    (function () {
+      var minority = { A: [2.0, 3.0], B: [4.0, 1.0], C: [1.0, 1.4], D: [4.6, 3.6], E: [2.8, 4.4] };
+      var majority = [[3.0, 2.0], [3.6, 2.6], [5.2, 1.8], [1.0, 4.4], [5.5, 4.5], [0.6, 2.6], [2.4, 0.6], [3.4, 3.8], [5.0, 0.5], [1.6, 2.2], [4.2, 4.6], [0.5, 0.5]];
+      var pairs = [['A', 'B'], ['A', 'C'], ['D', 'B']];
+      var generated = [];
+      var svg = document.getElementById('smote-svg');
+      var lamIn = document.getElementById('sm-lam');
+      var pairSel = document.getElementById('sm-pair');
+      var L = 50, R = 610, T = 20, B = 360, XMAX = 6, YMAX = 5;
+      function X(x) { return L + x / XMAX * (R - L); }
+      function Y(y) { return B - y / YMAX * (B - T); }
+      // small deterministic PRNG so the e-ink page doesn't change between taps unexpectedly
+      var seed = 12345;
+      function rand() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+
+      function nearestMinority(name, k) {
+        var p = minority[name];
+        return Object.keys(minority).filter(function (n) { return n !== name; }).map(function (n) {
+          var q = minority[n];
+          return { n: n, d: Math.hypot(q[0] - p[0], q[1] - p[1]) };
+        }).sort(function (a, b) { return a.d - b.d; }).slice(0, k).map(function (o) { return o.n; });
+      }
+
+      function draw(lam) {
+        clearSvg(svg);
+        for (var gx = 0; gx <= XMAX; gx++) {
+          svg.appendChild(svgEl('line', { x1: X(gx), y1: T, x2: X(gx), y2: B, stroke: '#ddd', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: X(gx), y: B + 18, 'font-size': 13, 'text-anchor': 'middle', 'font-family': 'sans-serif' }, gx));
+        }
+        for (var gy = 0; gy <= YMAX; gy++) {
+          svg.appendChild(svgEl('line', { x1: L, y1: Y(gy), x2: R, y2: Y(gy), stroke: '#ddd', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: L - 10, y: Y(gy) + 4, 'font-size': 13, 'text-anchor': 'end', 'font-family': 'sans-serif' }, gy));
+        }
+        svg.appendChild(svgEl('rect', { x: L, y: T, width: R - L, height: B - T, fill: 'none', stroke: '#000', 'stroke-width': 2 }));
+        majority.forEach(function (m) {
+          svg.appendChild(svgEl('rect', { x: X(m[0]) - 8, y: Y(m[1]) - 8, width: 16, height: 16, fill: '#fff', stroke: '#000', 'stroke-width': 2.5 }));
+        });
+        generated.forEach(function (g) {
+          svg.appendChild(svgEl('circle', { cx: X(g[0]), cy: Y(g[1]), r: 6, fill: '#fff', stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '3,2' }));
+        });
+        var pr = pairs[+pairSel.value];
+        var a = minority[pr[0]], b = minority[pr[1]];
+        svg.appendChild(svgEl('line', { x1: X(a[0]), y1: Y(a[1]), x2: X(b[0]), y2: Y(b[1]), stroke: '#000', 'stroke-width': 2, 'stroke-dasharray': '8,6' }));
+        Object.keys(minority).forEach(function (n) {
+          var p = minority[n];
+          svg.appendChild(svgEl('circle', { cx: X(p[0]), cy: Y(p[1]), r: 10, fill: '#000' }));
+          svg.appendChild(svgEl('text', { x: X(p[0]) + 14, y: Y(p[1]) - 10, 'font-size': 16, 'font-weight': 'bold', 'font-family': 'sans-serif' }, n));
+        });
+        var nx = a[0] + lam * (b[0] - a[0]), ny = a[1] + lam * (b[1] - a[1]);
+        svg.appendChild(svgEl('circle', { cx: X(nx), cy: Y(ny), r: 11, fill: '#fff', stroke: '#000', 'stroke-width': 4 }));
+        svg.appendChild(svgEl('circle', { cx: X(nx), cy: Y(ny), r: 4, fill: '#000' }));
+        svg.appendChild(svgEl('text', { x: X(nx) + 14, y: Y(ny) + 22, 'font-size': 14, 'font-family': 'sans-serif' }, 'new (' + nx.toFixed(2) + ', ' + ny.toFixed(2) + ')'));
+        return [nx, ny, a, b, pr];
+      }
+
+      function update() {
+        var lam = +lamIn.value / 100;
+        document.getElementById('sm-lam-val').textContent = lam.toFixed(2);
+        var r = draw(lam);
+        var nx = r[0], ny = r[1], a = r[2], b = r[3], pr = r[4];
+        var nearestMaj = Infinity;
+        majority.forEach(function (m) { nearestMaj = Math.min(nearestMaj, Math.hypot(m[0] - nx, m[1] - ny)); });
+        var nearestMin = Infinity;
+        Object.keys(minority).forEach(function (n) { var p = minority[n]; nearestMin = Math.min(nearestMin, Math.hypot(p[0] - nx, p[1] - ny)); });
+        var dx = b[0] - a[0], dy = b[1] - a[1];
+        var warn = nearestMaj < nearestMin ?
+          ' Its nearest real neighbour is a legit transaction (distance ' + nearestMaj.toFixed(2) + '): this synthetic fraud point sits in majority territory.' :
+          ' Its nearest real neighbour is a fraud point (distance ' + nearestMin.toFixed(2) + ' versus ' + nearestMaj.toFixed(2) + ' to the nearest legit one).';
+        document.getElementById('sm-note').innerHTML =
+          'x_new = ' + pr[0] + ' + ' + lam.toFixed(2) + ' &times; (' + pr[1] + ' &minus; ' + pr[0] + ')<br>' +
+          '= (' + a[0].toFixed(1) + ', ' + a[1].toFixed(1) + ') + ' + lam.toFixed(2) + ' &times; (' + dx.toFixed(1) + ', ' + dy.toFixed(1) + ')<br>' +
+          '= (' + a[0].toFixed(1) + ' + ' + (lam * dx).toFixed(2) + ', ' + a[1].toFixed(1) + ' + ' + (lam * dy).toFixed(2) + ') = <strong>(' + nx.toFixed(2) + ', ' + ny.toFixed(2) + ')</strong>.' + warn +
+          (generated.length ? '<br>' + generated.length + ' random synthetic points shown as small dashed circles.' : '');
+      }
+      function step(delta) {
+        var v = Math.min(100, Math.max(0, +lamIn.value + delta));
+        lamIn.value = v;
+        update();
+      }
+      lamIn.addEventListener('input', update);
+      pairSel.addEventListener('change', update);
+      document.getElementById('sm-dec').addEventListener('click', function () { step(-10); });
+      document.getElementById('sm-inc').addEventListener('click', function () { step(10); });
+      document.getElementById('sm-gen').addEventListener('click', function () {
+        var names = Object.keys(minority);
+        for (var i = 0; i < 10; i++) {
+          var base = names[Math.floor(rand() * names.length)];
+          var nbrs = nearestMinority(base, 2);
+          var nb = nbrs[Math.floor(rand() * nbrs.length)];
+          var lam = rand();
+          var p = minority[base], q = minority[nb];
+          generated.push([p[0] + lam * (q[0] - p[0]), p[1] + lam * (q[1] - p[1])]);
+        }
+        update();
+      });
+      document.getElementById('sm-clear').addEventListener('click', function () { generated = []; update(); });
+      update();
+    })();
+
+    // WIDGET 3 (new): EasyEnsemble coverage calculator
+    (function () {
+      var NMAJ = 9900;
+      var nIn = document.getElementById('ee-n');
+      var mSel = document.getElementById('ee-m');
+      var svg = document.getElementById('ee-svg');
+      var L = 60, R = 620, T = 15, B = 255, NMAX = 500;
+      function X(n) { return L + n / NMAX * (R - L); }
+      function Y(c) { return B - c * (B - T); }
+      function needed(target, miss) { return Math.ceil(Math.log(1 - target) / Math.log(miss) - 1e-9); }
+
+      function update() {
+        var n = +nIn.value, m = +mSel.value;
+        document.getElementById('ee-n-val').textContent = n;
+        var p = m / NMAJ, miss = 1 - p, missAll = Math.pow(miss, n), cov = 1 - missAll;
+        var n90 = needed(0.9, miss), n99 = needed(0.99, miss), n50 = needed(0.5, miss);
+        document.getElementById('ee-cov').textContent = fmt(cov * 100, 1) + '%';
+        document.getElementById('ee-seen').textContent = fmtInt(NMAJ * cov);
+        document.getElementById('ee-n90').textContent = n90;
+        document.getElementById('ee-n99').textContent = n99;
+        var draws = n * m;
+        document.getElementById('ee-note').innerHTML =
+          'Chance a given legit row is in one subset: ' + m + ' / 9,900 = ' + fmt(p, 6) + '. Missed by one subset: ' + fmt(miss, 6) + '.<br>' +
+          'Missed by all ' + n + ' subsets: ' + fmt(miss, 6) + '<sup>' + n + '</sup> = ' + fmt(missAll, 5) + '. Used at least once: 1 &minus; ' + fmt(missAll, 5) + ' = <strong>' + fmt(cov, 5) + '</strong>.<br>' +
+          'Distinct legit rows seen: 9,900 &times; ' + fmt(cov, 5) + ' = <strong>' + fmtInt(NMAJ * cov) + '</strong>, from ' + fmtInt(draws) + ' draws (' + fmtInt(draws - NMAJ * cov) + ' repeats).<br>' +
+          'Subsets needed: n = ln(1 &minus; target) / ln(' + fmt(miss, 6) + '), with ln(' + fmt(miss, 6) + ') = ' + fmt(Math.log(miss), 6) + '. ' +
+          '50%: ' + fmt(Math.log(0.5), 6) + ' / ' + fmt(Math.log(miss), 6) + ' = ' + fmt(Math.log(0.5) / Math.log(miss), 1) + ', so ' + n50 + '. ' +
+          '90%: ' + fmt(Math.log(0.1), 6) + ' / ' + fmt(Math.log(miss), 6) + ' = ' + fmt(Math.log(0.1) / Math.log(miss), 1) + ', so ' + n90 + '. ' +
+          '99%: ' + fmt(Math.log(0.01), 6) + ' / ' + fmt(Math.log(miss), 6) + ' = ' + fmt(Math.log(0.01) / Math.log(miss), 1) + ', so ' + n99 + '.<br>' +
+          'Each member trains on 100 + ' + m + ' = ' + (100 + m) + ' rows.';
+
+        clearSvg(svg);
+        svg.appendChild(svgEl('rect', { x: L, y: T, width: R - L, height: B - T, fill: 'none', stroke: '#000', 'stroke-width': 2 }));
+        [0, 0.25, 0.5, 0.75, 1].forEach(function (c) {
+          svg.appendChild(svgEl('text', { x: L - 8, y: Y(c) + 4, 'font-size': 12, 'text-anchor': 'end', 'font-family': 'sans-serif' }, Math.round(c * 100) + '%'));
+        });
+        [0, 100, 200, 300, 400, 500].forEach(function (t) {
+          svg.appendChild(svgEl('line', { x1: X(t), y1: B, x2: X(t), y2: B + 6, stroke: '#000', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('text', { x: X(t), y: B + 20, 'font-size': 12, 'text-anchor': 'middle', 'font-family': 'sans-serif' }, t));
+        });
+        svg.appendChild(svgEl('text', { x: (L + R) / 2, y: B + 38, 'font-size': 13, 'text-anchor': 'middle', 'font-family': 'sans-serif' }, 'number of subsets n'));
+        [0.9, 0.99].forEach(function (c) {
+          svg.appendChild(svgEl('line', { x1: L, y1: Y(c), x2: R, y2: Y(c), stroke: '#000', 'stroke-width': 1, 'stroke-dasharray': '6,4' }));
+          svg.appendChild(svgEl('text', { x: R - 6, y: Y(c) + 16, 'font-size': 12, 'text-anchor': 'end', 'font-family': 'sans-serif' }, Math.round(c * 100) + '%'));
+        });
+        var pts = [];
+        for (var k = 0; k <= NMAX; k += 5) { pts.push(X(k).toFixed(1) + ',' + Y(1 - Math.pow(miss, k)).toFixed(1)); }
+        svg.appendChild(svgEl('polyline', { points: pts.join(' '), fill: 'none', stroke: '#000', 'stroke-width': 3 }));
+        svg.appendChild(svgEl('line', { x1: X(n), y1: B, x2: X(n), y2: Y(cov), stroke: '#000', 'stroke-width': 1, 'stroke-dasharray': '2,3' }));
+        svg.appendChild(svgEl('circle', { cx: X(n), cy: Y(cov), r: 9, fill: '#fff', stroke: '#000', 'stroke-width': 3 }));
+        svg.appendChild(svgEl('text', { x: Math.min(X(n) + 12, R - 120), y: Math.max(Y(cov) + 24, T + 40), 'font-size': 14, 'font-weight': 'bold', 'font-family': 'sans-serif' }, 'n = ' + n + ': ' + fmt(cov * 100, 1) + '%'));
+      }
+      function step(d) {
+        nIn.value = Math.min(NMAX, Math.max(1, +nIn.value + d));
+        update();
+      }
+      nIn.addEventListener('input', update);
+      mSel.addEventListener('change', update);
+      document.getElementById('ee-dec10').addEventListener('click', function () { step(-10); });
+      document.getElementById('ee-dec1').addEventListener('click', function () { step(-1); });
+      document.getElementById('ee-inc1').addEventListener('click', function () { step(1); });
+      document.getElementById('ee-inc10').addEventListener('click', function () { step(10); });
+      update();
+    })();
+  </script>
+</body>
+</html>

@@ -24,12 +24,13 @@ These explainer articles are designed for the **Boox Go 10.3** (Carta 1200 E-ink
    - Interactive KL simulator & on-policy mixing slider
    - Comparison: GKD vs SFT vs RLHF / PPO
 
-3. **[Dealing with Class Imbalance](class-imbalance.html)**:
-   - Why accuracy lies; precision, recall, F1, MCC, PR-AUC
-   - Threshold moving with cost-based thresholds
-   - Class weights and focal loss
-   - Random resampling, SMOTE and variants, balanced ensembles
-   - Calibration and prior-shift correction
+3. **[Dealing with Class Imbalance (6-part series)](class-imbalance.html)**:
+   - [Part 1: Why accuracy lies: metrics for rare classes](imbalance-1-metrics.html)
+   - [Part 2: Honest evaluation: splits, folds and leakage](imbalance-2-evaluation.html)
+   - [Part 3: Threshold moving and cost-based decisions](imbalance-3-thresholds.html)
+   - [Part 4: Class weights and focal loss](imbalance-4-weights.html)
+   - [Part 5: Resampling, SMOTE and balanced ensembles](imbalance-5-resampling.html)
+   - [Part 6: Fixing probabilities, other angles, and a checklist](imbalance-6-probabilities.html)
 
 4. **[DeepConf: Deep Think with Confidence](deepconf.html)**:
    - Token confidence from top-k log-probabilities

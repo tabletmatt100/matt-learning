@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why accuracy lies: metrics for rare classes | Class Imbalance, Part 1</title>
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="imbalance-style.css">
+  <script src="imbalance-common.js"></script>
+  <style>
+    .cm-inputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 0.8rem 0; }
+    .cm-inputs label { display: block; font-weight: 600; margin-bottom: 4px; }
+    .cm-inputs input[type="number"] { width: 100%; box-sizing: border-box; }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0.6rem 0; }
+    .readout p { margin: 0.25rem 0; }
+    .readout .step { font-family: var(--font-mono, monospace); font-size: 0.92em; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Guides</a>
+        <a href="class-imbalance.html">Series overview</a>
+      </div>
+      <div class="font-controls">
+        <span style="font-size:14px; font-weight:bold;">Text:</span>
+        <button id="font-dec" title="Decrease font size">A-</button>
+        <button id="font-inc" title="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="margin-bottom: 1rem;">
+      <span class="tag">Class imbalance &middot; Part 1</span>
+      <span class="tag">Evaluation metrics</span>
+    </div>
+
+    <h1>Why accuracy lies: metrics for rare classes</h1>
+
+    <nav class="series-nav" id="series-nav"></nav>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li>With 1% positives, a model that predicts "negative" for everything scores 99% accuracy and catches nothing. Accuracy mostly measures how you handle the easy majority.</li>
+        <li>Read the confusion matrix first. Precision, recall, F1, balanced accuracy and MCC are all formulas of its four cells, and each answers a different question.</li>
+        <li>My default single number for a binary problem is MCC. On the running fraud example it reads 0.39, while accuracy says 96.6%.</li>
+        <li>Recall, FPR and ROC-AUC do not change when the class ratio changes. Precision, F1, MCC and PR-AUC do. That is why ROC-AUC looks flattering on rare-event data.</li>
+        <li>A random scorer's PR-AUC equals the positive rate. Always quote PR-AUC next to that baseline.</li>
+        <li>For multiclass problems, macro averaging is the one that won't let a big class hide a tiny one.</li>
+      </ul>
+    </div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <ol>
+        <li><a href="#s1">Why accuracy lies</a></li>
+        <li><a href="#s2">Metrics built from the four cells</a></li>
+        <li><a href="#s3">Comparing models without a threshold</a></li>
+        <li><a href="#s4">F-beta and multiclass averaging</a></li>
+        <li><a href="#s5">Computing them in scikit-learn</a></li>
+        <li><a href="#s6">What I actually report</a></li>
+      </ol>
+    </div>
+
+    <p>
+      Most real classification problems are lopsided. Fraud, churn, disease screening, defect detection, click prediction, rare intents in a chatbot. The class you actually care about is the rare one, and standard training and evaluation quietly optimise for the common one.
+    </p>
+    <p>
+      The running example for this whole series: a card-fraud model scoring 10,000 transactions, of which 100 are fraud. That's a 1% <span class="term" data-term="base-rate">positive rate</span>, or a 99:1 imbalance. Real fraud rates are often lower than that, which only makes everything below worse.
+    </p>
+
+    <!-- SECTION 1 -->
+    <h2 id="s1">1. Why accuracy lies</h2>
+
+    <p>
+      Start with the laziest possible model: predict "legit" for every transaction. It gets 9,900 out of 10,000 right. That's 99% <span class="term" data-term="accuracy">accuracy</span>, and it catches zero fraud. If your dashboard only shows accuracy, this model looks excellent. scikit-learn even ships it as a <span class="term" data-term="dummy-classifier">DummyClassifier</span>, and I fit one on every new problem just to see the bar.
+    </p>
+    <p>
+      Now a real model. Say it flags 400 transactions, and 80 of them are actually fraud. Here's its <span class="term" data-term="confusion-matrix">confusion matrix</span> (the four <span class="term" data-term="cm-cells">cells</span> are named TP, FN, FP, TN):
+    </p>
+
+    <table class="cm">
+      <tr><th></th><th>Predicted fraud</th><th>Predicted legit</th><th>Total</th></tr>
+      <tr><th>Actual fraud</th><td>TP = 80</td><td>FN = 20</td><td>100</td></tr>
+      <tr><th>Actual legit</th><td>FP = 320</td><td>TN = 9,580</td><td>9,900</td></tr>
+      <tr><th>Total</th><td>400</td><td>9,600</td><td>10,000</td></tr>
+    </table>
+
+    <div class="worked">
+      <p>Accuracy counts every correct prediction, whatever the class:
+      $$\text{Accuracy} = \frac{TP + TN}{N} = \frac{80 + 9580}{10000} = \frac{9660}{10000} = 96.6\%$$</p>
+      <p>The do-nothing model: $\frac{0 + 9900}{10000} = 99.0\%$.</p>
+    </div>
+
+    <p>
+      So the real model scores lower than the do-nothing model. Yet this one is obviously more useful: it catches 80% of fraud. Accuracy is dominated by the 9,900 negatives, so it mostly measures how well you handle the easy majority. People call this the <span class="term" data-term="accuracy-paradox">accuracy paradox</span>, though there's nothing paradoxical about it once you count the errors.
+    </p>
+
+    <div class="mcq-box" id="mcq-1" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>The real fraud model is more useful than the do-nothing model, yet its accuracy is lower (96.6% vs 99.0%). What is the plain reason?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Overfitting would show up as a gap between training and test scores. Nothing here says anything about training data. Both numbers are on the same 10,000 test transactions.">A) The real model is overfitting, so its test accuracy dropped.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Stratification controls how many positives land in each split (see <span class='term' data-term='stratified'>stratified splits</span>). Both models are scored on the same split with exactly 100 fraud cases, so it cannot explain the gap.">B) The test set wasn't stratified, so accuracy is unreliable.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Accuracy uses both classes: $(TP+TN)/N$. The TN term (9,580) is most of it, which is exactly the problem, but it isn't restricted to negatives.">C) Accuracy is only computed on the negative class.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="D" data-explain="Right. Accuracy just counts mistakes. Do-nothing makes 100 (all the fraud). The real model makes 20 FN + 320 FP = 340. Accuracy has no idea that 80 caught frauds are worth far more than 320 extra reviews.">D) Accuracy weighs every error the same, and the real model makes 340 errors against 100.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="interactive-card" id="w-dumb">
+      <div class="widget-label">Widget 1</div>
+      <h3>How good does the do-nothing model look?</h3>
+      <p>Slide the positive rate down. The classifier always predicts the majority class.</p>
+      <div class="control-row">
+        <label for="dumb-slider">Positive rate</label>
+        <input type="range" id="dumb-slider" min="0" max="100" step="1" value="42">
+        <span class="val" id="dumb-rate">1%</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Positives per 10k</div><div class="v" id="dumb-npos">100</div></div>
+        <div class="stat"><div class="k">Accuracy</div><div class="v" id="dumb-acc">99.0%</div></div>
+        <div class="stat"><div class="k">Recall</div><div class="v">0.00</div></div>
+        <div class="stat"><div class="k">Balanced acc.</div><div class="v">0.50</div></div>
+        <div class="stat"><div class="k">MCC</div><div class="v">0.00</div></div>
+        <div class="stat"><div class="k">Random PR-AUC</div><div class="v" id="dumb-prauc">0.010</div></div>
+      </div>
+      <div class="readout" id="dumb-note"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-2" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>A churn dataset has 50,000 customers and 1,500 of them churn. What accuracy does a model that always predicts "stays" get?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="3.0% is the churn rate itself, $1500/50000$. The constant model gets all the non-churners right, so its accuracy is the complement of that.">A) 3.0%</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Right. It gets every one of the $50000 - 1500 = 48500$ stayers right and every churner wrong: $48500/50000 = 97.0\%$. Any real churn model has to beat 97% accuracy just to tie, which is why accuracy is the wrong yardstick.">B) 97.0%</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="0.50 is its <span class='term' data-term='balanced-accuracy'>balanced accuracy</span>: recall 0 on churners, 1 on stayers, averaged. Plain accuracy doesn't average per class.">C) 50.0%</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="D" data-explain="You're thinking of <span class='term' data-term='precision'>precision</span>, which is 0/0 when nothing is flagged. Accuracy is always defined: correct predictions over all predictions.">D) Undefined, because it never predicts churn.</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2 id="s2">2. Metrics built from the four cells</h2>
+
+    <h3 id="s-metrics">The metrics that actually move</h3>
+
+    <div class="worked">
+      <p><span class="term" data-term="precision">Precision</span>: of the things I flagged, how many were real?
+      $$\text{Precision} = \frac{TP}{TP+FP} = \frac{80}{80+320} = \frac{80}{400} = 0.20$$</p>
+      <p><span class="term" data-term="recall">Recall</span> (sensitivity, <span class="term" data-term="tpr">true positive rate</span>): of the real fraud, how much did I catch?
+      $$\text{Recall} = \frac{TP}{TP+FN} = \frac{80}{80+20} = \frac{80}{100} = 0.80$$</p>
+      <p><span class="term" data-term="f1">F1</span> is the <span class="term" data-term="harmonic-mean">harmonic mean</span> of the two:
+      $$F_1 = \frac{2PR}{P+R} = \frac{2 \times 0.20 \times 0.80}{0.20 + 0.80} = \frac{0.32}{1.00} = 0.32$$
+      The plain average would be 0.50. The harmonic mean sits much closer to the weaker number.</p>
+      <p><span class="term" data-term="specificity">Specificity</span> (true negative rate) $= \frac{TN}{TN+FP} = \frac{9580}{9900} = 0.968$. <span class="term" data-term="fpr">False positive rate</span> $= \frac{FP}{FP+TN} = \frac{320}{9900} = 0.032$. The two add to 1.</p>
+      <p><span class="term" data-term="balanced-accuracy">Balanced accuracy</span> averages recall over both classes:
+      $$\text{BA} = \frac{\text{TPR} + \text{TNR}}{2} = \frac{0.800 + 0.968}{2} = 0.884$$
+      The always-legit model gets $(0 + 1)/2 = 0.5$, which is what it deserves.</p>
+    </div>
+
+    <p>
+      Notice which denominators these use. Recall and specificity each divide by one true class (100 fraud, 9,900 legit), so they describe the model's behaviour inside that class and ignore how big the classes are. Precision divides by the flagged set, which mixes the two classes. That makes precision the one that collapses as fraud gets rarer, and it's the one the fraud team feels: 400 cases to review to find 80. If they can only review a fixed number per day, the number they care about is <span class="term" data-term="precision-at-k">precision at k</span>.
+    </p>
+
+    <div class="mcq-box" id="mcq-3" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>The fraud team raises the threshold. The new matrix is TP = 60, FN = 40, FP = 140, TN = 9,760. What is F1?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Right. Precision $= 60/(60+140) = 0.30$, recall $= 60/100 = 0.60$. $F_1 = 2 \times 0.30 \times 0.60 / (0.30 + 0.60) = 0.36/0.90 = 0.40$. Up from 0.32, because precision improved more than recall fell.">A) 0.40</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="0.45 is the arithmetic mean $(0.30 + 0.60)/2$. F1 uses the <span class='term' data-term='harmonic-mean'>harmonic mean</span>, which is always at or below the arithmetic mean and closer to the smaller value.">B) 0.45</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="0.30 is the precision alone. F1 is pulled toward the smaller of precision and recall but stays above it unless they're equal.">C) 0.30</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="D" data-explain="0.18 is $P \times R = 0.30 \times 0.60$. You need $2PR$ divided by $P+R$: $0.36/0.90$.">D) 0.18</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-4" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>The bank adds 90,000 more legit transactions to the test set. The model behaves exactly as before on each class, so FP grows tenfold to 3,200 while TP stays 80 of 100. Which metric stays the same?</p>
+      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Precision falls from 0.20 to $80/(80+3200) = 0.024$. Its denominator includes the false positives, which grew with the negative class. This is the one that hurts most.">A) Precision</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="F1 depends on precision, so it drops too: from 0.32 to about 0.047.">B) F1</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="Right. Recall is $TP/(TP+FN) = 80/100 = 0.80$ and never looks at negatives. The same goes for FPR ($3200/99000 = 0.032$) and balanced accuracy. That class-ratio blindness is what you want for describing the model and exactly wrong for describing the review workload.">C) Recall</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="D" data-explain="Accuracy moves, slightly up: $(80 + 95800)/100000 = 95.88\%$? No: errors are $20 + 3200 = 3220$, so accuracy is $96.78\%$, up from 96.6%. As negatives dominate, accuracy drifts toward specificity (96.8%).">D) Accuracy</label>
+      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <h3 id="s-mcc">MCC: one number that uses all four cells</h3>
+
+    <p>
+      The <span class="term" data-term="mcc">Matthews correlation coefficient</span> uses all four cells and is my default single-number summary for binary problems. It's the <span class="term" data-term="phi-coefficient">phi coefficient</span> under another name, introduced to machine learning by <span class="term" data-term="matthews-1975">Matthews in 1975</span>:
+    </p>
+    <div class="math-block">
+      $$\text{MCC} = \frac{TP \cdot TN - FP \cdot FN}{\sqrt{(TP+FP)(TP+FN)(TN+FP)(TN+FN)}}$$
+    </div>
+    <div class="worked">
+      <p>Numerator: $80 \times 9580 - 320 \times 20 = 766{,}400 - 6{,}400 = 760{,}000$.</p>
+      <p>The four sums are the row and column totals: $TP+FP = 400$, $TP+FN = 100$, $TN+FP = 9900$, $TN+FN = 9600$.</p>
+      <p>Denominator: $\sqrt{400 \times 100 \times 9900 \times 9600} = \sqrt{3.8016 \times 10^{12}} \approx 1{,}949{,}769$.</p>
+      <p>MCC $= 760000 / 1949769 \approx 0.39$. It ranges from $-1$ to $1$, with 0 meaning no better than chance. The always-legit model has a zero in the denominator ($TP+FP = 0$), and by convention gets 0.</p>
+    </div>
+
+    <p>
+      So the same model reads as 96.6% (accuracy), 0.88 (balanced accuracy), 0.39 (MCC) or 0.32 (F1). None of these is wrong. They answer different questions. The ones that punish the 320 false alarms are the ones that match how the fraud team will feel about this model when they have to review 400 cases to find 80.
+    </p>
+    <p>
+      Why MCC over F1 as a default? F1 ignores TN entirely, and it changes if you swap which class you call positive. MCC treats the classes symmetrically and only gets high when all four cells are good. <span class="term" data-term="chicco-jurman">Chicco and Jurman (2020)</span> make that case at length. F1 is still fine when the positive class is genuinely the only thing you care about and you know it.
+    </p>
+
+    <div class="mcq-box" id="mcq-5" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>A model flags every single transaction as fraud: TP = 100, FN = 0, FP = 9,900, TN = 0. Its recall is a perfect 1.0. What are its F1 and MCC?</p>
+      <label class="mcq-option"><input type="radio" name="q5" value="A" data-explain="0.505 is the arithmetic mean of precision (0.01) and recall (1.0). F1 uses the harmonic mean, which stays near the weaker value. And MCC can't be 0.5 for a model that has no information at all.">A) F1 about 0.505, MCC 0.5</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="B" data-explain="Right. Precision $= 100/10000 = 0.01$, so $F_1 = 2 \times 0.01 \times 1 / 1.01 \approx 0.0198$. For MCC the factor $TN+FN = 0$ zeros the denominator, and the convention (sklearn too) is to report 0: no correlation between prediction and truth, because the prediction never varies.">B) F1 about 0.02, MCC 0</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="C" data-explain="Perfect recall alone doesn't make anything perfect. Precision is 0.01, so F1 is tiny. This is exactly the trick F1 was designed to block.">C) F1 1.0, MCC 1.0</label>
+      <label class="mcq-option"><input type="radio" name="q5" value="D" data-explain="MCC of $-1$ means the predictions are perfectly inverted (every fraud called legit and every legit called fraud). Here the predictions are constant, which carries no information either way, so MCC is 0, not $-1$.">D) F1 about 0.02, MCC $-1$</label>
+      <button class="btn" onclick="checkMCQ('mcq-5')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="interactive-card" id="w-cm">
+      <div class="widget-label">Widget 2</div>
+      <h3>Confusion-matrix calculator</h3>
+      <p>Type any four counts, or tap a preset. Every metric is recomputed with the arithmetic shown.</p>
+      <div class="preset-row">
+        <button class="btn" id="cm-p-run">Running example</button>
+        <button class="btn" id="cm-p-dumb">Do-nothing</button>
+        <button class="btn" id="cm-p-all">Flag everything</button>
+        <button class="btn" id="cm-p-strict">Stricter threshold</button>
+      </div>
+      <div class="cm-inputs">
+        <div><label for="cm-tp">TP (fraud, flagged)</label><input type="number" id="cm-tp" min="0" step="1" value="80"></div>
+        <div><label for="cm-fn">FN (fraud, missed)</label><input type="number" id="cm-fn" min="0" step="1" value="20"></div>
+        <div><label for="cm-fp">FP (legit, flagged)</label><input type="number" id="cm-fp" min="0" step="1" value="320"></div>
+        <div><label for="cm-tn">TN (legit, passed)</label><input type="number" id="cm-tn" min="0" step="1" value="9580"></div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Accuracy</div><div class="v" id="cm-acc"></div></div>
+        <div class="stat"><div class="k">Precision</div><div class="v" id="cm-prec"></div></div>
+        <div class="stat"><div class="k">Recall</div><div class="v" id="cm-rec"></div></div>
+        <div class="stat"><div class="k">Specificity</div><div class="v" id="cm-spec"></div></div>
+        <div class="stat"><div class="k">F1</div><div class="v" id="cm-f1"></div></div>
+        <div class="stat"><div class="k">Balanced acc.</div><div class="v" id="cm-ba"></div></div>
+        <div class="stat"><div class="k">MCC</div><div class="v" id="cm-mcc"></div></div>
+      </div>
+      <div class="readout" id="cm-steps"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-6" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>A colleague relabels the data so that "legit" is the positive class and fraud is the negative class. Same model, same predictions. Which number is unchanged?</p>
+      <label class="mcq-option"><input type="radio" name="q6" value="A" data-explain="F1 for the legit class is about 0.98 ($P = 9580/9600$, $R = 9580/9900$). F1 only looks at whichever class you call positive, so a big easy class makes it look great.">A) F1</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="B" data-explain="Precision becomes $9580/9600 = 0.998$, the old <span class='term' data-term='npv'>negative predictive value</span>. Very different from 0.20.">B) Precision</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="C" data-explain="Recall becomes $9580/9900 = 0.968$, which was the old specificity. Recall and specificity swap places.">C) Recall</label>
+      <label class="mcq-option"><input type="radio" name="q6" value="D" data-explain="Right. Swapping the labels swaps TP with TN and FP with FN. The MCC numerator $TP \cdot TN - FP \cdot FN$ and the product of the four sums are both unchanged, so it stays 0.39. Balanced accuracy is also symmetric (0.884). That symmetry is one reason I default to MCC.">D) MCC</label>
+      <button class="btn" onclick="checkMCQ('mcq-6')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <details>
+      <summary>Other single numbers you'll run into: NPV, Youden's J, Cohen's kappa</summary>
+      <p><span class="term" data-term="npv">Negative predictive value</span> is precision for the negative class: $9580/9600 = 0.998$. It's always high on rare-event data and rarely tells you much.</p>
+      <p><span class="term" data-term="youden-j">Youden's J</span> is $\text{TPR} + \text{TNR} - 1 = 0.800 + 0.968 - 1 = 0.768$. It's just $2 \times \text{BA} - 1$, rescaled so chance is 0. Same information as balanced accuracy.</p>
+      <p><span class="term" data-term="cohen-kappa">Cohen's kappa</span> compares observed agreement $p_o$ to the agreement you'd expect by chance $p_e$ given the row and column totals:</p>
+      <p>$p_o = 0.966$. $p_e = \frac{400 \times 100 + 9600 \times 9900}{10000^2} = \frac{40{,}000 + 95{,}040{,}000}{10^8} = 0.9508$.</p>
+      <p>$\kappa = \frac{p_o - p_e}{1 - p_e} = \frac{0.966 - 0.9508}{0.0492} \approx 0.31$.</p>
+      <p>Kappa and MCC usually move together. I prefer MCC because kappa has some odd behaviour when the predicted and true class rates differ a lot, which is exactly the imbalanced case.</p>
+    </details>
+
+    <!-- SECTION 3 -->
+    <h2 id="s3">3. Comparing models without a threshold</h2>
+
+    <h3 id="s-curves">PR-AUC vs ROC-AUC</h3>
+    <p>
+      The metrics above all depend on a <span class="term" data-term="threshold">threshold</span>. To compare models before you've picked one, people use areas under curves. <span class="term" data-term="roc-auc">ROC-AUC</span> is the area under the <span class="term" data-term="roc-curve">ROC curve</span>, which plots recall against false positive rate. <span class="term" data-term="pr-auc">PR-AUC</span> (or average precision) uses the <span class="term" data-term="pr-curve">precision-recall curve</span>.
+    </p>
+    <p>
+      The trouble with ROC on imbalanced data is that the x-axis, FPR, divides by the huge number of negatives. Our model's FPR is 0.032, which looks tiny on a ROC plot. But 0.032 of 9,900 is 320 false alarms, four for every real catch. Precision feels that pain directly because its denominator is the flagged set, not the negative set.
+    </p>
+    <p>
+      You can write precision in terms of the two ROC quantities and the positive rate $\pi$, which shows exactly where the class ratio comes in:
+    </p>
+    <div class="math-block">
+      $$\text{Precision} = \frac{\text{TPR}\cdot\pi}{\text{TPR}\cdot\pi + \text{FPR}\cdot(1-\pi)}$$
+    </div>
+    <div class="worked">
+      <p>At $\pi = 0.01$: $\frac{0.8 \times 0.01}{0.8 \times 0.01 + 0.03232 \times 0.99} = \frac{0.008}{0.008 + 0.032} = 0.20$. Matches the matrix.</p>
+      <p>Same model at $\pi = 0.001$: $\frac{0.0008}{0.0008 + 0.03232 \times 0.999} = \frac{0.0008}{0.0008 + 0.03229} = \frac{0.0008}{0.03309} \approx 0.024$.</p>
+      <p>The ROC point (FPR 0.032, TPR 0.80) didn't move at all. Precision fell by a factor of eight.</p>
+    </div>
+    <p>
+      The baselines differ too. A random scorer gets ROC-AUC 0.5 regardless of imbalance. A random scorer's PR-AUC equals the positive rate, here 0.01. So a PR-AUC of 0.30 on this problem is thirty times better than random, even though it sounds bad. I report both, but when they disagree on imbalanced data I trust PR-AUC more. ROC-AUC values of 0.95+ are routine on fraud data and tell you very little. <span class="term" data-term="saito-rehmsmeier">Saito and Rehmsmeier (2015)</span> is the usual citation if someone pushes back.
+    </p>
+
+    <div class="interactive-card" id="w-prev">
+      <div class="widget-label">Widget 3</div>
+      <h3>Same model, different prevalence</h3>
+      <p>The model is fixed: recall 0.80, FPR 0.032 (that's 320 / 9,900, the running example). Only the share of fraud in the 10,000 transactions changes. Watch which numbers move.</p>
+      <div class="control-row">
+        <label for="prev-slider">Positive rate</label>
+        <input type="range" id="prev-slider" min="0" max="12" step="1" value="6">
+        <span class="val" id="prev-rate">1%</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Recall (TPR)</div><div class="v">0.800</div></div>
+        <div class="stat"><div class="k">FPR</div><div class="v">0.032</div></div>
+        <div class="stat"><div class="k">Balanced acc.</div><div class="v">0.884</div></div>
+        <div class="stat"><div class="k">Precision</div><div class="v" id="prev-prec"></div></div>
+        <div class="stat"><div class="k">F1</div><div class="v" id="prev-f1"></div></div>
+        <div class="stat"><div class="k">MCC</div><div class="v" id="prev-mcc"></div></div>
+        <div class="stat"><div class="k">Accuracy</div><div class="v" id="prev-acc"></div></div>
+        <div class="stat"><div class="k">Random PR-AUC</div><div class="v" id="prev-base"></div></div>
+      </div>
+      <div class="readout" id="prev-steps"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-7" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>Model A gets PR-AUC 0.30 on the 1% fraud problem. Model B gets PR-AUC 0.45 on a churn problem where 20% of customers churn. Which is further above a random scorer?</p>
+      <label class="mcq-option"><input type="radio" name="q7" value="A" data-explain="Right. Random PR-AUC equals the positive rate. A is $0.30/0.01 = 30$ times its baseline; B is $0.45/0.20 = 2.25$ times. PR-AUC numbers are only comparable within one problem, or next to their baselines.">A) Model A: 30 times its baseline, against 2.25 times for B.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="B" data-explain="0.45 beats 0.30 in raw terms, but the two problems have different baselines (0.20 vs 0.01). Comparing raw PR-AUC across datasets with different positive rates is a common mistake.">B) Model B, because 0.45 is higher than 0.30.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="C" data-explain="That's true of <span class='term' data-term='roc-auc'>ROC-AUC</span>, whose baseline is always 0.5. PR-AUC's baseline moves with the positive rate.">C) You can't tell without knowing their ROC-AUC, since PR-AUC has no fixed baseline.</label>
+      <label class="mcq-option"><input type="radio" name="q7" value="D" data-explain="Random PR-AUC is the positive rate, not 0.5. Against 0.5 both models would look worse than random, which is clearly not the case for a model at 30 times baseline.">D) Neither: both are below the 0.5 a random scorer gets.</label>
+      <button class="btn" onclick="checkMCQ('mcq-7')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-8" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>You move the same fraud model from a market with 1% fraud to one with 0.1% fraud. ROC-AUC barely changes but PR-AUC drops sharply. Why?</p>
+      <label class="mcq-option"><input type="radio" name="q8" value="A" data-explain="The model is unchanged and so are its scores. The question is about how two metrics respond to the class ratio, not about the model getting worse at ranking.">A) The model got worse at ranking, and only PR-AUC is sensitive enough to notice.</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="B" data-explain="ROC-AUC is threshold-free just like PR-AUC. Both integrate over all thresholds. The difference is in the axes.">B) ROC-AUC uses a fixed 0.5 threshold, so it can't respond.</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="C" data-explain="Right. ROC's axes, TPR and FPR, each divide by the size of one true class, so the class ratio cancels out. Precision divides by the flagged set, which mixes both classes, so ten times fewer positives means roughly ten times lower precision at the same recall (0.20 to 0.024 for our model).">C) TPR and FPR are each computed within one true class; precision mixes the classes, so it depends on the ratio.</label>
+      <label class="mcq-option"><input type="radio" name="q8" value="D" data-explain="Calibration doesn't enter into either metric. Both AUCs depend only on how the scores rank cases, so any monotone rescaling of scores leaves them unchanged.">D) PR-AUC needs calibrated probabilities and the scores are no longer calibrated in the new market.</label>
+      <button class="btn" onclick="checkMCQ('mcq-8')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-9" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>Two fraud models on the same test set. A: ROC-AUC 0.96, PR-AUC 0.22. B: ROC-AUC 0.95, PR-AUC 0.35. The fraud team can review about 400 alerts a day. Which would you ship, assuming nothing else differs?</p>
+      <label class="mcq-option"><input type="radio" name="q9" value="A" data-explain="A 0.01 lead in ROC-AUC usually comes from the low-score region, where the curve is dominated by thousands of negatives nobody will ever look at. It says little about the top 400.">A) A, because ROC-AUC is the standard headline metric.</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="B" data-explain="Right. The team works the top of the ranking, and PR-AUC is far more sensitive to what happens there. B's PR-AUC is 60% higher. I'd still check <span class='term' data-term='precision-at-k'>precision at 400</span> directly for both before deciding.">B) B, because PR-AUC reflects the top of the ranking where the team works.</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="C" data-explain="Averaging two metrics with different baselines (0.5 and 0.01) produces a number with no meaning. A gets 0.59, B gets 0.65, but that's coincidence, not a method.">C) Average the two AUCs and ship the higher one.</label>
+      <label class="mcq-option"><input type="radio" name="q9" value="D" data-explain="Accuracy at 0.5 is the number this whole article warns against. On 1% fraud both models probably score about 99% there.">D) Compare accuracy at threshold 0.5 instead, since AUCs ignore the threshold.</label>
+      <button class="btn" onclick="checkMCQ('mcq-9')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <details>
+      <summary>Advanced: why you shouldn't draw straight lines on a PR curve</summary>
+      <p>On a ROC curve, the straight line between two operating points is achievable: flip a weighted coin between the two thresholds and you land anywhere on that segment. On a PR curve that's false. Precision is a ratio, so mixing two thresholds gives a curved path, not a straight one. <span class="term" data-term="davis-goadrich">Davis and Goadrich (2006)</span> showed this, along with the nice result that one curve dominates another in ROC space if and only if it dominates in PR space.</p>
+      <p>Practical upshot: computing PR-AUC with the trapezoid rule, as in <code>auc(recall, precision)</code>, connects points with straight lines and overestimates the area. sklearn's <code>average_precision_score</code> uses a step sum instead, which is why I use it.</p>
+      <p>A small example: two points at (recall 0.5, precision 0.5) and (recall 1.0, precision 0.1). Trapezoid between them: $0.5 \times (0.5 + 0.1)/2 = 0.15$. Step sum: $0.5 \times 0.1 = 0.05$. Three times the area from one bad assumption.</p>
+    </details>
+
+    <!-- SECTION 4 -->
+    <h2 id="s4">4. F-beta and multiclass averaging</h2>
+
+    <p>
+      Two questions come up constantly once you've moved off accuracy. What if recall matters more than precision? And what do I do with more than two classes?
+    </p>
+    <p>
+      For the first, F1 has a generalisation, the <span class="term" data-term="f-beta">F-beta score</span>, from <span class="term" data-term="van-rijsbergen">van Rijsbergen</span>'s information-retrieval work. $\beta$ says how many times more you care about recall than precision:
+    </p>
+    <div class="math-block">
+      $$F_\beta = \frac{(1+\beta^2)\,P R}{\beta^2 P + R}$$
+    </div>
+    <div class="worked">
+      <p>$F_2$ on the running example ($P = 0.20$, $R = 0.80$): $\frac{5 \times 0.20 \times 0.80}{4 \times 0.20 + 0.80} = \frac{0.80}{1.60} = 0.50$.</p>
+      <p>$F_{0.5}$, which leans toward precision: $\frac{1.25 \times 0.16}{0.25 \times 0.20 + 0.80} = \frac{0.20}{0.85} \approx 0.235$.</p>
+      <p>Our model has good recall and poor precision, so $F_2$ likes it (0.50) and $F_{0.5}$ doesn't (0.235). F1 sits between at 0.32.</p>
+    </div>
+    <p>
+      I'd use $F_2$ for screening, where a miss is much worse than an extra check. But if you can put actual costs on the two error types, skip F-beta and pick the threshold by expected cost instead. That's <a href="imbalance-3-thresholds.html">Part 3</a>.
+    </p>
+
+    <div class="mcq-box" id="mcq-10" data-correct="D">
+      <div class="mcq-title"></div>
+      <p>What is $F_2$ for the running example (precision 0.20, recall 0.80)?</p>
+      <label class="mcq-option"><input type="radio" name="q10" value="A" data-explain="0.32 is $F_1$. With $\beta = 2$ recall gets more weight, and since recall is the stronger number here the score goes up.">A) 0.32</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="B" data-explain="0.235 is $F_{0.5}$, which weights precision more. Easy to flip: larger $\beta$ means more weight on recall.">B) 0.235</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="C" data-explain="0.68 is a weighted arithmetic mean, $(0.20 + 4 \times 0.80)/5$. F-beta is a weighted harmonic mean, which is still dragged toward the weaker value.">C) 0.68</label>
+      <label class="mcq-option"><input type="radio" name="q10" value="D" data-explain="Right. $(1+4) \times 0.20 \times 0.80 / (4 \times 0.20 + 0.80) = 0.80/1.60 = 0.50$.">D) 0.50</label>
+      <button class="btn" onclick="checkMCQ('mcq-10')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <p>
+      For more than two classes, you compute precision, recall and F1 per class (one-vs-rest), then combine them. The three standard ways give very different answers on imbalanced data: <span class="term" data-term="macro-avg">macro</span> (plain mean over classes), <span class="term" data-term="weighted-avg">weighted</span> (mean weighted by each class's <span class="term" data-term="support">support</span>) and <span class="term" data-term="micro-avg">micro</span> (pool all the counts, then compute once). Only macro treats a class with 50 examples as mattering as much as one with 9,800.
+    </p>
+
+    <details>
+      <summary>Worked example: macro vs weighted vs micro F1 on a three-class fraud problem</summary>
+      <p>Split the fraud into card fraud and account takeover (ATO). 10,000 transactions, rows are the truth, columns the prediction:</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <tr><th></th><th>Pred legit</th><th>Pred card fraud</th><th>Pred ATO</th><th>Support</th></tr>
+          <tr><th>Legit</th><td>9,750</td><td>40</td><td>10</td><td>9,800</td></tr>
+          <tr><th>Card fraud</th><td>45</td><td>100</td><td>5</td><td>150</td></tr>
+          <tr><th>ATO</th><td>30</td><td>10</td><td>10</td><td>50</td></tr>
+          <tr><th>Column total</th><td>9,825</td><td>150</td><td>25</td><td>10,000</td></tr>
+        </table>
+      </div>
+      <p>Per class:</p>
+      <ul>
+        <li>Legit: $P = 9750/9825 = 0.992$, $R = 9750/9800 = 0.995$, $F_1 = 0.994$.</li>
+        <li>Card fraud: $P = 100/150 = 0.667$, $R = 100/150 = 0.667$, $F_1 = 0.667$.</li>
+        <li>ATO: $P = 10/25 = 0.40$, $R = 10/50 = 0.20$, $F_1 = \frac{2 \times 0.40 \times 0.20}{0.60} = 0.267$.</li>
+      </ul>
+      <p>Macro: $(0.994 + 0.667 + 0.267)/3 = 0.642$.</p>
+      <p>Weighted: $(9800 \times 0.994 + 150 \times 0.667 + 50 \times 0.267)/10000 = 0.985$.</p>
+      <p>Micro: pool everything. In single-label multiclass every error is one FP for some class and one FN for another, so micro precision, micro recall and micro F1 all equal accuracy: $(9750 + 100 + 10)/10000 = 0.986$.</p>
+      <p>Weighted and micro both say 0.98-something, and both hide the fact that the model misses 80% of account takeovers. Macro (0.64) shows it. In sklearn, <code>f1_score(y, y_hat, average='macro')</code>; the default <code>average='binary'</code> raises an error on multiclass targets.</p>
+    </details>
+
+    <div class="mcq-box" id="mcq-11" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>In the three-class example above, your manager wants one number on the dashboard that will drop if the ATO detector gets worse. Which do you give them?</p>
+      <label class="mcq-option"><input type="radio" name="q11" value="A" data-explain="Right. Macro F1 gives ATO a third of the weight despite it being 0.5% of the data. If ATO F1 fell from 0.267 to 0, macro would fall from 0.642 to about 0.553, a clearly visible drop.">A) Macro F1</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="B" data-explain="Weighted F1 gives ATO a weight of $50/10000 = 0.005$. If ATO F1 went to zero, weighted F1 would drop by about 0.0013. Nobody notices that.">B) Weighted F1</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="C" data-explain="Micro F1 equals accuracy in single-label multiclass (0.986 here). It's dominated by the 9,800 legit transactions just like accuracy.">C) Micro F1</label>
+      <label class="mcq-option"><input type="radio" name="q11" value="D" data-explain="Accuracy is 0.986 and would barely move if every ATO case were missed: those 50 cases are 0.5% of the data, and 10 of them were right to begin with.">D) Accuracy</label>
+      <button class="btn" onclick="checkMCQ('mcq-11')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 5 -->
+    <h2 id="s5">5. Computing them in scikit-learn</h2>
+
+    <p>
+      Everything above is one import away. Two things trip people up. The threshold-free metrics need scores (from <span class="term" data-term="predict-proba">predict_proba</span>), not hard labels. And <span class="term" data-term="sklearn-confusion-matrix">confusion_matrix</span> puts the negative class first, which catches out anyone who unpacks it by memory.
+    </p>
+
+    <details>
+      <summary>Code: computing these metrics in scikit-learn</summary>
+<pre><code>from sklearn.metrics import (
+    confusion_matrix, precision_score, recall_score, f1_score, fbeta_score,
+    balanced_accuracy_score, matthews_corrcoef,
+    average_precision_score, roc_auc_score, classification_report,
+)
+
+# y_true: 0/1 labels, y_score: predicted probability of class 1
+# y_score = model.predict_proba(X_test)[:, 1]
+y_pred = (y_score &gt;= 0.5).astype(int)
+
+tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()   # this order!
+print("precision", precision_score(y_true, y_pred))
+print("recall   ", recall_score(y_true, y_pred))
+print("f1       ", f1_score(y_true, y_pred))
+print("f2       ", fbeta_score(y_true, y_pred, beta=2))
+print("bal acc  ", balanced_accuracy_score(y_true, y_pred))
+print("mcc      ", matthews_corrcoef(y_true, y_pred))
+
+# threshold-free: pass scores, never y_pred
+print("PR-AUC (avg precision)", average_precision_score(y_true, y_score))
+print("random baseline       ", y_true.mean())
+print("ROC-AUC               ", roc_auc_score(y_true, y_score))
+
+print(classification_report(y_true, y_pred, digits=3))</code></pre>
+      <p>Note that <code>average_precision_score</code> is not exactly the trapezoidal area under the PR curve. It's a step-wise sum, which avoids the overly optimistic interpolation you get from <code>auc(recall, precision)</code>. Use it.</p>
+      <p>The <span class="term" data-term="classification-report">classification_report</span> prints per-class precision, recall, F1 and support, plus macro and weighted averages. It's the fastest way to see a minority class being ignored.</p>
+    </details>
+
+    <div class="mcq-box" id="mcq-12" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>Spot the bug. A pipeline ends with:</p>
+<pre><code>y_pred = model.predict(X_test)
+print(average_precision_score(y_test, y_pred))
+print(roc_auc_score(y_test, y_pred))</code></pre>
+      <p>Both numbers come out lower than expected, and ROC-AUC exactly equals the balanced accuracy. What's wrong?</p>
+      <label class="mcq-option"><input type="radio" name="q12" value="A" data-explain="sklearn metrics take <code>(y_true, y_score)</code> in that order, and this code has it right. Swapping them would usually raise an error for these two functions, since the first argument must be labels.">A) The arguments are in the wrong order; it should be <code>(y_pred, y_test)</code>.</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="B" data-explain="Both functions handle imbalance fine; they just need scores. There's no rebalancing step in the metric itself, and adding one would distort the result.">B) The test set needs to be rebalanced before computing AUCs.</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="C" data-explain="Right. <code>predict</code> returns hard 0/1 labels, so the curve has a single operating point. The ROC area of that one-point curve is $(1 + \text{TPR} - \text{FPR})/2$, which is exactly balanced accuracy. Pass <code>model.predict_proba(X_test)[:, 1]</code> instead.">C) <code>predict</code> gives hard labels; the AUC functions need scores from <code>predict_proba</code>.</label>
+      <label class="mcq-option"><input type="radio" name="q12" value="D" data-explain="The PR-AUC baseline is the positive rate whatever function you use. The issue is what's being fed in, not which PR metric is chosen.">D) <code>average_precision_score</code> should be replaced by <code>auc(recall, precision)</code>.</label>
+      <button class="btn" onclick="checkMCQ('mcq-12')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-13" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>Spot the bug. On the running example, a script prints "precision 0.968". The code:</p>
+<pre><code>tp, fp, fn, tn = confusion_matrix(y_true, y_pred).ravel()
+print("precision", tp / (tp + fp))</code></pre>
+      <p>What happened?</p>
+      <label class="mcq-option"><input type="radio" name="q13" value="A" data-explain="Right. sklearn sorts labels, so 0 (legit) comes first and <code>ravel()</code> returns <code>tn, fp, fn, tp</code>. Here the variable named tp holds TN = 9,580, so the code computes $9580/(9580+320) = 0.968$, which is really $TN/(TN+FP)$, the specificity. True precision is 0.20.">A) The unpacking order is wrong; <code>ravel()</code> gives <code>tn, fp, fn, tp</code>.</label>
+      <label class="mcq-option"><input type="radio" name="q13" value="B" data-explain="Precision is $TP/(TP+FP)$, and that's the formula in the code. The formula is fine; the variables hold the wrong cells.">B) Precision should be <code>tp / (tp + fn)</code>.</label>
+      <label class="mcq-option"><input type="radio" name="q13" value="C" data-explain="If y_true and y_pred were swapped, the matrix would be transposed, which swaps FP and FN. That gives $80/(80+20) = 0.80$ for 'precision', not 0.968.">C) <code>y_true</code> and <code>y_pred</code> are swapped in the call.</label>
+      <label class="mcq-option"><input type="radio" name="q13" value="D" data-explain="A threshold change would change the counts but couldn't produce 0.968 at 1% fraud: you'd need far more true positives than there are fraud cases. The number is a different metric, not a different threshold.">D) The model was evaluated at the wrong threshold.</label>
+      <button class="btn" onclick="checkMCQ('mcq-13')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <!-- SECTION 6 -->
+    <h2 id="s6">6. What I actually report</h2>
+
+    <p>
+      For a binary imbalanced problem my standard table is: the confusion matrix at the chosen threshold, precision and recall, MCC, and PR-AUC with its baseline next to it. ROC-AUC goes in too, because people ask for it, but I don't make decisions from it. If the business has a fixed review capacity, precision at that k goes at the top.
+    </p>
+    <p>
+      Two caveats. First, all of these are noisy when the minority class is small. With 20 fraud cases in a test set, one case is 0.05 of recall, and the standard error at recall 0.8 is about $\sqrt{0.8 \times 0.2 / 20} \approx 0.09$. Report a <span class="term" data-term="bootstrap-ci">bootstrap interval</span> or use repeated <span class="term" data-term="stratified">stratified</span> folds (<a href="imbalance-2-evaluation.html#s-stratify">Part 2</a>). Second, if your test set has a different positive rate from production, precision and PR-AUC won't transfer. That's the <span class="term" data-term="prevalence-shift">prevalence shift</span> problem from Widget 3, and it also bites whenever someone resamples the test set, which is a form of <span class="term" data-term="leakage">leakage</span> covered in <a href="imbalance-2-evaluation.html#s-leakage">Part 2</a>.
+    </p>
+    <p>
+      Threshold metrics also depend on, well, the threshold, and 0.5 is rarely right for rare classes. Picking it properly is <a href="imbalance-3-thresholds.html">Part 3</a>. If you later reweight or resample the training data (<a href="imbalance-4-weights.html">Part 4</a>, <a href="imbalance-5-resampling.html">Part 5</a>), recheck <span class="term" data-term="calibration">calibration</span> before trusting any score as a probability (<a href="imbalance-6-probabilities.html">Part 6</a>).
+    </p>
+
+    <div class="mcq-box" id="mcq-14" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>Your test set has only 20 fraud cases. Across reruns with different random splits, recall swings between 0.70 and 0.85, and a teammate's "improvement" raised it from 0.75 to 0.80. What would you do?</p>
+      <label class="mcq-option"><input type="radio" name="q14" value="A" data-explain="0.75 to 0.80 is a single extra fraud case out of 20 ($1/20 = 0.05$). That's well inside the noise you've already seen between splits.">A) Accept the improvement; 0.05 of recall is a meaningful gain.</label>
+      <label class="mcq-option"><input type="radio" name="q14" value="B" data-explain="Accuracy would be even less sensitive to those 20 cases. The swing isn't a flaw of recall; it's a flaw of having so few positives.">B) Switch to accuracy, which is more stable.</label>
+      <label class="mcq-option"><input type="radio" name="q14" value="C" data-explain="Right. With 20 positives the standard error of recall near 0.8 is about $\sqrt{0.8 \times 0.2/20} \approx 0.09$. Repeated <span class='term' data-term='stratified'>stratified</span> CV or a bootstrap interval tells you whether 0.05 is real. Usually it isn't.">C) Use repeated stratified CV or a bootstrap interval before believing a 0.05 difference.</label>
+      <label class="mcq-option"><input type="radio" name="q14" value="D" data-explain="Oversampling the test set adds copies, not information. It makes the numbers look steadier while measuring the same 20 cases, and it changes the positive rate so precision no longer reflects production.">D) Oversample the fraud cases in the test set so recall is computed on more examples.</label>
+      <button class="btn" onclick="checkMCQ('mcq-14')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="score-box" id="mcq-score"></div>
+
+    <div class="prev-next" id="prev-next"></div>
+  </main>
+
+  <!-- POPOVER (keep exactly) -->
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box" role="dialog" aria-modal="true">
+    <div id="popover-title">
+      <span id="popover-term-name">Term</span>
+      <button id="popover-close" onclick="closePopover()" aria-label="Close">&times;</button>
+    </div>
+    <button id="popover-back">&larr; Back</button>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    var glossary = {
+      'accuracy': {
+        title: 'Accuracy',
+        body: 'The fraction of all predictions that are correct: $(TP+TN)/N$. Fine when classes are roughly balanced and both errors cost about the same. On the fraud example it is 96.6% for a useful model and 99% for a useless one, because the 9,900 negatives swamp the 100 positives.',
+        more: { href: '#s1', label: 'Why accuracy lies' }
+      },
+      'accuracy-paradox': {
+        title: 'Accuracy paradox',
+        body: 'The observation that a model with lower accuracy can be more useful, or that a trivial model can beat a real one on accuracy. It happens whenever one class dominates: the trivial <span class="term" data-term="dummy-classifier">majority-class model</span> sets an accuracy bar equal to the majority share (99% here) that a model catching real positives may never reach.'
+      },
+      'dummy-classifier': {
+        title: 'DummyClassifier (majority baseline)',
+        body: 'sklearn\'s <code>DummyClassifier(strategy=\'most_frequent\')</code> ignores the features and always predicts the most common class. It is the do-nothing model of this article. Fit it first on any new problem: its accuracy is the floor, and its <span class="term" data-term="mcc">MCC</span> (0) and balanced accuracy (0.5) remind you what "no skill" looks like. <code>strategy=\'stratified\'</code> predicts randomly at the class rates, which is the random baseline for PR-AUC.'
+      },
+      'cm-cells': {
+        title: 'TP, FN, FP, TN',
+        body: 'The first letter says whether the prediction was right (True/False); the second says what was predicted (Positive/Negative). So FN = predicted negative, and wrong: a fraud that slipped through. FP = predicted positive, and wrong: a legit customer whose card got blocked. In the running example: TP 80, FN 20, FP 320, TN 9,580.'
+      },
+      'harmonic-mean': {
+        title: 'Harmonic mean',
+        body: 'The reciprocal of the average of reciprocals: for two numbers, $2ab/(a+b)$. It is always at or below the arithmetic mean and is pulled hard toward the smaller value. For 0.2 and 0.8 the arithmetic mean is 0.5 but the harmonic mean is 0.32. For 0.01 and 1.0 it is about 0.02. That is the property that stops <span class="term" data-term="f1">F1</span> being gamed by maxing one side.'
+      },
+      'f-beta': {
+        title: 'F-beta score',
+        body: 'A weighted harmonic mean of precision and recall: $F_\\beta = (1+\\beta^2)PR/(\\beta^2 P + R)$. $\\beta = 1$ gives F1, $\\beta = 2$ treats recall as twice as important, $\\beta = 0.5$ the reverse. On the running example $F_2 = 0.50$ and $F_{0.5} \\approx 0.235$. In sklearn: <code>fbeta_score(y_true, y_pred, beta=2)</code>.',
+        more: { href: '#s4', label: 'F-beta worked example' }
+      },
+      'van-rijsbergen': {
+        title: 'C. J. van Rijsbergen',
+        body: 'Information-retrieval researcher whose 1979 book <em>Information Retrieval</em> defined an effectiveness measure $E$ combining precision and recall with a weight. The F-measure is $1 - E$. That is why the precision/recall vocabulary comes from search engines: "of the documents returned, how many were relevant" is precision.'
+      },
+      'npv': {
+        title: 'Negative predictive value (NPV)',
+        body: 'Precision for the negative class: $TN/(TN+FN)$. Running example: $9580/9600 = 0.998$. On rare-event data it is nearly always close to 1 because almost everything is negative, so it says little about model quality. In screening it answers the patient\'s question: "the test said no, how sure is that?"'
+      },
+      'youden-j': {
+        title: 'Youden\'s J statistic',
+        body: 'From W. J. Youden (1950): $J = \\text{TPR} + \\text{TNR} - 1$, which is $2 \\times$ <span class="term" data-term="balanced-accuracy">balanced accuracy</span> $- 1$. Chance scores 0, perfect scores 1. Running example: $0.8 + 0.968 - 1 = 0.768$. Also the vertical distance from a ROC point to the diagonal; picking the threshold that maximises it is a common default in medical papers.'
+      },
+      'phi-coefficient': {
+        title: 'Phi coefficient',
+        body: 'The Pearson correlation between two binary variables, from early 20th century statistics (Yule, Pearson). Applied to true vs predicted labels it is exactly <span class="term" data-term="mcc">MCC</span>. Related to the chi-squared test of the 2x2 table: $\\text{MCC}^2 = \\chi^2/N$. Running example: $0.39^2 \\times 10000 \\approx 1519$.'
+      },
+      'matthews-1975': {
+        title: 'Matthews (1975)',
+        body: 'B. W. Matthews, a biochemist, used the coefficient to compare predicted and observed secondary structure of T4 phage lysozyme. The same quantity was already known as the <span class="term" data-term="phi-coefficient">phi coefficient</span>; bioinformatics adopted his name for it and machine learning followed.'
+      },
+      'chicco-jurman': {
+        title: 'Chicco and Jurman (2020)',
+        body: 'Davide Chicco and Giuseppe Jurman, "The advantages of the Matthews correlation coefficient (MCC) over F1 score and accuracy in binary classification evaluation", <em>BMC Genomics</em>, 2020. Their argument: MCC is high only if the model does well on all four cells, while F1 and accuracy can each be high for a model that is poor on one class. Worth reading if you need to convince a team to switch headline metric.',
+        more: { href: '#s-mcc', label: 'MCC worked example' }
+      },
+      'roc-curve': {
+        title: 'ROC curve',
+        body: 'Receiver operating characteristic: plot <span class="term" data-term="tpr">TPR</span> (y) against <span class="term" data-term="fpr">FPR</span> (x) as the threshold sweeps from high to low. Starts at (0, 0), ends at (1, 1); the diagonal is random guessing. The name comes from WWII radar operators. The running example model at its threshold is the single point (0.032, 0.80).'
+      },
+      'pr-curve': {
+        title: 'Precision-recall curve',
+        body: 'Plot precision (y) against recall (x) as the threshold sweeps. Unlike ROC there is no fixed diagonal: a random scorer is a flat line at precision = the positive rate (0.01 for our fraud). The left end, high threshold, is where alert queues live, so a PR curve shows directly what a review team will experience. In sklearn: <code>precision_recall_curve</code>.'
+      },
+      'saito-rehmsmeier': {
+        title: 'Saito and Rehmsmeier (2015)',
+        body: 'Takaya Saito and Marc Rehmsmeier, "The precision-recall plot is more informative than the ROC plot when evaluating binary classifiers on imbalanced datasets", <em>PLOS ONE</em>, 2015. They show with simulations and a literature review that ROC plots look similar across very different imbalance levels while PR plots expose the difference.'
+      },
+      'davis-goadrich': {
+        title: 'Davis and Goadrich (2006)',
+        body: 'Jesse Davis and Mark Goadrich, "The relationship between precision-recall and ROC curves", ICML 2006. Two results: a curve dominates in ROC space if and only if it dominates in PR space, and linear interpolation between PR points is wrong, which makes trapezoidal PR-AUC optimistic.'
+      },
+      'precision-at-k': {
+        title: 'Precision at k',
+        body: 'Precision among the top $k$ scored cases. It matches how many fraud and moderation teams work: they review a fixed number of alerts per day, so the threshold is effectively "whatever lets $k$ through". For the running example, if the 400 flagged cases are the top 400 scores, precision at 400 is $80/400 = 0.20$. Recall at k is the companion number.'
+      },
+      'prevalence-shift': {
+        title: 'Prevalence shift',
+        body: 'When the positive rate at deployment differs from the test set. Recall and FPR carry over; precision does not. Using $P = R\\pi/(R\\pi + \\text{FPR}(1-\\pi))$, our model goes from precision 0.20 at 1% fraud to 0.024 at 0.1%. Also called prior shift or label shift. <span class="term" data-term="calibration">Calibrated</span> probabilities need correcting for it too.',
+        more: { href: 'imbalance-6-probabilities.html', label: 'Part 6: fixing probabilities' }
+      },
+      'cohen-kappa': {
+        title: 'Cohen\'s kappa',
+        body: 'Agreement corrected for chance: $\\kappa = (p_o - p_e)/(1 - p_e)$, where $p_e$ is the agreement expected from the row and column totals alone. Designed by Jacob Cohen (1960) for two human raters. Running example: $p_o = 0.966$, $p_e = 0.9508$, $\\kappa \\approx 0.31$. In sklearn: <code>cohen_kappa_score</code>.'
+      },
+      'macro-avg': {
+        title: 'Macro averaging',
+        body: 'Compute the metric separately for each class, then take the plain mean. Every class counts equally regardless of size, which is what you want when the small classes matter. In the three-class example macro F1 is 0.642 while weighted is 0.985. sklearn: <code>average=\'macro\'</code>.',
+        more: { href: '#s4', label: 'Three-class worked example' }
+      },
+      'micro-avg': {
+        title: 'Micro averaging',
+        body: 'Pool TP, FP and FN across all classes, then compute the metric once. For single-label multiclass problems micro precision = micro recall = micro F1 = accuracy, because each mistake is one FP for one class and one FN for another. So it inherits all of accuracy\'s problems. It is more meaningful for multilabel tasks.'
+      },
+      'weighted-avg': {
+        title: 'Weighted averaging',
+        body: 'Per-class metric averaged with weights equal to each class\'s <span class="term" data-term="support">support</span>. Big classes dominate. In the three-class example the 50-case ATO class gets weight 0.005, so its terrible F1 (0.267) barely dents the 0.985 total. It is the default "avg" many people read off a classification report without noticing.'
+      },
+      'support': {
+        title: 'Support',
+        body: 'The number of true examples of a class in the evaluated set: 9,800, 150 and 50 in the three-class example. sklearn\'s classification report prints it per class. Always look at it: a recall of 0.20 on support 50 is 10 cases, and a single case moves it by 0.02.'
+      },
+      'predict-proba': {
+        title: 'predict_proba',
+        body: 'The sklearn method that returns scores for each class, one column per class. For binary problems take column 1: <code>model.predict_proba(X)[:, 1]</code>. <code>predict</code> instead applies a 0.5 cutoff (or argmax) and returns labels. Threshold-free metrics such as ROC-AUC and PR-AUC need the scores. Some models only have <code>decision_function</code>, which works just as well for ranking metrics.'
+      },
+      'sklearn-confusion-matrix': {
+        title: 'sklearn confusion_matrix',
+        body: '<code>confusion_matrix(y_true, y_pred)</code> returns rows = true class, columns = predicted class, with labels sorted. For 0/1 labels that puts the negative class first: <code>[[TN, FP], [FN, TP]]</code>, so <code>.ravel()</code> gives <code>tn, fp, fn, tp</code>. Many textbooks draw it with positives first, which is how people get the order wrong.'
+      },
+      'classification-report': {
+        title: 'classification_report',
+        body: 'sklearn function that prints precision, recall, F1 and <span class="term" data-term="support">support</span> for every class, then accuracy, macro average and weighted average. Pass <code>digits=3</code>; the default 2 digits hides small differences. Read the minority-class row first.'
+      },
+      'bootstrap-ci': {
+        title: 'Bootstrap confidence interval',
+        body: 'Resample the test set with replacement many times (say 1,000), recompute the metric each time, and take the 2.5th and 97.5th percentiles. With 100 fraud cases and recall 0.8, expect an interval roughly 0.72 to 0.88. Resample the whole test set, not just the positives, and never use the bootstrap copies for training.'
+      }
+    };
+
+    // WIDGET 1: do-nothing classifier vs imbalance
+    (function () {
+      var slider = document.getElementById('dumb-slider');
+      function rateFromSlider(v) { return 0.5 * Math.pow(10, -4 * v / 100); }
+      function pctStr(p) {
+        var x = p * 100;
+        if (x >= 1) { return x.toFixed(1).replace(/\.0$/, '') + '%'; }
+        if (x >= 0.1) { return x.toFixed(2) + '%'; }
+        return x.toFixed(3) + '%';
+      }
+      function update() {
+        var p = rateFromSlider(+slider.value);
+        document.getElementById('dumb-rate').textContent = pctStr(p);
+        var npos = p * 10000;
+        var nneg = 10000 - npos;
+        var nposStr = npos >= 10 ? fmtInt(npos) : npos.toFixed(1);
+        var nnegStr = npos >= 10 ? fmtInt(nneg) : nneg.toFixed(1);
+        document.getElementById('dumb-npos').textContent = nposStr;
+        document.getElementById('dumb-acc').textContent = pctStr(1 - p);
+        document.getElementById('dumb-prauc').textContent = p >= 0.001 ? p.toFixed(3) : p.toExponential(1);
+        var note;
+        if (p > 0.3) {
+          note = 'Near balance, the constant model only scores ' + pctStr(1 - p) + '. Accuracy is still a fair metric here.';
+        } else if (p > 0.05) {
+          note = 'At ' + pctStr(p) + ' positives the constant model already reaches ' + pctStr(1 - p) + ' accuracy. Any real model has to clear that bar just to break even.';
+        } else {
+          note = 'At ' + pctStr(p) + ' positives, the constant model is ' + pctStr(1 - p) + ' accurate and finds nothing. Out of a million cases it misses all ' + fmtInt(p * 1e6) + ' positives. Balanced accuracy and MCC correctly call it useless.';
+        }
+        var steps = '<p class="step">Accuracy = (TP + TN) / N = (0 + ' + nnegStr + ') / 10,000 = ' + pctStr(1 - p) + '</p>' +
+          '<p class="step">Recall = TP / (TP + FN) = 0 / ' + nposStr + ' = 0</p>' +
+          '<p class="step">Balanced acc. = (recall + specificity) / 2 = (0 + 1) / 2 = 0.5</p>' +
+          '<p>' + note + '</p>';
+        document.getElementById('dumb-note').innerHTML = steps;
+      }
+      slider.addEventListener('input', update);
+      update();
+    })();
+
+    // WIDGET 2: confusion-matrix calculator
+    (function () {
+      var ids = ['cm-tp', 'cm-fn', 'cm-fp', 'cm-tn'];
+      var inputs = ids.map(function (id) { return document.getElementById(id); });
+      var presets = {
+        'cm-p-run': [80, 20, 320, 9580],
+        'cm-p-dumb': [0, 100, 0, 9900],
+        'cm-p-all': [100, 0, 9900, 0],
+        'cm-p-strict': [60, 40, 140, 9760]
+      };
+      function read(el) {
+        var v = Math.round(parseFloat(el.value));
+        return (isFinite(v) && v > 0) ? v : 0;
+      }
+      function ratio(num, den) { return den > 0 ? num / den : NaN; }
+      function f3(x) { return isFinite(x) ? x.toFixed(3) : 'undefined'; }
+      function update() {
+        var tp = read(inputs[0]), fn = read(inputs[1]), fp = read(inputs[2]), tn = read(inputs[3]);
+        var n = tp + fn + fp + tn;
+        var acc = ratio(tp + tn, n);
+        var prec = ratio(tp, tp + fp);
+        var rec = ratio(tp, tp + fn);
+        var spec = ratio(tn, tn + fp);
+        var f1 = (isFinite(prec) && isFinite(rec) && prec + rec > 0) ? 2 * prec * rec / (prec + rec) : NaN;
+        var precZero = isFinite(prec) ? prec : 0;   // sklearn zero_division convention
+        if (!isFinite(f1) && isFinite(rec)) { f1 = 0; }
+        var ba = (isFinite(rec) && isFinite(spec)) ? (rec + spec) / 2 : NaN;
+        var num = tp * tn - fp * fn;
+        var den = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
+        var mcc = den > 0 ? num / den : 0;
+
+        document.getElementById('cm-acc').textContent = isFinite(acc) ? (acc * 100).toFixed(1) + '%' : 'n/a';
+        document.getElementById('cm-prec').textContent = isFinite(prec) ? prec.toFixed(3) : '0/0';
+        document.getElementById('cm-rec').textContent = isFinite(rec) ? rec.toFixed(3) : '0/0';
+        document.getElementById('cm-spec').textContent = isFinite(spec) ? spec.toFixed(3) : '0/0';
+        document.getElementById('cm-f1').textContent = isFinite(f1) ? f1.toFixed(3) : 'n/a';
+        document.getElementById('cm-ba').textContent = isFinite(ba) ? ba.toFixed(3) : 'n/a';
+        document.getElementById('cm-mcc').textContent = mcc.toFixed(3);
+
+        var h = '';
+        h += '<p class="step">N = ' + fmtInt(tp) + ' + ' + fmtInt(fn) + ' + ' + fmtInt(fp) + ' + ' + fmtInt(tn) + ' = ' + fmtInt(n) + '</p>';
+        h += '<p class="step">Accuracy = (TP + TN) / N = (' + fmtInt(tp) + ' + ' + fmtInt(tn) + ') / ' + fmtInt(n) + ' = ' + f3(acc) + '</p>';
+        h += '<p class="step">Precision = TP / (TP + FP) = ' + fmtInt(tp) + ' / ' + fmtInt(tp + fp) + ' = ' + f3(prec) +
+             (isFinite(prec) ? '' : ' (nothing flagged; sklearn reports 0 with a warning)') + '</p>';
+        h += '<p class="step">Recall = TP / (TP + FN) = ' + fmtInt(tp) + ' / ' + fmtInt(tp + fn) + ' = ' + f3(rec) + '</p>';
+        h += '<p class="step">Specificity = TN / (TN + FP) = ' + fmtInt(tn) + ' / ' + fmtInt(tn + fp) + ' = ' + f3(spec) + '</p>';
+        if (isFinite(prec) && isFinite(rec) && prec + rec > 0) {
+          h += '<p class="step">F1 = 2PR / (P + R) = 2 &times; ' + prec.toFixed(3) + ' &times; ' + rec.toFixed(3) + ' / ' + (prec + rec).toFixed(3) + ' = ' + f1.toFixed(3) + '</p>';
+        } else {
+          h += '<p class="step">F1 = 2PR / (P + R): with P = ' + precZero.toFixed(3) + ' and R = ' + f3(rec) + ' this is reported as ' + (isFinite(f1) ? f1.toFixed(3) : 'undefined') + '</p>';
+        }
+        h += '<p class="step">Balanced acc. = (recall + specificity) / 2 = (' + f3(rec) + ' + ' + f3(spec) + ') / 2 = ' + f3(ba) + '</p>';
+        h += '<p class="step">MCC numerator = TP&middot;TN &minus; FP&middot;FN = ' + fmtInt(tp * tn) + ' &minus; ' + fmtInt(fp * fn) + ' = ' + fmtInt(num) + '</p>';
+        h += '<p class="step">MCC denominator = &radic;(' + fmtInt(tp + fp) + ' &times; ' + fmtInt(tp + fn) + ' &times; ' + fmtInt(tn + fp) + ' &times; ' + fmtInt(tn + fn) + ') = ' + fmtInt(den) + '</p>';
+        h += '<p class="step">MCC = ' + (den > 0 ? fmtInt(num) + ' / ' + fmtInt(den) + ' = ' + mcc.toFixed(3) : '0 by convention (a zero row or column total)') + '</p>';
+        if (n > 0 && isFinite(acc) && isFinite(ba) && acc - ba > 0.1) {
+          h += '<p>Accuracy is ' + ((acc - ba) * 100).toFixed(1) + ' points above balanced accuracy: the majority class is carrying it.</p>';
+        }
+        document.getElementById('cm-steps').innerHTML = h;
+      }
+      inputs.forEach(function (el) { el.addEventListener('input', update); });
+      Object.keys(presets).forEach(function (bid) {
+        document.getElementById(bid).addEventListener('click', function () {
+          var v = presets[bid];
+          for (var i = 0; i < 4; i++) { inputs[i].value = v[i]; }
+          update();
+        });
+      });
+      update();
+    })();
+
+    // WIDGET 3: same model, different prevalence
+    (function () {
+      var RATES = [0.5, 0.3, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 0.0005, 0.0002, 0.0001];
+      var TPR = 0.8, FPR = 320 / 9900, N = 10000;
+      var slider = document.getElementById('prev-slider');
+      function pctStr(p) {
+        var x = p * 100;
+        return (x >= 1 ? x.toFixed(0) : (x >= 0.1 ? x.toFixed(1) : x.toFixed(2))) + '%';
+      }
+      function cnt(x) { return x >= 100 ? fmtInt(x) : x.toFixed(1); }
+      function update() {
+        var pi = RATES[+slider.value];
+        var pos = pi * N, neg = N - pos;
+        var tp = TPR * pos, fn = pos - tp, fp = FPR * neg, tn = neg - fp;
+        var prec = tp / (tp + fp);
+        var f1 = 2 * prec * TPR / (prec + TPR);
+        var acc = (tp + tn) / N;
+        var num = tp * tn - fp * fn;
+        var den = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
+        var mcc = num / den;
+        document.getElementById('prev-rate').textContent = pctStr(pi);
+        document.getElementById('prev-prec').textContent = prec.toFixed(3);
+        document.getElementById('prev-f1').textContent = f1.toFixed(3);
+        document.getElementById('prev-mcc').textContent = mcc.toFixed(3);
+        document.getElementById('prev-acc').textContent = (acc * 100).toFixed(1) + '%';
+        document.getElementById('prev-base').textContent = pi >= 0.001 ? pi.toFixed(3) : pi.toFixed(4);
+        var h = '';
+        h += '<p class="step">Fraud = ' + pctStr(pi) + ' &times; 10,000 = ' + cnt(pos) + '; legit = ' + cnt(neg) + '</p>';
+        h += '<p class="step">TP = 0.80 &times; ' + cnt(pos) + ' = ' + cnt(tp) + '; FN = ' + cnt(fn) + '</p>';
+        h += '<p class="step">FP = 0.0323 &times; ' + cnt(neg) + ' = ' + cnt(fp) + '; TN = ' + cnt(tn) + '</p>';
+        h += '<p class="step">Precision = ' + cnt(tp) + ' / (' + cnt(tp) + ' + ' + cnt(fp) + ') = ' + prec.toFixed(3) + '</p>';
+        h += '<p class="step">F1 = 2 &times; ' + prec.toFixed(3) + ' &times; 0.800 / (' + prec.toFixed(3) + ' + 0.800) = ' + f1.toFixed(3) + '</p>';
+        h += '<p class="step">Accuracy = (' + cnt(tp) + ' + ' + cnt(tn) + ') / 10,000 = ' + (acc * 100).toFixed(1) + '%</p>';
+        var per = fp / tp;
+        h += '<p>' + (per >= 1 ? 'The team reviews ' + per.toFixed(1) + ' false alarms for every real fraud caught.' :
+                                 'Only ' + per.toFixed(2) + ' false alarms per real fraud caught.') +
+             ' Recall, FPR, balanced accuracy and the ROC point (0.032, 0.80) are the same at every setting of this slider. Accuracy actually rises as fraud gets rarer, drifting toward the specificity of 96.8%.</p>';
+        document.getElementById('prev-steps').innerHTML = h;
+      }
+      slider.addEventListener('input', update);
+      update();
+    })();
+  </script>
+</body>
+</html>
