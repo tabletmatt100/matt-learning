@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How to Write an Article for This Repo (Golden Template)</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: var(--font-size);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem;
+      background: var(--bg);
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+      display: inline-block;
+      padding: 8px 0;
+    }
+
+    .font-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thick);
+      padding: 6px 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 48px;
+      min-width: 48px;
+      font-family: inherit;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    .btn-small {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 6px 12px;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    .tag {
+      display: inline-block;
+      border: var(--border-thin);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 2.1rem;
+      line-height: 1.25;
+      margin-top: 0.4rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-top: 2.6rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+
+    .tldr {
+      border: 2px solid var(--border);
+      padding: 1.1rem 1.3rem;
+      margin: 1.4rem 0 2rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .tldr h2 {
+      margin-top: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.25rem;
+    }
+
+    .tldr ul {
+      margin: 0.6rem 0 0 0;
+      padding-left: 1.3rem;
+    }
+
+    .tldr li {
+      margin-bottom: 0.45rem;
+    }
+
+    .worked {
+      border-left: 4px solid var(--border);
+      padding: 0.4rem 0 0.4rem 1.1rem;
+      margin: 1.3rem 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.2rem 0;
+      font-size: 0.95em;
+    }
+
+    th, td {
+      border: var(--border-thin);
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    th {
+      background: var(--highlight-bg);
+      font-weight: bold;
+    }
+
+    .num {
+      font-family: var(--font-mono);
+      text-align: right;
+    }
+
+    code, pre, textarea {
+      font-family: var(--font-mono);
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+    }
+
+    pre {
+      padding: 12px;
+      border: var(--border-thin);
+      overflow-x: auto;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 10px;
+      border: var(--border-thick);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+
+    details {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin: 1.2rem 0;
+    }
+
+    summary {
+      font-weight: bold;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    /* Interactive Concept Popovers */
+    .term {
+      border-bottom: 2px dotted var(--border);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+
+    .term:focus {
+      outline: 2px solid var(--border);
+    }
+
+    #popover-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.78);
+      z-index: 900;
+    }
+
+    #popover-box {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(92vw, 540px);
+      max-height: 80vh;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      padding: 1.2rem 1.4rem;
+      z-index: 1000;
+    }
+
+    .popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
+      gap: 8px;
+    }
+
+    .popover-title {
+      font-weight: bold;
+      font-size: 1.15rem;
+    }
+
+    /* Interactive Widget */
+    .interactive-card {
+      border: var(--border-thick);
+      padding: 1.3rem;
+      margin: 1.8rem 0;
+      background: var(--bg);
+    }
+
+    .widget-label {
+      display: inline-block;
+      background: var(--active-bg);
+      color: var(--active-text);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0.9rem 0;
+    }
+
+    .lint-results {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+      background: var(--highlight-bg);
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+    }
+
+    .lint-results ul {
+      margin: 0.4rem 0 0 0;
+      padding-left: 1.2rem;
+    }
+
+    /* MCQs */
+    .mcq-box {
+      border: var(--border-thick);
+      padding: 1.2rem 1.3rem;
+      margin: 1.6rem 0;
+    }
+
+    .mcq-title {
+      font-size: 0.85em;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: var(--border-thin);
+      padding: 0.75rem 0.9rem;
+      margin: 0.55rem 0;
+      cursor: pointer;
+      min-height: 48px;
+    }
+
+    .mcq-option input {
+      margin-right: 10px;
+      transform: scale(1.2);
+    }
+
+    .mcq-option.picked {
+      border-width: 2px;
+      background: var(--highlight-bg);
+    }
+
+    .mcq-option.right {
+      border: 3px solid var(--border);
+      background: var(--highlight-bg);
+    }
+
+    .mcq-option.wrong {
+      border: 2px dashed var(--border);
+    }
+
+    .mcq-feedback {
+      display: none;
+      margin-top: 0.9rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.8rem;
+    }
+
+    .score-bar {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin-top: 2rem;
+      background: var(--highlight-bg);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Articles</a>
+      </div>
+      <div class="font-controls">
+        <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <button id="font-inc" aria-label="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div>
+      <span class="tag">Meta</span>
+      <span class="tag">Golden Template</span>
+      <span class="tag">Boox Go 10.3</span>
+    </div>
+
+    <h1>How to Write an Article for This Repo</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li>You are writing for a human reading on an Onyx Boox Go 10.3 <span class="term" data-term="e-ink">E-ink tablet</span>, not a desktop LCD monitor.</li>
+        <li>Keep the CSS monochrome (<code>#000</code> on <code>#fff</code>), ban all animations to stop <span class="term" data-term="ghosting">ghosting</span>, and make every button at least <code>48px</code> tall.</li>
+        <li>Open with a bulleted TL;DR, ground every concept in a real numerical example, and tuck heavy proofs inside <code>&lt;details&gt;</code> tags.</li>
+        <li>Write like a person talking to a smart peer: short sentences mixed with longer ones, concrete opinions, and zero <span class="term" data-term="ai-tell">AI tells</span>.</li>
+        <li>Ship interactive widgets, tappable <span class="term" data-term="popover">concept popovers</span>, and multiple-choice checks with per-option explanations.</li>
+      </ul>
+    </div>
+
+    <h2 id="s1">1. Respect the screen</h2>
+    <p>
+      An E-ink screen flips physical ink capsules instead of shining a backlight. Fades, slide transitions, and subtle gray gradients look crisp on a laptop and turn into smeared mud on Carta 1200. Put <code>transition: none !important; animation: none !important;</code> on <code>*</code> and leave it there.
+    </p>
+    <p>
+      Contrast and <span class="term" data-term="touch-target">touch targets</span> are not aesthetic preferences; they are legibility math. Look at the numbers for this page versus a typical web blog:
+    </p>
+
+    <div class="worked">
+      <p><strong>Contrast ratio</strong> compares relative luminance $L_1$ (lighter) and $L_2$ (darker):</p>
+      <p>$$C = \frac{L_1 + 0.05}{L_2 + 0.05}$$</p>
+      <p>
+        Pure black on white gives $L_1 = 1.0$, $L_2 = 0.0$, so $C = 1.05 / 0.05 = 21:1$.<br>
+        Medium gray text (<code>#666666</code>, $L_2 \approx 0.13$) on off-white (<code>#f5f5f5</code>, $L_1 \approx 0.91$) drops to $0.96 / 0.18 \approx 5.3:1$, which looks washed out without a frontlight.
+      </p>
+      <p><strong>Tap area:</strong> A <code>48px</code> button has $48 \times 48 = 2304\text{ px}^2$ of target area, four times larger than a cramped <code>24px</code> link ($576\text{ px}^2$).</p>
+    </div>
+
+    <details>
+      <summary>Required page skeleton for every standalone HTML file</summary>
+      <p>Include these four pieces in every article you generate:</p>
+      <ul>
+        <li><strong>KaTeX fallback:</strong> Load from local <code>katex/</code> first, with <code>onerror</code> falling back to jsDelivr so files work offline on the tablet and online on GitHub Pages.</li>
+        <li><strong>Font scaler:</strong> Working <code>A-</code> and <code>A+</code> buttons in the header adjusting <code>document.body.style.fontSize</code>.</li>
+        <li><strong>Popover modal:</strong> <code>.term[data-term]</code> spans that open a high-contrast dialog and re-run <code>renderMathInElement</code> on the modal body.</li>
+        <li><strong>MCQ blocks:</strong> Radio options with <code>data-explain</code> strings on every single choice, not just the right one.</li>
+      </ul>
+    </details>
+
+    <h2 id="s2">2. Drop the AI voice</h2>
+    <p>
+      Readers spot LLM prose in two sentences. They see the same filler transitions ("It is important to note", "In conclusion", "Let's dive in"), the same puffed-up adjectives ("crucial", "transformative", "landscape"), and three-item lists padded out for rhythm. Every section ends by summarizing what it just said.
+    </p>
+    <p>
+      Cut all of that. State the point plainly, use concrete numbers instead of vague praise, and vary your sentence length. Plain headings like "1. Respect the screen" beat clever marketing subheads. Never use emojis, and save <strong>bold</strong> for labels or genuinely key terms.
+    </p>
+
+    <div class="interactive-card" id="linter-widget">
+      <div class="widget-label">Interactive Widget</div>
+      <h3>Draft Linter: Spot AI Tells</h3>
+      <p>Load a sample or edit the text below, then run the check to see what gets flagged.</p>
+
+      <div class="control-row">
+        <button class="btn btn-small" onclick="loadSample('slop')">Load AI-slop draft</button>
+        <button class="btn btn-small" onclick="loadSample('clean')">Load clean draft</button>
+        <button class="btn btn-small" onclick="runLint()">Check draft</button>
+      </div>
+
+      <textarea id="draft-input" aria-label="Draft text to lint"></textarea>
+
+      <div class="lint-results" id="lint-output">Click "Check draft" to inspect the text.</div>
+    </div>
+
+    <h2 id="s3">3. Teach through interaction and checks</h2>
+    <p>
+      Passive walls of text are easy to skim and forget. Give the reader something to poke at: a slider that updates an SVG chart, a simulator that draws samples, or a calculator that recomputes a table.
+    </p>
+    <p>
+      Follow each main idea with a short multiple-choice check. Good checks test a common misconception and explain why <em>every</em> wrong option is wrong inside a collapsible list. Answer these three to see the pattern in action.
+    </p>
+
+    <div class="mcq-box" id="mcq-1" data-correct="B">
+      <div class="mcq-title"></div>
+      <p>Why does the template stylesheet force <code>transition: none !important; animation: none !important;</code> on every element?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Desktop browsers handle CSS transitions easily, and E-ink tablets still parse CSS normally. The issue is the physical screen refresh.">A) Older mobile browsers crash when parsing CSS keyframes.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Correct. E-ink capsules update slowly; animated frames leave partial gray trails (ghosting) across the page.">B) E-ink screens leave visible ghosting trails during animated frame updates.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="KaTeX renders static HTML/SVG math; it does not depend on CSS transitions being disabled.">C) KaTeX math rendering breaks if CSS transitions are enabled.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-2" data-correct="C">
+      <div class="mcq-title"></div>
+      <p>Where should a long algebraic proof or full PyTorch implementation go in an article?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Dropping proofs completely leaves curious readers stuck when they want to verify a claim.">A) Leave it out entirely so the article stays short.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Putting long derivations inline breaks reading flow on a 10-inch screen.">B) Put it inline in the middle of the main narrative.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Correct. A collapsed &lt;details&gt; block keeps the main path tight while letting anyone tap to inspect the full derivation.">C) Wrap it inside a collapsed <code>&lt;details&gt;</code> block.</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="mcq-box" id="mcq-3" data-correct="A">
+      <div class="mcq-title"></div>
+      <p>Which sentence fits the prose standard for this repository?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Correct. Short, concrete, specific numbers, and no filler adjectives or emojis.">A) Subtract the max logit before calling exp so float32 does not overflow past 88.7.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Avoid 'dive into', 'crucial landscape', and hype phrasing.">B) Let's dive into the crucial landscape of numerical stability in modern AI!</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Avoid 'It is important to note', em-dash padding, and neat summary sign-offs.">C) It is important to note—above all else—that stability is the cornerstone of success.</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </div>
+
+    <div class="score-bar" id="mcq-score">Checks answered: 0 of 3.</div>
+  </main>
+
+  <div id="popover-backdrop" onclick="closePopover()"></div>
+  <div id="popover-box" role="dialog" aria-modal="true" aria-labelledby="popover-term-name">
+    <div class="popover-header">
+      <span class="popover-title" id="popover-term-name">Term</span>
+      <div>
+        <button class="btn btn-small" id="popover-back" style="display:none;">Back</button>
+        <button class="btn btn-small" onclick="closePopover()">Close</button>
+      </div>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    /* ---------- Font Controls ---------- */
+    var currentFontSize = 18;
+    document.getElementById('font-inc').addEventListener('click', function () {
+      if (currentFontSize < 28) {
+        currentFontSize += 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+    document.getElementById('font-dec').addEventListener('click', function () {
+      if (currentFontSize > 14) {
+        currentFontSize -= 2;
+        document.body.style.fontSize = currentFontSize + 'px';
+      }
+    });
+
+    /* ---------- KaTeX ---------- */
+    var katexOptions = {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    };
+    function renderMathIn(el) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(el, katexOptions);
+      }
+    }
+
+    /* ---------- Glossary & Popovers ---------- */
+    var GLOSSARY = {
+      'e-ink': {
+        title: 'E-ink display (Carta 1200)',
+        body: 'Reflective electrophoretic screen on the Onyx Boox Go 10.3 (300 PPI). Reads like paper in bright light, but updates slower than LCD and needs high contrast.'
+      },
+      'ghosting': {
+        title: 'Ghosting',
+        body: 'Faint afterimages left behind when ink capsules do not fully reset between frames. Removing CSS transitions and using solid borders keeps refreshes clean.'
+      },
+      'ai-tell': {
+        title: 'AI tells',
+        body: 'Stock phrases and habits that scream LLM output: "delve", "crucial", "landscape", "it\'s important to note", "in conclusion", em-dash overuse, emojis, and padded lists of three.'
+      },
+      'touch-target': {
+        title: 'Touch target',
+        body: 'Clickable area of a button or link. Keeping interactive controls at least $48 \\times 48$ px prevents mis-taps on a 10.3-inch tablet.'
+      },
+      'popover': {
+        title: 'Concept popover',
+        body: 'A modal definition triggered by tapping a dotted <code>.term</code> span. Keeps definitions one tap away without cluttering the main paragraph.'
+      }
+    };
+
+    var popBox = document.getElementById('popover-box');
+    var popBackdrop = document.getElementById('popover-backdrop');
+    var popBody = document.getElementById('popover-body');
+    var popTitle = document.getElementById('popover-term-name');
+    var backBtn = document.getElementById('popover-back');
+    var popHistory = [];
+
+    function showTerm(key, pushCurrent) {
+      var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
+      if (pushCurrent && popBox.style.display === 'block' && popBox.getAttribute('data-key')) {
+        popHistory.push(popBox.getAttribute('data-key'));
+      }
+      popBox.setAttribute('data-key', key);
+      popTitle.textContent = g.title;
+      popBody.innerHTML = '<p>' + g.body + '</p>';
+      backBtn.style.display = popHistory.length ? 'inline-block' : 'none';
+      popBackdrop.style.display = 'block';
+      popBox.style.display = 'block';
+      renderMathIn(popBody);
+    }
+
+    function closePopover() {
+      popBackdrop.style.display = 'none';
+      popBox.style.display = 'none';
+      popBox.removeAttribute('data-key');
+      popHistory = [];
+    }
+
+    backBtn.addEventListener('click', function () {
+      if (popHistory.length) { showTerm(popHistory.pop(), false); }
+    });
+
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest ? e.target.closest('.term') : null;
+      if (!el) { return; }
+      e.preventDefault();
+      showTerm(el.getAttribute('data-term'), popBox.contains(el));
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closePopover(); }
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('term')) {
+        document.activeElement.click();
+      }
+    });
+
+    /* ---------- Interactive Draft Linter ---------- */
+    var SAMPLES = {
+      slop: "Let's dive in! In today's fast-paced landscape, it's important to note that softmax is a crucial building block—one that bridges raw logits and probabilities. In conclusion, mastering this transformative formula is essential.",
+      clean: "A language model outputs raw logits on (-inf, +inf). Softmax exponentiates each score and divides by the sum so the outputs are positive and add to 1. Dividing by temperature T before exp() controls how peaked that distribution is."
+    };
+
+    var BANNED = [
+      'delve', 'crucial', 'landscape', "it's important to note", 'it is important to note',
+      'in conclusion', "let's dive in", 'transformative', 'fast-paced'
+    ];
+
+    function loadSample(which) {
+      document.getElementById('draft-input').value = SAMPLES[which];
+      runLint();
+    }
+
+    function runLint() {
+      var text = document.getElementById('draft-input').value.trim();
+      var out = document.getElementById('lint-output');
+      if (!text) {
+        out.textContent = 'Paste or load some text first.';
+        return;
+      }
+      var lower = text.toLowerCase();
+      var hits = [];
+      BANNED.forEach(function (phrase) {
+        if (lower.indexOf(phrase) !== -1) { hits.push('Banned phrase: "' + phrase + '"'); }
+      });
+      var emDashes = (text.match(/\u2014/g) || []).length;
+      if (emDashes > 0) { hits.push('Em-dash count: ' + emDashes + ' (cut or use commas/periods)'); }
+
+      var words = text.split(/\s+/).length;
+      var sentences = text.split(/[.!?]+/).filter(function (s) { return s.trim().length > 0; }).length || 1;
+      var avgLen = (words / sentences).toFixed(1);
+
+      var html = '<strong>Words:</strong> ' + words + ' | <strong>Sentences:</strong> ' + sentences +
+                 ' | <strong>Avg words/sentence:</strong> ' + avgLen;
+      if (hits.length === 0) {
+        html += '<br><strong>Result: PASS</strong> (no AI tells detected).';
+      } else {
+        html += '<br><strong>Result: ' + hits.length + ' issue(s) found</strong><ul>';
+        hits.forEach(function (h) { html += '<li>' + h + '</li>'; });
+        html += '</ul>';
+      }
+      out.innerHTML = html;
+    }
+
+    /* ---------- MCQs ---------- */
+    var mcqResults = {};
+    function updateScore() {
+      var total = document.querySelectorAll('.mcq-box').length;
+      var answered = 0, right = 0;
+      for (var id in mcqResults) {
+        if (Object.prototype.hasOwnProperty.call(mcqResults, id)) {
+          answered++;
+          if (mcqResults[id].first) { right++; }
+        }
+      }
+      document.getElementById('mcq-score').textContent =
+        'Checks answered: ' + answered + ' of ' + total + '. Right on first try: ' + right + '.';
+    }
+
+    function checkMCQ(boxId) {
+      var box = document.getElementById(boxId);
+      var correct = box.getAttribute('data-correct');
+      var selected = box.querySelector('input[type="radio"]:checked');
+      var fb = box.querySelector('.mcq-feedback');
+      fb.style.display = 'block';
+      if (!selected) {
+        fb.innerHTML = '<p>Pick an option first.</p>';
+        return;
+      }
+      if (!mcqResults[boxId]) { mcqResults[boxId] = { first: selected.value === correct }; }
+      box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('right', 'wrong'); });
+      var rightOpt = box.querySelector('input[value="' + correct + '"]');
+      rightOpt.closest('.mcq-option').classList.add('right');
+      var html;
+      if (selected.value === correct) {
+        html = '<p><strong>Correct.</strong> ' + selected.getAttribute('data-explain') + '</p>';
+      } else {
+        selected.closest('.mcq-option').classList.add('wrong');
+        html = '<p><strong>Not quite (' + selected.value + ').</strong> ' + selected.getAttribute('data-explain') + '</p>' +
+               '<p><strong>Answer: ' + correct + '.</strong> ' + rightOpt.getAttribute('data-explain') + '</p>';
+      }
+      html += '<details><summary>Why each option is right or wrong</summary><ul>';
+      box.querySelectorAll('input[type="radio"]').forEach(function (o) {
+        html += '<li><strong>' + o.value + ':</strong> ' + o.getAttribute('data-explain') + '</li>';
+      });
+      html += '</ul></details>';
+      fb.innerHTML = html;
+      renderMathIn(fb);
+      updateScore();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      document.querySelectorAll('.mcq-option input').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          var box = inp.closest('.mcq-box');
+          box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+          inp.closest('.mcq-option').classList.add('picked');
+        });
+      });
+      var boxes = document.querySelectorAll('.mcq-box');
+      boxes.forEach(function (box, i) {
+        var t = box.querySelector('.mcq-title');
+        if (t) { t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length; }
+      });
+      loadSample('slop');
+      updateScore();
+      renderMathIn(document.body);
+      setTimeout(function () { renderMathIn(document.body); }, 250);
+    });
+  </script>
+</body>
+</html>
