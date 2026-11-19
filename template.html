@@ -31,14 +31,22 @@
       scroll-behavior: auto !important;
     }
 
+    html {
+      font-size: var(--font-size);
+    }
+
     body {
       background-color: var(--bg);
       color: var(--text);
       font-family: var(--font-main);
-      font-size: var(--font-size);
+      font-size: 1rem;
       line-height: 1.65;
       margin: 0;
       padding: 0;
+    }
+
+    a {
+      color: var(--text);
     }
 
     header {
@@ -70,6 +78,14 @@
       display: flex;
       gap: 6px;
       align-items: center;
+    }
+
+    .font-size-label {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      min-width: 3.2em;
+      text-align: center;
+      font-weight: bold;
     }
 
     .font-controls button, .btn {
@@ -220,9 +236,16 @@
     /* Interactive Concept Popovers */
     .term {
       border-bottom: 2px dotted var(--border);
+      background: var(--highlight-bg);
       font-weight: 600;
       cursor: pointer;
-      padding: 0 2px;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .term:active {
+      background: var(--active-bg);
+      color: var(--active-text);
     }
 
     .term:focus {
@@ -308,18 +331,25 @@
       padding-left: 1.2rem;
     }
 
-    /* MCQs */
-    .mcq-box {
+    /* MCQs (collapsed by default via <details class="mcq-box">) */
+    details.mcq-box, .mcq-box {
       border: var(--border-thick);
-      padding: 1.2rem 1.3rem;
-      margin: 1.6rem 0;
+      padding: 0.9rem 1.3rem;
+      margin: 1.4rem 0;
     }
 
-    .mcq-title {
-      font-size: 0.85em;
+    summary.mcq-title, .mcq-title {
+      font-size: 0.9em;
       font-weight: bold;
       text-transform: uppercase;
-      margin-bottom: 0.4rem;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    details.mcq-box[open] > summary.mcq-title {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.6rem;
     }
 
     .mcq-option {
@@ -363,24 +393,253 @@
       margin-top: 2rem;
       background: var(--highlight-bg);
       font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    /* Table of Contents */
+    .toc {
+      border: var(--border-thin);
+      padding: 0.8rem 1.2rem;
+      margin: 1.4rem 0 2rem 0;
+    }
+
+    .toc-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.85em;
+      margin-bottom: 0.4rem;
+    }
+
+    .toc ol {
+      margin: 0.3rem 0 0 0;
+      padding-left: 1.4rem;
+    }
+
+    .toc li {
+      margin-bottom: 0.25rem;
+    }
+
+    .toc a {
+      display: inline-block;
+      padding: 4px 0;
+    }
+
+    /* Math Block & Callouts */
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.7rem 1rem;
+      margin: 1.4rem 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .math-block .katex-display {
+      margin: 0.3rem 0;
+    }
+
+    .callout {
+      border: var(--border-thin);
+      border-left: 5px solid var(--border);
+      padding: 0.8rem 1.1rem;
+      margin: 1.4rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .callout-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.82em;
+      margin-bottom: 0.3rem;
+    }
+
+    /* Tables & Figures */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 1.2rem 0;
+    }
+
+    .table-wrap table {
+      margin: 0;
+    }
+
+    .figure-box {
+      border: var(--border-thin);
+      padding: 0.9rem;
+      margin: 1.4rem 0;
+      text-align: center;
+    }
+
+    .figure-box svg {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .figure-caption {
+      font-size: 0.88em;
+      margin-top: 0.6rem;
+      text-align: left;
+    }
+
+    /* Touch-Friendly Sliders, Inputs, and Stat Readouts */
+    .control-row label {
+      font-weight: 600;
+      min-width: 8rem;
+    }
+
+    .control-row .val {
+      font-family: var(--font-mono);
+      font-weight: bold;
+      min-width: 4.5rem;
+      border: var(--border-thin);
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      min-width: 160px;
+      height: 44px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px;
+      background: var(--border);
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px;
+      height: 28px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+      margin-top: -11px;
+    }
+
+    input[type="range"]::-moz-range-track {
+      height: 6px;
+      background: var(--border);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+    }
+
+    input[type="number"], select {
+      font-size: 1rem;
+      font-family: inherit;
+      border: var(--border-thick);
+      padding: 8px 10px;
+      min-height: 48px;
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 0;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 1rem 0;
+    }
+
+    .stat {
+      border: var(--border-thick);
+      padding: 8px 10px;
+    }
+
+    .stat .k {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .stat .v {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: bold;
+    }
+
+    .readout {
+      border: var(--border-thin);
+      padding: 0.7rem 1rem;
+      font-size: 0.95em;
+      margin-top: 0.8rem;
+      background: var(--highlight-bg);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1.2rem 0;
+    }
+
+    @media (max-width: 640px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Footer */
+    footer.article-footer {
+      border-top: 2px solid var(--border);
+      margin-top: 3rem;
+      padding-top: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    footer.article-footer a {
+      font-weight: 600;
+      padding: 8px 0;
+      display: inline-block;
+    }
+
+    @media print {
+      header, .font-controls, footer.article-footer {
+        display: none;
+      }
+      .mcq-box, .interactive-card, .worked, .tldr, details {
+        break-inside: avoid;
+      }
     }
   </style>
 </head>
 <body>
-
-  <header>
+  <!-- === 1. HEADER & FONT CONTROLS === -->
+  <header id="top">
     <div class="header-inner">
       <div class="nav-links">
         <a href="index.html">&larr; All Articles</a>
       </div>
       <div class="font-controls">
         <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <span class="font-size-label" id="font-size-label">18px</span>
         <button id="font-inc" aria-label="Increase font size">A+</button>
       </div>
     </div>
   </header>
 
   <main>
+    <!-- === 2. TAGS, TITLE & TL;DR === -->
     <div>
       <span class="tag">Meta</span>
       <span class="tag">Golden Template</span>
@@ -400,17 +659,31 @@
       </ul>
     </div>
 
+    <!-- === 3. TABLE OF CONTENTS === -->
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#s1">Respect the screen</a></li>
+        <li><a href="#s2">Drop the AI voice</a></li>
+        <li><a href="#s3">Teach through interaction and checks</a></li>
+      </ol>
+    </nav>
+
+    <!-- === 4. MAIN SECTIONS === -->
     <h2 id="s1">1. Respect the screen</h2>
     <p>
-      An E-ink screen flips physical ink capsules instead of shining a backlight. Fades, slide transitions, and subtle gray gradients look crisp on a laptop and turn into smeared mud on Carta 1200. Put <code>transition: none !important; animation: none !important;</code> on <code>*</code> and leave it there.
+      An E-ink screen flips physical ink capsules instead of shining a backlight. Fades, slide transitions, and subtle gray gradients look crisp on a laptop and turn into smeared mud on <span class="term" data-term="carta-1200">Carta 1200</span>. Put <code>transition: none !important; animation: none !important;</code> on <code>*</code> and leave it there.
     </p>
     <p>
       Contrast and <span class="term" data-term="touch-target">touch targets</span> are not aesthetic preferences; they are legibility math. Look at the numbers for this page versus a typical web blog:
     </p>
 
+    <div class="math-block">
+      $$C = \frac{L_1 + 0.05}{L_2 + 0.05}$$
+    </div>
+
     <div class="worked">
-      <p><strong>Contrast ratio</strong> compares relative luminance $L_1$ (lighter) and $L_2$ (darker):</p>
-      <p>$$C = \frac{L_1 + 0.05}{L_2 + 0.05}$$</p>
+      <p><strong>Worked example (contrast ratio):</strong> $L_1$ is the lighter <span class="term" data-term="relative-luminance">relative luminance</span> and $L_2$ is the darker one.</p>
       <p>
         Pure black on white gives $L_1 = 1.0$, $L_2 = 0.0$, so $C = 1.05 / 0.05 = 21:1$.<br>
         Medium gray text (<code>#666666</code>, $L_2 \approx 0.13$) on off-white (<code>#f5f5f5</code>, $L_1 \approx 0.91$) drops to $0.96 / 0.18 \approx 5.3:1$, which looks washed out without a frontlight.
@@ -418,20 +691,58 @@
       <p><strong>Tap area:</strong> A <code>48px</code> button has $48 \times 48 = 2304\text{ px}^2$ of target area, four times larger than a cramped <code>24px</code> link ($576\text{ px}^2$).</p>
     </div>
 
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Element</th>
+            <th>Typical Web Blog</th>
+            <th>Boox Go 10.3 Target</th>
+            <th class="num">Ratio / Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Body text contrast</td>
+            <td><code>#555</code> on <code>#fafafa</code></td>
+            <td><code>#000</code> on <code>#fff</code></td>
+            <td class="num">21 : 1</td>
+          </tr>
+          <tr>
+            <td>Primary button</td>
+            <td><code>32px</code> height</td>
+            <td><code>min-height: 48px</code></td>
+            <td class="num">2304 px&sup2;</td>
+          </tr>
+          <tr>
+            <td>Range slider thumb</td>
+            <td><code>14px</code> browser default</td>
+            <td><code>28px</code> crisp circle</td>
+            <td class="num">44px track hit</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Copy-paste rule</div>
+      <p style="margin:0;">Every standalone HTML article must work offline on the tablet (<code>file://</code>) and online on GitHub Pages. Keep CSS and JS inline in the file, and always pair local <code>katex/</code> tags with jsDelivr <code>onerror</code> fallbacks.</p>
+    </div>
+
     <details>
       <summary>Required page skeleton for every standalone HTML file</summary>
       <p>Include these four pieces in every article you generate:</p>
       <ul>
-        <li><strong>KaTeX fallback:</strong> Load from local <code>katex/</code> first, with <code>onerror</code> falling back to jsDelivr so files work offline on the tablet and online on GitHub Pages.</li>
-        <li><strong>Font scaler:</strong> Working <code>A-</code> and <code>A+</code> buttons in the header adjusting <code>document.body.style.fontSize</code>.</li>
-        <li><strong>Popover modal:</strong> <code>.term[data-term]</code> spans that open a high-contrast dialog and re-run <code>renderMathInElement</code> on the modal body.</li>
-        <li><strong>MCQ blocks:</strong> Radio options with <code>data-explain</code> strings on every single choice, not just the right one.</li>
+        <li><strong><span class="term" data-term="katex">KaTeX</span> fallback:</strong> Load from local <code>katex/</code> first, with <code>onerror</code> falling back to jsDelivr so files work offline on the tablet and online on GitHub Pages.</li>
+        <li><strong>Font scaler:</strong> Working <code>A-</code> and <code>A+</code> buttons in the header updating <code>--font-size</code> on <code>&lt;html&gt;</code> and persisting to <span class="term" data-term="local-storage">localStorage</span>.</li>
+        <li><strong>Aggressive <span class="term" data-term="popover">concept popovers</span>:</strong> Tag every non-obvious technical term, acronym, symbol, or prerequisite with <code>.term[data-term]</code>—including nested terms inside definitions—so readers can always tap to see more.</li>
+        <li><strong>Collapsed MCQ blocks:</strong> Wrap each check in <code>&lt;details class="mcq-box"&gt;</code> so quizzes stay collapsed until tapped, with <code>data-explain</code> strings on every choice.</li>
       </ul>
     </details>
 
     <h2 id="s2">2. Drop the AI voice</h2>
     <p>
-      Readers spot LLM prose in two sentences. They see the same filler transitions ("It is important to note", "In conclusion", "Let's dive in"), the same puffed-up adjectives ("crucial", "transformative", "landscape"), and three-item lists padded out for rhythm. Every section ends by summarizing what it just said.
+      Readers spot <span class="term" data-term="llm">LLM</span> prose in two sentences. They see the same filler transitions ("It is important to note", "In conclusion", "Let's dive in"), the same puffed-up adjectives ("crucial", "transformative", "landscape"), and three-item lists padded out for rhythm. Every section ends by summarizing what it just said.
     </p>
     <p>
       Cut all of that. State the point plainly, use concrete numbers instead of vague praise, and vary your sentence length. Plain headings like "1. Respect the screen" beat clever marketing subheads. Never use emojis, and save <strong>bold</strong> for labels or genuinely key terms.
@@ -457,41 +768,75 @@
     <p>
       Passive walls of text are easy to skim and forget. Give the reader something to poke at: a slider that updates an SVG chart, a simulator that draws samples, or a calculator that recomputes a table.
     </p>
+
+    <div class="interactive-card" id="svg-slider-widget">
+      <div class="widget-label">Interactive Widget (Slider + SVG Pattern)</div>
+      <h3><span class="term" data-term="softmax">Softmax</span> <span class="term" data-term="temperature">Temperature</span> Explorer</h3>
+      <p>Drag the slider to scale <span class="term" data-term="logits">logits</span> <code>[2.0, 1.0, 0.0]</code> by temperature $T$ and watch the SVG probabilities and <span class="term" data-term="entropy">entropy</span> update.</p>
+
+      <div class="control-row">
+        <label for="temp-slider">Temperature $T$</label>
+        <input type="range" id="temp-slider" min="0.2" max="3.0" step="0.1" value="1.0">
+        <span class="val" id="temp-val">1.0</span>
+      </div>
+
+      <div class="figure-box" style="margin: 1rem 0;">
+        <svg id="temp-svg" viewBox="0 0 460 150" width="460" height="150" role="img" aria-label="Softmax probability bar chart"></svg>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Top Prob $p_1$</div><div class="v" id="stat-p1">-</div></div>
+        <div class="stat"><div class="k">Entropy $H(p)$ (<span class="term" data-term="nats">nats</span>)</div><div class="v" id="stat-ent">-</div></div>
+        <div class="stat"><div class="k">Max / Min Ratio</div><div class="v" id="stat-ratio">-</div></div>
+      </div>
+    </div>
+
     <p>
-      Follow each main idea with a short multiple-choice check. Good checks test a common misconception and explain why <em>every</em> wrong option is wrong inside a collapsible list. Answer these three to see the pattern in action.
+      Tag unfamiliar terms aggressively with <span class="term" data-term="popover">concept popovers</span> so readers can tap any jargon, symbol, or prerequisite right where they meet it. Follow each main idea with a short multiple-choice check, collapsed by default inside <code>&lt;details class="mcq-box"&gt;</code> so quizzes do not clutter the page until you tap to test yourself.
     </p>
 
-    <div class="mcq-box" id="mcq-1" data-correct="B">
-      <div class="mcq-title"></div>
+    <!-- === 5. COMPREHENSION CHECKS (collapsed by default) === -->
+
+    <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="CSS transitions on E-ink">
+      <summary class="mcq-title"></summary>
       <p>Why does the template stylesheet force <code>transition: none !important; animation: none !important;</code> on every element?</p>
       <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Desktop browsers handle CSS transitions easily, and E-ink tablets still parse CSS normally. The issue is the physical screen refresh.">A) Older mobile browsers crash when parsing CSS keyframes.</label>
       <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Correct. E-ink capsules update slowly; animated frames leave partial gray trails (ghosting) across the page.">B) E-ink screens leave visible ghosting trails during animated frame updates.</label>
       <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="KaTeX renders static HTML/SVG math; it does not depend on CSS transitions being disabled.">C) KaTeX math rendering breaks if CSS transitions are enabled.</label>
       <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
-    <div class="mcq-box" id="mcq-2" data-correct="C">
-      <div class="mcq-title"></div>
+    <details class="mcq-box" id="mcq-2" data-correct="C" data-topic="Where to put heavy proofs">
+      <summary class="mcq-title"></summary>
       <p>Where should a long algebraic proof or full PyTorch implementation go in an article?</p>
       <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Dropping proofs completely leaves curious readers stuck when they want to verify a claim.">A) Leave it out entirely so the article stays short.</label>
       <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Putting long derivations inline breaks reading flow on a 10-inch screen.">B) Put it inline in the middle of the main narrative.</label>
       <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Correct. A collapsed &lt;details&gt; block keeps the main path tight while letting anyone tap to inspect the full derivation.">C) Wrap it inside a collapsed <code>&lt;details&gt;</code> block.</label>
       <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
-    <div class="mcq-box" id="mcq-3" data-correct="A">
-      <div class="mcq-title"></div>
+    <details class="mcq-box" id="mcq-3" data-correct="A" data-topic="Prose standard">
+      <summary class="mcq-title"></summary>
       <p>Which sentence fits the prose standard for this repository?</p>
-      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Correct. Short, concrete, specific numbers, and no filler adjectives or emojis.">A) Subtract the max logit before calling exp so float32 does not overflow past 88.7.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Correct. Short, concrete, specific numbers, and no filler adjectives or emojis.">A) Subtract the max <span class="term" data-term="logits">logit</span> before calling exp so <span class="term" data-term="float32">float32</span> does not overflow past 88.7.</label>
       <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Avoid 'dive into', 'crucial landscape', and hype phrasing.">B) Let's dive into the crucial landscape of numerical stability in modern AI!</label>
       <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Avoid 'It is important to note', em-dash padding, and neat summary sign-offs.">C) It is important to note—above all else—that stability is the cornerstone of success.</label>
       <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
       <div class="mcq-feedback"></div>
+    </details>
+
+    <div class="score-bar">
+      <span id="mcq-score">Checks answered: 0 of 3.</span>
+      <button class="btn btn-small" onclick="resetMCQs()">Reset checks</button>
     </div>
 
-    <div class="score-bar" id="mcq-score">Checks answered: 0 of 3.</div>
+    <!-- === 6. FOOTER === -->
+    <footer class="article-footer">
+      <a href="index.html">&larr; All Articles</a>
+      <a href="#top">&uarr; Back to top</a>
+    </footer>
   </main>
 
   <div id="popover-backdrop" onclick="closePopover()"></div>
@@ -507,20 +852,33 @@
   </div>
 
   <script>
-    /* ---------- Font Controls ---------- */
+    /* ---------- Utilities ---------- */
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+    function fmt(x, d) { return Number(x).toFixed(d === undefined ? 2 : d); }
+
+    /* ---------- Font Controls (scales :root + persists) ---------- */
+    var FONT_KEY = 'matt_learning_font_px';
     var currentFontSize = 18;
+    try {
+      var savedFont = parseInt(localStorage.getItem(FONT_KEY), 10);
+      if (savedFont >= 14 && savedFont <= 28) { currentFontSize = savedFont; }
+    } catch (e) {}
+
+    function applyFontSize(px) {
+      currentFontSize = clamp(px, 14, 28);
+      document.documentElement.style.setProperty('--font-size', currentFontSize + 'px');
+      var lbl = document.getElementById('font-size-label');
+      if (lbl) { lbl.textContent = currentFontSize + 'px'; }
+      try { localStorage.setItem(FONT_KEY, String(currentFontSize)); } catch (e) {}
+    }
+
     document.getElementById('font-inc').addEventListener('click', function () {
-      if (currentFontSize < 28) {
-        currentFontSize += 2;
-        document.body.style.fontSize = currentFontSize + 'px';
-      }
+      applyFontSize(currentFontSize + 2);
     });
     document.getElementById('font-dec').addEventListener('click', function () {
-      if (currentFontSize > 14) {
-        currentFontSize -= 2;
-        document.body.style.fontSize = currentFontSize + 'px';
-      }
+      applyFontSize(currentFontSize - 2);
     });
+    applyFontSize(currentFontSize);
 
     /* ---------- KaTeX ---------- */
     var katexOptions = {
@@ -535,22 +893,48 @@
     function renderMathIn(el) {
       if (typeof renderMathInElement === 'function') {
         renderMathInElement(el, katexOptions);
+        return true;
       }
+      return false;
+    }
+    function ensureMathRendered(tries) {
+      if (renderMathIn(document.body) || tries <= 0) { return; }
+      setTimeout(function () { ensureMathRendered(tries - 1); }, 250);
     }
 
     /* ---------- Glossary & Popovers ---------- */
     var GLOSSARY = {
       'e-ink': {
-        title: 'E-ink display (Carta 1200)',
-        body: 'Reflective electrophoretic screen on the Onyx Boox Go 10.3 (300 PPI). Reads like paper in bright light, but updates slower than LCD and needs high contrast.'
+        title: 'E-ink display',
+        body: 'Reflective electrophoretic screen on the Onyx Boox Go 10.3 (300 PPI, <span class="term" data-term="carta-1200">Carta 1200</span>). Reads like paper in bright light, but updates slower than LCD and needs high contrast.'
+      },
+      'carta-1200': {
+        title: 'Carta 1200',
+        body: 'An E-ink screen generation with faster capsule switching and higher contrast than older panels, but animated CSS frames still cause <span class="term" data-term="ghosting">ghosting</span>.'
       },
       'ghosting': {
         title: 'Ghosting',
         body: 'Faint afterimages left behind when ink capsules do not fully reset between frames. Removing CSS transitions and using solid borders keeps refreshes clean.'
       },
+      'relative-luminance': {
+        title: 'Relative luminance',
+        body: 'Perceived brightness of an sRGB color normalized from $0.0$ (pure black) to $1.0$ (pure white). Used in the WCAG contrast ratio formula.'
+      },
+      'katex': {
+        title: 'KaTeX',
+        body: 'Fast client-side math renderer that turns LaTeX strings like <code>$x^2$</code> into crisp HTML and CSS without waiting for a server.'
+      },
+      'local-storage': {
+        title: 'localStorage',
+        body: 'Browser key-value store that persists across reloads on the same origin. Used here to remember your <code>A-</code> / <code>A+</code> font size.'
+      },
+      'llm': {
+        title: 'LLM (Large Language Model)',
+        body: 'Autoregressive neural network trained to predict the next token given prior tokens, outputting raw <span class="term" data-term="logits">logits</span> at each step.'
+      },
       'ai-tell': {
         title: 'AI tells',
-        body: 'Stock phrases and habits that scream LLM output: "delve", "crucial", "landscape", "it\'s important to note", "in conclusion", em-dash overuse, emojis, and padded lists of three.'
+        body: 'Stock phrases and habits that scream <span class="term" data-term="llm">LLM</span> output: "delve", "crucial", "landscape", "it\'s important to note", "in conclusion", em-dash overuse, emojis, and padded lists of three.'
       },
       'touch-target': {
         title: 'Touch target',
@@ -558,7 +942,31 @@
       },
       'popover': {
         title: 'Concept popover',
-        body: 'A modal definition triggered by tapping a dotted <code>.term</code> span. Keeps definitions one tap away without cluttering the main paragraph.'
+        body: 'A modal definition triggered by tapping a dotted <code>.term</code> span. Tag concepts aggressively—including nested terms inside definitions—so readers can always tap to learn more.'
+      },
+      'logits': {
+        title: 'Logits',
+        body: 'Unnormalized real-valued scores on $(-\\infty, +\\infty)$ before <span class="term" data-term="softmax">softmax</span> turns them into probabilities.'
+      },
+      'softmax': {
+        title: 'Softmax',
+        body: 'Maps a vector of <span class="term" data-term="logits">logits</span> $z_i$ to a valid probability distribution: $p_i = \\frac{e^{z_i / T}}{\\sum_j e^{z_j / T}}$, where $T$ is <span class="term" data-term="temperature">temperature</span>.'
+      },
+      'temperature': {
+        title: 'Temperature (T)',
+        body: 'Positive scalar dividing <span class="term" data-term="logits">logits</span> before exponentiation. $T &lt; 1$ sharpens the distribution (lower <span class="term" data-term="entropy">entropy</span>); $T &gt; 1$ flattens it toward uniform.'
+      },
+      'entropy': {
+        title: 'Shannon entropy H(p)',
+        body: 'Measures uncertainty in a distribution: $H(p) = -\\sum_i p_i \\ln p_i$ (in <span class="term" data-term="nats">nats</span>). Uniform over 3 items has $H = \\ln 3 \\approx 1.099$ nats.'
+      },
+      'nats': {
+        title: 'Nats (natural units of information)',
+        body: 'Information unit when <span class="term" data-term="entropy">entropy</span> uses the natural logarithm $\\ln$ instead of $\\log_2$ (bits). $1\\text{ nat} \\approx 1.443\\text{ bits}$.'
+      },
+      'float32': {
+        title: 'float32',
+        body: 'Standard 32-bit IEEE floating-point number. Its maximum finite value is $\\approx 3.4 \\times 10^{38}$, so $\\exp(x)$ overflows to <code>Infinity</code> once $x &gt; 88.72$.'
       }
     };
 
@@ -568,6 +976,7 @@
     var popTitle = document.getElementById('popover-term-name');
     var backBtn = document.getElementById('popover-back');
     var popHistory = [];
+    var lastTermTrigger = null;
 
     function showTerm(key, pushCurrent) {
       var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
@@ -588,6 +997,10 @@
       popBox.style.display = 'none';
       popBox.removeAttribute('data-key');
       popHistory = [];
+      if (lastTermTrigger && typeof lastTermTrigger.focus === 'function') {
+        lastTermTrigger.focus();
+        lastTermTrigger = null;
+      }
     }
 
     backBtn.addEventListener('click', function () {
@@ -598,6 +1011,7 @@
       var el = e.target.closest ? e.target.closest('.term') : null;
       if (!el) { return; }
       e.preventDefault();
+      if (!popBox.contains(el)) { lastTermTrigger = el; }
       showTerm(el.getAttribute('data-term'), popBox.contains(el));
     });
 
@@ -655,6 +1069,43 @@
       out.innerHTML = html;
     }
 
+    /* ---------- Interactive Slider + SVG Chart Pattern ---------- */
+    function updateTempWidget() {
+      var slider = document.getElementById('temp-slider');
+      var svg = document.getElementById('temp-svg');
+      if (!slider || !svg) { return; }
+
+      var T = parseFloat(slider.value);
+      document.getElementById('temp-val').textContent = fmt(T, 1);
+
+      var logits = [2.0, 1.0, 0.0];
+      var labels = ['Token A (z=2.0)', 'Token B (z=1.0)', 'Token C (z=0.0)'];
+      var maxZ = 2.0 / T;
+      var exps = logits.map(function (z) { return Math.exp(z / T - maxZ); });
+      var sum = exps.reduce(function (a, b) { return a + b; }, 0);
+      var probs = exps.map(function (e) { return e / sum; });
+
+      var entropy = probs.reduce(function (acc, p) {
+        return p > 1e-12 ? acc - p * Math.log(p) : acc;
+      }, 0);
+
+      document.getElementById('stat-p1').textContent = fmt(probs[0], 3);
+      document.getElementById('stat-ent').textContent = fmt(entropy, 3) + ' nats';
+      document.getElementById('stat-ratio').textContent = fmt(probs[0] / probs[2], 1) + 'x';
+
+      var out = '';
+      var barMaxW = 240;
+      probs.forEach(function (p, i) {
+        var y = 18 + i * 42;
+        var w = Math.max(2, Math.round(p * barMaxW));
+        out += '<text x="10" y="' + (y + 19) + '" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + labels[i] + '</text>';
+        out += '<rect x="145" y="' + y + '" width="' + barMaxW + '" height="26" fill="#fff" stroke="#000" stroke-width="1"/>';
+        out += '<rect x="145" y="' + y + '" width="' + w + '" height="26" fill="#000"/>';
+        out += '<text x="' + (145 + barMaxW + 10) + '" y="' + (y + 19) + '" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(p * 100, 1) + '%</text>';
+      });
+      svg.innerHTML = out;
+    }
+
     /* ---------- MCQs ---------- */
     var mcqResults = {};
     function updateScore() {
@@ -702,6 +1153,19 @@
       updateScore();
     }
 
+    function resetMCQs() {
+      mcqResults = {};
+      document.querySelectorAll('.mcq-box').forEach(function (box) {
+        box.removeAttribute('open');
+        box.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked', 'right', 'wrong'); });
+        var fb = box.querySelector('.mcq-feedback');
+        fb.style.display = 'none';
+        fb.innerHTML = '';
+      });
+      updateScore();
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
       document.querySelectorAll('.term').forEach(function (el) {
         el.setAttribute('role', 'button');
@@ -717,13 +1181,22 @@
       var boxes = document.querySelectorAll('.mcq-box');
       boxes.forEach(function (box, i) {
         var t = box.querySelector('.mcq-title');
-        if (t) { t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length; }
+        var topic = box.getAttribute('data-topic');
+        if (t) {
+          t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length +
+            (topic ? ': ' + topic : '') + ' (tap to expand)';
+        }
       });
+      var tempSlider = document.getElementById('temp-slider');
+      if (tempSlider) {
+        tempSlider.addEventListener('input', updateTempWidget);
+        updateTempWidget();
+      }
       loadSample('slop');
       updateScore();
-      renderMathIn(document.body);
-      setTimeout(function () { renderMathIn(document.body); }, 250);
+      ensureMathRendered(10);
     });
+    window.addEventListener('load', function () { renderMathIn(document.body); });
   </script>
 </body>
 </html>
