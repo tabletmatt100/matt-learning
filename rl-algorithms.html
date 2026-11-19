@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modern RL Algorithms: From Q* and PPO to GRPO in LLMs (Part 2)</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    html { font-size: var(--font-size); }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 1rem;
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    a { color: var(--text); }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem;
+      background: var(--bg);
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+      display: inline-block;
+      padding: 8px 0;
+    }
+
+    .font-controls { display: flex; gap: 6px; align-items: center; }
+
+    .font-size-label {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      min-width: 3.2em;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thick);
+      padding: 6px 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 48px;
+      min-width: 48px;
+      font-family: inherit;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    .btn-small {
+      min-height: 48px;
+      min-width: 48px;
+      padding: 6px 12px;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    .tag {
+      display: inline-block;
+      border: var(--border-thin);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 2.05rem;
+      line-height: 1.25;
+      margin-top: 0.4rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+
+    h3 { font-size: 1.15rem; margin-top: 1.2rem; }
+
+    .tldr {
+      border: 2px solid var(--border);
+      padding: 1.1rem 1.3rem;
+      margin: 1.3rem 0 1.6rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .tldr h2 {
+      margin-top: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.2rem;
+    }
+
+    .tldr ul { margin: 0.6rem 0 0 0; padding-left: 1.3rem; }
+    .tldr li { margin-bottom: 0.45rem; }
+
+    .story-box {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin: 1.2rem 0;
+      background: var(--bg);
+    }
+
+    .story-label {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+
+    .toc {
+      border: var(--border-thin);
+      padding: 0.8rem 1.2rem;
+      margin: 1.2rem 0 1.8rem 0;
+    }
+
+    .toc-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.85em;
+      margin-bottom: 0.4rem;
+    }
+
+    .toc ol { margin: 0.3rem 0 0 0; padding-left: 1.4rem; }
+    .toc li { margin-bottom: 0.25rem; }
+    .toc a { display: inline-block; padding: 4px 0; }
+
+    .worked {
+      border-left: 4px solid var(--border);
+      padding: 0.5rem 0 0.5rem 1.1rem;
+      margin: 1.3rem 0;
+    }
+
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.9rem 1rem;
+      margin: 1.3rem 0;
+      overflow-x: auto;
+      text-align: center;
+      font-size: 1.08rem;
+    }
+
+    .math-hint {
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      margin-top: 0.45rem;
+      border-top: 1px dashed var(--border);
+      padding-top: 0.35rem;
+    }
+
+    .refutation {
+      border: var(--border-thick);
+      border-left: 6px solid var(--border);
+      padding: 0.9rem 1.1rem;
+      margin: 1.2rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .refutation-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.82em;
+      margin-bottom: 0.3rem;
+    }
+
+    .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93em;
+    }
+
+    th, td {
+      border: var(--border-thin);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: var(--highlight-bg); font-weight: bold; }
+    .num { font-family: var(--font-mono); text-align: right; }
+
+    code, pre, textarea, input[type="text"] {
+      font-family: var(--font-mono);
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+    }
+
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: var(--border-thick);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      min-height: 48px;
+      border-radius: 0;
+    }
+
+    textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+
+    details {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin: 1.2rem 0;
+    }
+
+    summary { font-weight: bold; cursor: pointer; padding: 4px 0; }
+
+    /* Anchored Concept & Symbol Popovers */
+    .term {
+      border-bottom: 2px dotted var(--border);
+      background: var(--highlight-bg);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 1px 4px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .term:focus { outline: 2px solid var(--border); }
+    .term.term-open { background: var(--active-bg); color: var(--active-text); }
+
+    #popover-box {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: min(92vw, 440px);
+      max-height: 60vh;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      padding: 1rem 1.2rem;
+      z-index: 1000;
+    }
+
+    .popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
+      gap: 8px;
+    }
+
+    .popover-title { font-weight: bold; font-size: 1.05rem; }
+
+    /* Interactive Cards & Controls */
+    .interactive-card {
+      border: var(--border-thick);
+      padding: 1.25rem;
+      margin: 1.6rem 0;
+      background: var(--bg);
+    }
+
+    .widget-label {
+      display: inline-block;
+      background: var(--active-bg);
+      color: var(--active-text);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0.9rem 0;
+    }
+
+    .control-row label { font-weight: 600; min-width: 7rem; }
+
+    .figure-box {
+      border: var(--border-thin);
+      padding: 0.8rem;
+      margin: 1rem 0;
+      text-align: center;
+    }
+
+    .figure-box svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 1rem 0;
+    }
+
+    .stat { border: var(--border-thick); padding: 8px 10px; }
+    .stat .k { font-size: 0.78rem; text-transform: uppercase; font-weight: bold; }
+    .stat .v { font-family: var(--font-mono); font-size: 1.15rem; font-weight: bold; }
+
+    .readout {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+      background: var(--highlight-bg);
+    }
+
+    .small-multiples {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 1rem 0;
+    }
+
+    .sm-panel { border: var(--border-thin); padding: 0.6rem; }
+    .sm-panel.sm-active { border: 3px solid var(--border); background: var(--highlight-bg); }
+
+    @media (max-width: 680px) {
+      .small-multiples { grid-template-columns: 1fr; }
+    }
+
+    /* Collapsed MCQs */
+    details.mcq-box, .mcq-box {
+      border: var(--border-thick);
+      padding: 0.9rem 1.3rem;
+      margin: 1.3rem 0;
+    }
+
+    summary.mcq-title, .mcq-title {
+      font-size: 0.9em;
+      font-weight: bold;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    details.mcq-box[open] > summary.mcq-title {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.6rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: var(--border-thin);
+      padding: 0.75rem 0.9rem;
+      margin: 0.55rem 0;
+      cursor: pointer;
+      min-height: 48px;
+    }
+
+    .mcq-option input { margin-right: 10px; transform: scale(1.2); }
+    .mcq-option.picked { border-width: 2px; background: var(--highlight-bg); }
+    .mcq-option.right { border: 3px solid var(--border); background: var(--highlight-bg); }
+    .mcq-option.wrong { border: 2px dashed var(--border); }
+    .mcq-feedback { display: none; margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+
+    .score-bar {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin-top: 1.6rem;
+      background: var(--highlight-bg);
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .recall-card { border: var(--border-thin); padding: 0.8rem 1rem; margin: 0.8rem 0; }
+
+    footer.article-footer {
+      border-top: 2px solid var(--border);
+      margin-top: 3rem;
+      padding-top: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-block; }
+
+    @media print {
+      header, .font-controls, footer.article-footer { display: none; }
+      .mcq-box, .interactive-card, .worked, .tldr, details { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header id="top">
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Articles</a>
+        <a href="reinforcement-learning.html">&larr; Part 1: RL From Scratch</a>
+      </div>
+      <div class="font-controls">
+        <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <span class="font-size-label" id="font-size-label">18px</span>
+        <button id="font-inc" aria-label="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div>
+      <span class="tag">Reinforcement Learning</span>
+      <span class="tag">Part 2: Q*, PPO &amp; GRPO</span>
+      <span class="tag">Boox Go 10.3</span>
+    </div>
+
+    <h1>Modern RL Algorithms: The Story From Q* and PPO to GRPO in LLMs</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>The overarching story:</strong> Every famous RL algorithm was invented to fix a concrete bottleneck in the previous one—moving from small grid games (<span class="term" data-term="q-star">$Q^*$</span> and <span class="term" data-term="q-learning">Q-Learning</span>) to huge continuous spaces (<span class="term" data-term="policy-gradient">Policy Gradients</span> and <span class="term" data-term="ppo">PPO</span>) to memory-efficient LLM reasoning (<span class="term" data-term="grpo">GRPO</span>).</li>
+        <li><strong><span class="term" data-term="q-star">$Q^*(s, a)$</span> ("Q-star"):</strong> The ultimate action cheat sheet—the expected return of taking move <span class="term" data-term="action">$a$</span> in state <span class="term" data-term="state">$s$</span> assuming you play <em>perfectly</em> on every step after. Great when you can check all possible actions, or score candidate reasoning steps in a search tree.</li>
+        <li><strong><span class="term" data-term="ppo">PPO</span> vs. <span class="term" data-term="grpo">GRPO</span> (for training LLMs):</strong> <span class="term" data-term="ppo">PPO</span> keeps a separate, giant <span class="term" data-term="critic">Critic</span> neural network to judge whether an answer beat expectations (<span class="term" data-term="advantage">Advantage $A_t$</span>) and clips updates so the model doesn't collapse. <span class="term" data-term="grpo">GRPO</span> (used in DeepSeek-R1) deletes the Critic network entirely: it generates a small group of <span class="term" data-term="group-size">$G$</span> answers to the same prompt and uses their own group average <span class="term" data-term="group-mean">$\mu$</span> as the baseline.</li>
+      </ul>
+    </div>
+
+    <p>
+      <em>Tip: Tap any highlighted concept or mathematical symbol (like <span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="advantage">$A_t$</span>, <span class="term" data-term="prob-ratio">$r_t$</span>, <span class="term" data-term="clip-eps">$\epsilon$</span>, or <span class="term" data-term="group-mean">$\mu$</span>) to open an explanation popover. All examples and checks use simple mental math—no calculator required.</em>
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Clickable Symbol</th><th>Plain-English Meaning</th><th>Where It Shows Up</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term" data-term="q-star">$Q^*(s, a)$</span></td>
+            <td>Optimal action-value: score of move <span class="term" data-term="action">$a$</span> assuming perfect play afterward</td>
+            <td><span class="term" data-term="q-learning">Q-Learning</span>, <span class="term" data-term="dqn">DQN</span>, reasoning tree search</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="policy-theta">$\pi_\theta(a \mid s)$</span></td>
+            <td>The <span class="term" data-term="actor">Actor</span> neural network (with weights <span class="term" data-term="theta">$\theta$</span>) that outputs action probabilities</td>
+            <td><span class="term" data-term="policy-gradient">Policy Gradient</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="grpo">GRPO</span></td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="advantage">$A_t$</span></td>
+            <td><span class="term" data-term="advantage">Advantage</span>: how much better an action scored than the expected baseline</td>
+            <td><span class="term" data-term="actor-critic">Actor-Critic</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="grpo">GRPO</span></td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="prob-ratio">$r_t$</span></td>
+            <td>Probability ratio <span class="term" data-term="prob-ratio">$\frac{\pi_{\text{new}}}{\pi_{\text{old}}}$</span> measuring how much the policy changed</td>
+            <td><span class="term" data-term="ppo">PPO</span> &amp; <span class="term" data-term="grpo">GRPO</span> clipping</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="clip-eps">$\epsilon$</span></td>
+            <td><span class="term" data-term="clip-eps">Clip range</span> (usually $0.2$, or $\pm 20\%$ speed limit on policy changes)</td>
+            <td><span class="term" data-term="ppo">PPO</span> &amp; <span class="term" data-term="grpo">GRPO</span></td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="group-size">$G$</span>, <span class="term" data-term="group-mean">$\mu$</span>, <span class="term" data-term="group-std">$\sigma$</span></td>
+            <td>Number of sampled answers (<span class="term" data-term="group-size">$G$</span>), their average score (<span class="term" data-term="group-mean">$\mu$</span>), and spread (<span class="term" data-term="group-std">$\sigma$</span>)</td>
+            <td><span class="term" data-term="grpo">GRPO</span> group baseline</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">The 5-Chapter Narrative</div>
+      <ol>
+        <li><a href="#ch-1">1. Chapter 1: $Q^*$ ("Q-Star"), Q-Learning, and Why Lookup Tables Break</a></li>
+        <li><a href="#ch-2">2. Chapter 2: Policy Gradients &amp; Actor-Critic (Why "Advantage" Beats Raw Reward)</a></li>
+        <li><a href="#ch-3">3. Chapter 3: PPO — Putting a Speed Limit on Policy Updates</a></li>
+        <li><a href="#ch-4">4. Chapter 4: GRPO — How DeepSeek Eliminated the Critic Network</a></li>
+        <li><a href="#ch-5">5. Chapter 5: The Algorithm Map (Q*, PPO, DPO, GRPO) &amp; Checks</a></li>
+      </ol>
+    </nav>
+
+    <!-- === CHAPTER 1: Q* AND Q-LEARNING === -->
+    <h2 id="ch-1">1. Chapter 1: <span class="term" data-term="q-star">$Q^*$</span> ("Q-Star"), Q-Learning, and Why Lookup Tables Break</h2>
+    <p>
+      In <a href="reinforcement-learning.html">Part 1</a>, our warehouse robot learned a scorecard <span class="term" data-term="q-function">$Q(s, a)$</span> that estimates how many total points it will get if it takes move <span class="term" data-term="action">$a$</span> in state <span class="term" data-term="state">$s$</span> and follows its <em>current</em> habit afterward.
+    </p>
+    <p>
+      What if the robot stopped making beginner mistakes on future turns and played <strong>100% optimally</strong> from the very next step onward? That ultimate scorecard is called <span class="term" data-term="q-star">$Q^*(s, a)$</span> ("Q-star").
+    </p>
+    <p>
+      If somebody hands you <span class="term" data-term="q-star">$Q^*(s, a)$</span>, you never have to plan ahead again. At any state <span class="term" data-term="state">$s$</span>, you just look at the <span class="term" data-term="q-star">$Q^*$</span> numbers for your available moves and pick the biggest one (<span class="term" data-term="argmax">$\arg\max_a Q^*(s, a)$</span>).
+    </p>
+
+    <div class="math-block">
+      <div>
+        <span class="term" data-term="q-star">$Q^*(s, a)$</span>
+        $=$
+        <span class="term" data-term="reward">$R_{t+1}$</span>
+        $+$
+        <span class="term" data-term="discount-factor">$\gamma$</span>
+        <span class="term" data-term="max-op">$\max_{a'}$</span>
+        <span class="term" data-term="q-star">$Q^*(S_{t+1}, a')$</span>
+      </div>
+      <div class="math-hint">
+        Bellman Optimality Rule (tap any symbol): Immediate reward $R_{t+1}$ + discounted score of the BEST move $a'$ at the next state $S_{t+1}$
+      </div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked Example (Tracing <span class="term" data-term="q-star">$Q^*$</span> with distinct numbers):</strong></p>
+      <p>
+        From <strong>Room 1</strong>, pressing the <strong>Blue Button</strong> gives an immediate <span class="term" data-term="reward">$R = 4$</span> points and opens <strong>Room 2</strong>. Inside Room 2, there are two levers with known optimal scores:
+      </p>
+      <ul>
+        <li>Lever A has <span class="term" data-term="q-star">$Q^*(\text{Room 2}, \text{Lever A}) = 6$</span></li>
+        <li>Lever B has <span class="term" data-term="q-star">$Q^*(\text{Room 2}, \text{Lever B}) = 10$</span></li>
+      </ul>
+      <p>
+        With discount factor <span class="term" data-term="discount-factor">$\gamma = 0.5$</span>, how much is pressing the Blue Button in Room 1 worth under <span class="term" data-term="q-star">$Q^*$</span>?<br>
+        1. Pick the best future move in Room 2: <span class="term" data-term="max-op">$\max(6, 10)$</span> $= 10$.<br>
+        2. Discount it by one step (<span class="term" data-term="discount-factor">$\gamma = 0.5$</span>): $0.5 \times 10 = 5$.<br>
+        3. Add the immediate reward (<span class="term" data-term="reward">$R = 4$</span>): <span class="term" data-term="q-star">$Q^*(\text{Room 1}, \text{Blue})$</span> $= 4 + 5 = 9$.
+      </p>
+    </div>
+
+    <div class="story-box">
+      <div class="story-label">Two Things People Mean by "Q*"</div>
+      <ul style="margin:0.3rem 0 0 1.2rem;">
+        <li><strong>1. In textbook RL:</strong> <span class="term" data-term="q-star">$Q^*(s, a)$</span> is the optimal action-value function above, learned by <span class="term" data-term="q-learning">Q-Learning</span> (in a table) or <span class="term" data-term="dqn">DQN (Deep Q-Network)</span> (using a neural network when states are images or continuous numbers).</li>
+        <li><strong>2. In LLM reasoning news:</strong> "Q*" also became famous as a shorthand for combining a learned step-verifier (<span class="term" data-term="q-star">$Q^*$</span>) with tree search (like <span class="term" data-term="a-star">$A^*$</span> search). Instead of generating a math proof blind token-by-token, the model scores candidate intermediate steps with a $Q^*$ value model so it can backtrack out of dead-end reasoning steps early.</li>
+      </ul>
+    </div>
+
+    <details class="mcq-box" id="mcq-qstar" data-correct="B" data-topic="Mental Math: Computing Q*(s, a)">
+      <summary class="mcq-title"></summary>
+      <p>Taking Action X in State 1 pays an immediate reward of <span class="term" data-term="reward">$R = 3$</span> and lands in State 2. State 2 has three possible moves with <span class="term" data-term="q-star">$Q^*$</span> values of $4$, $8$, and $14$. If <span class="term" data-term="discount-factor">$\gamma = 0.5$</span>, what is <span class="term" data-term="q-star">$Q^*(\text{State 1}, \text{Action X})$</span>?</p>
+      <label class="mcq-option"><input type="radio" name="qq" value="A" data-explain="That uses the lowest move (4) in State 2: 3 + 0.5*4 = 5. Q* always picks the maximum move in the next state.">A) $5$</label>
+      <label class="mcq-option"><input type="radio" name="qq" value="B" data-explain="Correct. The best move in State 2 is 14. Half of 14 is 7, plus the immediate reward of 3 gives 3 + 7 = 10.">B) $10$</label>
+      <label class="mcq-option"><input type="radio" name="qq" value="C" data-explain="17 forgets to multiply the next state's max value (14) by the discount factor gamma = 0.5.">C) $17$</label>
+      <button class="btn" onclick="checkMCQ('mcq-qstar')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <!-- === CHAPTER 2: POLICY GRADIENTS & ACTOR-CRITIC === -->
+    <h2 id="ch-2">2. Chapter 2: Policy Gradients &amp; Actor-Critic (Why "Advantage" Beats Raw Reward)</h2>
+    <p>
+      If <span class="term" data-term="q-learning">Q-Learning</span> and <span class="term" data-term="dqn">DQN</span> work so well for video games, why don't we train Large Language Models (LLMs) purely with Q-Learning?
+    </p>
+    <p>
+      Look at the <span class="term" data-term="max-op">$\max_{a'} Q(S_{t+1}, a')$</span> step in the equation above. In Pac-Man, there are only 4 joystick actions (Up, Down, Left, Right), so checking all 4 to find the max is instant. An LLM writing a 300-word response chooses from <strong>100,000+ vocabulary tokens</strong> at every step—you cannot loop over every possible action to compute a maximum!
+    </p>
+    <p>
+      So for LLMs and continuous robots, we flip the design around. Instead of learning a scorecard first and taking a max, <span class="term" data-term="policy-gradient">Policy Gradient</span> methods train a neural network called the <span class="term" data-term="actor">Actor $\pi_\theta(a \mid s)$</span> that outputs action probabilities directly:
+    </p>
+    <ul>
+      <li>Sample an action (or a full response) from <span class="term" data-term="policy-theta">$\pi_\theta$</span>.</li>
+      <li>If it scored better than expected, <strong>turn up</strong> its probability.</li>
+      <li>If it scored worse than expected, <strong>turn down</strong> its probability.</li>
+    </ul>
+
+    <div class="interactive-card" id="poe-adv-widget">
+      <div class="widget-label">Guess First: The All-Positive Reward Trap</div>
+      <h3>Should We Reinforce an Answer That Scored <code>+6</code>?</h3>
+      <p>
+        Suppose you ask an LLM a very easy prompt (<em>"What is $2 + 2$?"</em>). Almost any answer scores positively: a sloppy rambling answer gets <span class="term" data-term="reward">$R = +6$</span>, while a crisp answer gets <span class="term" data-term="reward">$R = +10$</span>, and the average expected score for this easy prompt is <span class="term" data-term="value-function">$V(s) = +8$</span>. If the LLM outputs the sloppy answer and gets <code>+6</code>, what happens if we reinforce every positive reward?
+      </p>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="runAdvPOE('A')">A) It improves because +6 is positive</button>
+        <button class="btn btn-small" onclick="runAdvPOE('B')">B) It gets worse—it makes the below-average (+6 vs +8) answer MORE likely!</button>
+        <button class="btn btn-small" onclick="runAdvPOE('skip')">I have no idea &mdash; show me</button>
+      </div>
+      <div id="adv-reveal" style="display:none;">
+        <div class="refutation" id="adv-refutation"></div>
+      </div>
+    </div>
+
+    <p>
+      To avoid rewarding mediocre answers on easy prompts (or over-punishing decent answers on brutal prompts), <span class="term" data-term="actor-critic">Actor-Critic</span> algorithms subtract the prompt's expected baseline score <span class="term" data-term="value-function">$V(s)$</span> from the reward. The difference is called the <span class="term" data-term="advantage">Advantage $A_t$</span>:
+    </p>
+
+    <div class="math-block">
+      <div>
+        <span class="term" data-term="advantage">$A_t$</span>
+        $=$
+        <span class="term" data-term="reward">$\underbrace{R}_{\text{Actual Score}}$</span>
+        $-$
+        <span class="term" data-term="value-function">$\underbrace{V(s)}_{\text{Critic's Expected Baseline}}$</span>
+      </div>
+      <div class="math-hint">
+        Tap any symbol: $A_t > 0$ means better than usual (reinforce!) | $A_t < 0$ means worse than usual (suppress!)
+      </div>
+    </div>
+
+    <p>
+      In classic <span class="term" data-term="actor-critic">Actor-Critic</span>, two neural networks train side by side:
+    </p>
+    <ul>
+      <li><strong>The <span class="term" data-term="actor">Actor $\pi_\theta$</span>:</strong> Generates the actions (or text) and updates its probabilities using <span class="term" data-term="advantage">$A_t$</span>.</li>
+      <li><strong>The <span class="term" data-term="critic">Critic $V_\phi(s)$</span>:</strong> Predicts the expected baseline score <span class="term" data-term="value-function">$V(s)$</span> for each state/prompt so the Actor knows what "average" looks like.</li>
+    </ul>
+
+    <!-- === CHAPTER 3: PPO === -->
+    <h2 id="ch-3">3. Chapter 3: <span class="term" data-term="ppo">PPO</span> — Putting a Speed Limit on Policy Updates</h2>
+    <p>
+      Even with <span class="term" data-term="advantage">Advantage $A_t$</span>, raw <span class="term" data-term="policy-gradient">Policy Gradient</span> training has a dangerous failure mode: <strong>policy collapse</strong>.
+    </p>
+    <p>
+      Suppose an LLM happens to sample one lucky response with a huge advantage (<span class="term" data-term="advantage">$A_t = +10$</span>). If you take a large gradient step to crank up those token probabilities, you can overshoot and scramble the neural network's weights. Worse yet, once an RL agent scrambles its own policy, it generates garbage trajectories on the next batch, learns from that garbage, and never recovers.
+    </p>
+    <p>
+      <span class="term" data-term="ppo">PPO (Proximal Policy Optimization)</span>—the default RL algorithm behind classic <span class="term" data-term="rlhf">RLHF</span> in ChatGPT—fixes this by putting a strict speed limit on how far the new policy <span class="term" data-term="policy-theta">$\pi_{\text{new}}$</span> is allowed to drift from the old policy <span class="term" data-term="policy-old">$\pi_{\text{old}}$</span> in a single update.
+    </p>
+    <p>
+      First, PPO computes the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span>:
+    </p>
+
+    <div class="math-block">
+      <div>
+        <span class="term" data-term="prob-ratio">$r_t$</span>
+        $=$
+        $\dfrac{\text{New Probability}}{\text{Old Probability}}$
+        $=$
+        $\dfrac{\pi_{\text{new}}(a \mid s)}{\pi_{\text{old}}(a \mid s)}$
+      </div>
+      <div class="math-hint">
+        Example: If old probability was $10\%$ and new probability is $15\%$, then $r_t = 15 / 10 = 1.5$.
+      </div>
+    </div>
+
+    <p>
+      Next, PPO <strong>clips</strong> <span class="term" data-term="prob-ratio">$r_t$</span> inside a narrow safety corridor <span class="term" data-term="clip-eps">$[1 - \epsilon, 1 + \epsilon]$</span>. With the standard <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span>, the ratio is fenced between <strong>$0.8$ and $1.2$</strong> ($\pm 20\%$):
+    </p>
+    <ul>
+      <li>If <span class="term" data-term="advantage">$A_t > 0$</span> (good move), PPO stops rewarding you for pushing <span class="term" data-term="prob-ratio">$r_t$</span> above <strong>$1.2$</strong>.</li>
+      <li>If <span class="term" data-term="advantage">$A_t < 0$</span> (bad move), PPO stops rewarding you for pushing <span class="term" data-term="prob-ratio">$r_t$</span> below <strong>$0.8$</strong>.</li>
+    </ul>
+
+    <div class="interactive-card" id="ppo-widget">
+      <div class="widget-label">Interactive Simulator: How PPO's $\pm 20\%$ Speed Limit Works</div>
+      <h3>Test Three Policy Changes at <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span> (Safe Window: $0.8$ to $1.2$)</h3>
+      <div class="control-row">
+        <button class="btn btn-small active" id="ppo-btn-0" onclick="setPPOCase(0)">Case 1: Gentle Step ($r_t = 1.1, A_t = +4$)</button>
+        <button class="btn btn-small" id="ppo-btn-1" onclick="setPPOCase(1)">Case 2: Aggressive Jump ($r_t = 1.5, A_t = +4$)</button>
+        <button class="btn btn-small" id="ppo-btn-2" onclick="setPPOCase(2)">Case 3: Big Drop ($r_t = 0.5, A_t = -4$)</button>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Raw Ratio $r_t$</div><div class="v" id="ppo-raw-r">1.1</div></div>
+        <div class="stat"><div class="k">Clipped Ratio</div><div class="v" id="ppo-clip-r">1.1</div></div>
+        <div class="stat"><div class="k">Unclipped $r_t \times A_t$</div><div class="v" id="ppo-unclip-obj">4.4</div></div>
+        <div class="stat"><div class="k">PPO Final Score</div><div class="v" id="ppo-final-obj">4.4</div></div>
+      </div>
+      <div class="readout" id="ppo-explain"></div>
+    </div>
+
+    <!-- === CHAPTER 4: GRPO === -->
+    <h2 id="ch-4">4. Chapter 4: <span class="term" data-term="grpo">GRPO</span> — How DeepSeek Eliminated the Critic Network</h2>
+    <p>
+      <span class="term" data-term="ppo">PPO</span> is stable, so why did LLM researchers look for a replacement when training massive reasoning models like <strong>DeepSeekMath</strong> and <strong>DeepSeek-R1</strong>?
+    </p>
+    <p>
+      Count the neural networks sitting in GPU memory during PPO:
+    </p>
+    <ol>
+      <li>The <span class="term" data-term="actor">Actor</span> LLM being trained (say, 70 billion parameters).</li>
+      <li>And the <span class="term" data-term="critic">Critic</span> value network <span class="term" data-term="value-function">$V_\phi(s)$</span> (<strong>another 70 billion parameters!</strong>) whose entire job is just predicting the baseline score so we can compute <span class="term" data-term="advantage">Advantage $A_t = R - V(s)$</span>.</li>
+    </ol>
+    <p>
+      Keeping and training that second 70-billion-parameter <span class="term" data-term="critic">Critic</span> network nearly doubles memory and compute cost. Even worse, when an LLM writes a 2,000-token chain-of-thought math proof and only gets a score at the very last token (right or wrong answer), training a Critic to accurately guess the value of token #437 is slow and noisy.
+    </p>
+
+    <div class="story-box">
+      <div class="story-label">The GRPO Breakthrough (Group Relative Policy Optimization)</div>
+      <p style="margin:0.3rem 0;">
+        Ask yourself: why did we need the <span class="term" data-term="critic">Critic</span> in the first place? Only to answer one question: <strong>"What is the average baseline score for this prompt?"</strong>
+      </p>
+      <p style="margin:0.4rem 0 0 0;">
+        <span class="term" data-term="grpo">GRPO</span> replaces the entire Critic neural network with a simple group average: for a given prompt, generate a small group of <span class="term" data-term="group-size">$G$</span> candidate responses (for example, $4$ responses), score all $4$, and <strong>use the average of those $4$ scores (<span class="term" data-term="group-mean">$\mu$</span>) as your baseline!</strong>
+      </p>
+    </div>
+
+    <div class="math-block">
+      <div>
+        <span class="term" data-term="advantage">$A_i$</span>
+        $=$
+        $\dfrac{\text{Answer } i \text{'s Score} - \text{Group Average}}{\text{Group Spread}}$
+        $=$
+        $\dfrac{R_i - \mu}{\sigma}$
+      </div>
+      <div class="math-hint">
+        Tap any symbol: $R_i$ = reward of response $i$ | $\mu$ = mean of the $G$ responses | $\sigma$ = standard deviation (spread) of the $G$ responses
+      </div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked Example (Tracing <span class="term" data-term="grpo">GRPO</span> across <span class="term" data-term="group-size">$G = 4$</span> distinct answers—zero calculator needed):</strong></p>
+      <p>
+        We give one math prompt to our LLM and sample <span class="term" data-term="group-size">$G = 4$</span> candidate responses. The verifier scores them with four distinct numbers:
+      </p>
+      <p style="font-family:var(--font-mono); font-weight:bold;">
+        Response 1: $R_1 = 2$ &nbsp;|&nbsp; Response 2: $R_2 = 4$ &nbsp;|&nbsp; Response 3: $R_3 = 6$ &nbsp;|&nbsp; Response 4: $R_4 = 12$
+      </p>
+      <p>
+        <strong>Step 1 (Group Average <span class="term" data-term="group-mean">$\mu$</span>):</strong> Add the 4 scores and divide by 4:<br>
+        $\mu = (2 + 4 + 6 + 12) \div 4 = 24 \div 4 = 6$.
+      </p>
+      <p>
+        <strong>Step 2 (Subtract the Baseline <span class="term" data-term="group-mean">$\mu = 6$</span> from each score):</strong><br>
+        &bull; Response 1: $2 - 6 = -4$ (well below group average &rarr; suppress)<br>
+        &bull; Response 2: $4 - 6 = -2$ (slightly below average &rarr; suppress)<br>
+        &bull; Response 3: $6 - 6 = 0$ (exactly average &rarr; neutral)<br>
+        &bull; Response 4: $12 - 6 = +6$ (beat the group average &rarr; reinforce!)
+      </p>
+      <p>
+        <strong>Step 3 (Scale by spread, say <span class="term" data-term="group-std">$\sigma = 2$</span>):</strong> Divide each difference by $2$:<br>
+        <span class="term" data-term="advantage">$A_1 = -2$</span>, &nbsp;<span class="term" data-term="advantage">$A_2 = -1$</span>, &nbsp;<span class="term" data-term="advantage">$A_3 = 0$</span>, &nbsp;<span class="term" data-term="advantage">$A_4 = +3$</span>.
+      </p>
+    </div>
+
+    <div class="interactive-card" id="grpo-widget">
+      <div class="widget-label">Interactive GRPO Group Simulator</div>
+      <h3>Compare <span class="term" data-term="ppo">PPO</span> vs. <span class="term" data-term="grpo">GRPO</span> on Different Prompt Difficulties</h3>
+      <p>Switch between three prompt scenarios to see how <span class="term" data-term="grpo">GRPO</span> automatically adapts its baseline <span class="term" data-term="group-mean">$\mu$</span> without a <span class="term" data-term="critic">Critic</span> network:</p>
+      <div class="control-row">
+        <button class="btn btn-small active" id="grpo-btn-0" onclick="setGRPOCase(0)">Scenario 1: Mixed Scores [2, 4, 6, 12]</button>
+        <button class="btn btn-small" id="grpo-btn-1" onclick="setGRPOCase(1)">Scenario 2: Easy Prompt [7, 8, 9, 12]</button>
+        <button class="btn btn-small" id="grpo-btn-2" onclick="setGRPOCase(2)">Scenario 3: Binary Math Verifier [0, 0, 0, 4]</button>
+      </div>
+      <div class="figure-box">
+        <svg id="grpo-svg" viewBox="0 0 480 150" width="480" height="150" role="img" aria-label="GRPO group scores vs group mean"></svg>
+      </div>
+      <div class="readout" id="grpo-explain"></div>
+    </div>
+
+    <div class="interactive-card" id="faded-grpo-widget">
+      <div class="widget-label">Your Turn: Compute a GRPO Advantage in Your Head</div>
+      <h3>Find the Advantage <span class="term" data-term="advantage">$A_3$</span> for Response 3</h3>
+      <p>
+        For one coding prompt, <span class="term" data-term="grpo">GRPO</span> samples <span class="term" data-term="group-size">$G = 3$</span> candidate programs that score distinct rewards:
+        <span class="term" data-term="reward">$R_1 = 1$</span>, <span class="term" data-term="reward">$R_2 = 4$</span>, and <span class="term" data-term="reward">$R_3 = 10$</span> (with group spread <span class="term" data-term="group-std">$\sigma = 5$</span>).<br>
+        <strong>Step 1 (Group Mean <span class="term" data-term="group-mean">$\mu$</span>):</strong> $(1 + 4 + 10) \div 3 = 15 \div 3 = 5$.<br>
+        <strong>Step 2 (Response 3 minus Mean):</strong> $R_3 - \mu = 10 - 5 = +5$.<br>
+        <strong>Step 3 (Your turn):</strong> Divide by <span class="term" data-term="group-std">$\sigma = 5$</span> to get <span class="term" data-term="advantage">$A_3 = (10 - 5) \div 5$</span>:
+      </p>
+      <div class="control-row">
+        <label for="grpo-fade-input"><span class="term" data-term="advantage">$A_3$</span> $=$</label>
+        <input type="number" id="grpo-fade-input" step="1" placeholder="e.g. 1" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkGRPOFaded()">Check Step 3</button>
+      </div>
+      <div id="grpo-fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-grpo-widget">
+      <div class="widget-label">Self-Explanation Check</div>
+      <h3>How Does GRPO Save Half the Training Memory of PPO?</h3>
+      <p>In one sentence, what neural network does <span class="term" data-term="grpo">GRPO</span> remove compared to <span class="term" data-term="ppo">PPO</span>, and what replaces it?</p>
+      <textarea id="recall-grpo-input" placeholder="Jot down your answer in plain words..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealGRPORecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-grpo-feedback" class="readout" style="display:none;">
+        <strong>Key idea:</strong> <span class="term" data-term="grpo">GRPO</span> deletes the giant <span class="term" data-term="critic">Critic</span> value network <span class="term" data-term="value-function">$V_\phi(s)$</span> and replaces its baseline prediction with the empirical average score <span class="term" data-term="group-mean">$\mu$</span> of a small group of <span class="term" data-term="group-size">$G$</span> responses sampled for the same prompt.
+      </div>
+    </div>
+
+    <!-- === CHAPTER 5: THE LANDSCAPE MAP & DIAGNOSTIC CHECKS === -->
+    <h2 id="ch-5">5. Chapter 5: The Algorithm Map (<span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="dpo">DPO</span>, <span class="term" data-term="grpo">GRPO</span>) &amp; Checks</h2>
+    <p>
+      You will often see one more acronym alongside <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span> in LLM papers: <span class="term" data-term="dpo">DPO (Direct Preference Optimization)</span>.
+    </p>
+    <p>
+      Where does <span class="term" data-term="dpo">DPO</span> fit? Unlike PPO and GRPO—which are <strong>online RL</strong> methods that actively generate new responses during training and score them—<span class="term" data-term="dpo">DPO</span> is an <strong>offline</strong> shortcut. If you already have a static dataset of human preference pairs <code>(winning answer, losing answer)</code>, DPO directly nudges the LLM to raise the probability of the winning answer and lower the losing one without generating new rollouts. That makes DPO cheap and simple for style alignment, whereas online RL (<span class="term" data-term="grpo">GRPO</span> / <span class="term" data-term="ppo">PPO</span>) shines when an LLM needs to practice and discover new multi-step math or code solutions.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Algorithm</th>
+            <th>Core Mechanism</th>
+            <th>Needs a Critic Network?</th>
+            <th>Best Use Case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="q-learning">Q-Learning</span> / <span class="term" data-term="dqn">DQN</span> (<span class="term" data-term="q-star">$Q^*$</span>)</strong></td>
+            <td>Learns optimal action scorecard <span class="term" data-term="q-star">$Q^*(s,a)$</span> via <span class="term" data-term="max-op">$\max_{a'} Q$</span></td>
+            <td>Only a Q-network (no separate Actor)</td>
+            <td>Games, robotics grids, or scoring discrete steps in a search tree</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="ppo">PPO</span></strong></td>
+            <td>Clips policy ratio <span class="term" data-term="prob-ratio">$r_t \in [1-\epsilon, 1+\epsilon]$</span> using learned baseline <span class="term" data-term="value-function">$V(s)$</span></td>
+            <td><strong>Yes</strong> (full-size <span class="term" data-term="critic">Critic</span> network)</td>
+            <td>Continuous robot control &amp; general <span class="term" data-term="rlhf">RLHF</span> when memory is plentiful</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="dpo">DPO</span></strong></td>
+            <td>Trains directly on offline <code>(chosen, rejected)</code> pairs; no live rollouts</td>
+            <td><strong>No</strong> (no Critic, no online rollouts)</td>
+            <td>Fast, low-cost chat style &amp; preference tuning on static datasets</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="grpo">GRPO</span></strong></td>
+            <td>Samples <span class="term" data-term="group-size">$G$</span> answers per prompt; uses group mean <span class="term" data-term="group-mean">$\mu$</span> as baseline + PPO clipping</td>
+            <td><strong>No</strong> (group mean replaces Critic!)</td>
+            <td>Training reasoning LLMs (math, code, logic) with verifiable rewards</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="mcq-box" id="mcq-1" data-correct="C" data-topic="PPO vs GRPO: Memory & Architecture">
+      <summary class="mcq-title"></summary>
+      <p>Why does <span class="term" data-term="grpo">GRPO</span> use roughly half as much trainable GPU memory as <span class="term" data-term="ppo">PPO</span> when fine-tuning a 70B-parameter LLM?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Both PPO and GRPO use the exact same clipping ratio r_t and KL penalty.">A) Because GRPO removes the probability ratio <span class="term" data-term="prob-ratio">$r_t$</span> clipping step.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="GRPO actually generates multiple responses (a group of G answers) per prompt during online training.">B) Because GRPO never generates new answers during training.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. PPO trains both a 70B Actor and a 70B Critic value network; GRPO drops the 70B Critic and uses the average score of G sampled responses instead.">C) Because GRPO eliminates the 70B <span class="term" data-term="critic">Critic</span> value network and computes the baseline from a group of <span class="term" data-term="group-size">$G$</span> sampled answers.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-2" data-correct="A" data-topic="Mental Math: PPO Clipping">
+      <summary class="mcq-title"></summary>
+      <p>In <span class="term" data-term="ppo">PPO</span> with clip range <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span> (so the safe window is $[0.8, 1.2]$), an action has a positive advantage <span class="term" data-term="advantage">$A_t = +5$</span>. The policy update pushes its probability from $10\%$ to $20\%$, giving a raw ratio <span class="term" data-term="prob-ratio">$r_t = 20 / 10 = 2.0$</span>. What clipped ratio does PPO use?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because 2.0 exceeds the upper speed limit 1 + 0.2 = 1.2, PPO caps the effective ratio at 1.2 (giving a capped objective of 1.2 * 5 = 6.0 instead of 10.0).">A) $1.2$ (capped at the upper boundary $1 + \epsilon$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="0.8 is the lower boundary (1 - epsilon), used when a ratio drops below 0.8.">B) $0.8$ (the lower boundary $1 - \epsilon$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="PPO never lets a positive-advantage update benefit from a ratio above 1 + epsilon.">C) $2.0$ (unclipped)</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="Mental Math: GRPO Group Advantage Sign">
+      <summary class="mcq-title"></summary>
+      <p>For an easy trivia prompt, <span class="term" data-term="grpo">GRPO</span> samples <span class="term" data-term="group-size">$G = 4$</span> answers that receive scores of <code>[6, 8, 10, 12]</code> (so the group average is <span class="term" data-term="group-mean">$\mu = 9$</span>). What happens to the answer that scored <code>+8</code>?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Even though +8 is positive, it is below the group average of 9 (8 - 9 = -1).">A) Its probability is increased because $+8$ is a positive score.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. Its raw difference from the group mean is 8 - 9 = -1 < 0, so it gets a negative advantage and is suppressed in favor of the +10 and +12 answers.">B) Its probability is decreased because $8$ is below the group average of $9$ (<span class="term" data-term="advantage">$A_i &lt; 0$</span>).</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Only an answer scoring exactly the group mean (9) gets zero advantage.">C) Its advantage is $0$ because $8$ is close to $9$.</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-4" data-correct="C" data-topic="Choosing an Algorithm: DPO vs GRPO vs Q-Learning">
+      <summary class="mcq-title"></summary>
+      <p>You want to train an LLM to solve multi-step algebra puzzles where an automated Python script checks whether the final number is right ($+1$) or wrong ($0$), and you want to fit training on half the GPUs that PPO would require. Which algorithm fits best?</p>
+      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Tabular Q-learning cannot search over a 100,000-token vocabulary across hundreds of reasoning tokens.">A) Tabular <span class="term" data-term="q-learning">Q-Learning</span></label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="DPO trains on a fixed offline preference dataset and does not actively sample and verify new multi-step reasoning traces online.">B) <span class="term" data-term="dpo">DPO</span> on a fixed static dataset</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="Correct. GRPO runs online rollouts against the algebra verifier while skipping PPO's expensive Critic network.">C) <span class="term" data-term="grpo">GRPO</span> (samples groups of reasoning chains online and uses the group average instead of a Critic)</label>
+      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <div class="score-bar">
+      <span id="mcq-score">Checks answered: 0 of 5.</span>
+      <button class="btn btn-small" onclick="resetMCQs()">Reset checks</button>
+    </div>
+
+    <div class="interactive-card" id="spaced-widget">
+      <div class="widget-label">Spaced Recall Flashcards</div>
+      <h3>5 Quick Review Cards</h3>
+      <p>Tap any card to test your recall of $Q^*$, Advantage, PPO, and GRPO.</p>
+      <div id="spaced-list"></div>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>
+        <span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>
+      </div>
+    </div>
+
+    <footer class="article-footer">
+      <a href="reinforcement-learning.html">&larr; Part 1: RL From Scratch</a>
+      <a href="index.html">All Articles</a>
+      <a href="#top">&uarr; Back to top</a>
+    </footer>
+  </main>
+
+  <div id="popover-box" role="region" aria-labelledby="popover-term-name">
+    <div class="popover-header">
+      <span class="popover-title" id="popover-term-name">Term</span>
+      <div>
+        <button class="btn btn-small" id="popover-back" style="display:none;">Back</button>
+        <button class="btn btn-small" onclick="closePopover()">Close</button>
+      </div>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    /* ---------- Utilities ---------- */
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+    /* ---------- Font Controls ---------- */
+    var FONT_KEY = 'matt_learning_font_px';
+    var currentFontSize = 18;
+    try {
+      var savedFont = parseInt(localStorage.getItem(FONT_KEY), 10);
+      if (savedFont >= 14 && savedFont <= 28) { currentFontSize = savedFont; }
+    } catch (e) {}
+
+    function applyFontSize(px) {
+      currentFontSize = clamp(px, 14, 28);
+      document.documentElement.style.setProperty('--font-size', currentFontSize + 'px');
+      var lbl = document.getElementById('font-size-label');
+      if (lbl) { lbl.textContent = currentFontSize + 'px'; }
+      try { localStorage.setItem(FONT_KEY, String(currentFontSize)); } catch (e) {}
+    }
+
+    document.getElementById('font-inc').addEventListener('click', function () { applyFontSize(currentFontSize + 2); });
+    document.getElementById('font-dec').addEventListener('click', function () { applyFontSize(currentFontSize - 2); });
+    applyFontSize(currentFontSize);
+
+    /* ---------- KaTeX ---------- */
+    var katexOptions = {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    };
+    function renderMathIn(el) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(el, katexOptions);
+        return true;
+      }
+      return false;
+    }
+    function ensureMathRendered(tries) {
+      if (renderMathIn(document.body) || tries <= 0) { return; }
+      setTimeout(function () { ensureMathRendered(tries - 1); }, 250);
+    }
+
+    /* ---------- Anchored Glossary Popovers ---------- */
+    var GLOSSARY = {
+      'q-star': { title: 'Optimal Action-Value Q*(s, a) ("Q-Star")', body: 'The maximum expected discounted return achievable if you take <span class="term" data-term="action">action $a$</span> in <span class="term" data-term="state">state $s$</span> and play 100% optimally on every step after that: $Q^*(s,a) = R_{t+1} + \\gamma \\max_{a\'} Q^*(S_{t+1}, a\')$.' },
+      'q-function': { title: 'Action-Value Scorecard Q(s, a)', body: 'Expected discounted return from taking move <span class="term" data-term="action">$a$</span> in <span class="term" data-term="state">state $s$</span> under the current policy.' },
+      'q-learning': { title: 'Q-Learning', body: 'An off-policy algorithm that learns <span class="term" data-term="q-star">$Q^*(s, a)$</span> in a table by always bootstrapping off the best possible move in the next state ($\\max_{a\'} Q(S_{t+1}, a\')$).' },
+      'dqn': { title: 'DQN (Deep Q-Network)', body: 'DeepMind\'s algorithm that replaces Q-Learning\'s lookup table with a deep neural network so <span class="term" data-term="q-star">$Q^*(s, a)$</span> works on high-dimensional inputs like video game pixels.' },
+      'a-star': { title: 'A* Search', body: 'A classic pathfinding algorithm that explores the most promising branch first by adding the cost so far to an estimated future score (heuristic). In reasoning LLMs, a learned <span class="term" data-term="q-star">$Q^*$</span> verifier can guide tree search over reasoning steps.' },
+      'argmax': { title: 'argmax_a Q*(s, a)', body: 'Math shorthand for "pick whichever action $a$ has the highest <span class="term" data-term="q-star">$Q^*$</span> score."' },
+      'max-op': { title: 'max_{a\'} Q*(S_{t+1}, a\')', body: 'The score of the single highest-rated move $a\'$ available at the next state $S_{t+1}$.' },
+      'state': { title: 'State (s or S_t)', body: 'The current situation or prompt context (e.g., the room a robot is in, or the prompt + tokens generated so far by an LLM).' },
+      'action': { title: 'Action (a)', body: 'A single decision made by the agent (e.g., pressing a button, or choosing the next token in an LLM response).' },
+      'reward': { title: 'Reward (R or R_{t+1})', body: 'The score assigned to an action or completed response (e.g., $+10$ for a correct math solution).' },
+      'discount-factor': { title: 'Discount Factor (gamma)', body: 'Multiplier $\\gamma \\in [0, 1]$ applied to each step of delay. At $\\gamma = 0.5$, waiting one step cuts a future value in half.' },
+      'value-function': { title: 'State Baseline Scorecard V(s)', body: 'The average score we expect from state/prompt $s$. Subtracting $V(s)$ from the actual reward gives the <span class="term" data-term="advantage">Advantage $A_t$</span>.' },
+      'policy-gradient': { title: 'Policy Gradient (REINFORCE)', body: 'Instead of learning a <span class="term" data-term="q-function">$Q(s,a)$</span> table, policy gradient algorithms directly tune the neural network weights <span class="term" data-term="theta">$\\theta$</span> of the <span class="term" data-term="actor">Actor $\\pi_\\theta(a \\mid s)$</span> to make high-scoring actions more likely.' },
+      'policy-theta': { title: 'Parameterized Policy pi_theta(a | s)', body: 'The <span class="term" data-term="actor">Actor</span> neural network (with trainable weights <span class="term" data-term="theta">$\\theta$</span>) that outputs the probability of choosing action $a$ in state $s$.' },
+      'policy-old': { title: 'Old Policy pi_old(a | s)', body: 'A frozen snapshot of the <span class="term" data-term="actor">Actor</span>\'s probabilities from right before the current training update, used as the denominator in <span class="term" data-term="prob-ratio">$r_t = \\pi_{\\text{new}} / \\pi_{\\text{old}}$</span>.' },
+      'theta': { title: 'Parameters (theta)', body: 'The trainable weights $\\theta$ inside the <span class="term" data-term="actor">Actor</span> neural network.' },
+      'actor': { title: 'Actor Network (pi_theta)', body: 'The policy neural network that actually generates actions or text tokens.' },
+      'critic': { title: 'Critic Network (V_phi)', body: 'A second neural network used in <span class="term" data-term="actor-critic">Actor-Critic</span> and <span class="term" data-term="ppo">PPO</span> to predict the expected baseline score <span class="term" data-term="value-function">$V(s)$</span>. Eliminated in <span class="term" data-term="grpo">GRPO</span>.' },
+      'actor-critic': { title: 'Actor-Critic Architecture', body: 'An RL setup pairing an <span class="term" data-term="actor">Actor</span> (which picks actions) with a <span class="term" data-term="critic">Critic</span> (which predicts the baseline score <span class="term" data-term="value-function">$V(s)$</span> so the Actor can learn from <span class="term" data-term="advantage">Advantage $A_t$</span>).' },
+      'advantage': { title: 'Advantage (A_t or A_i)', body: 'How much better (or worse) an action scored compared to the baseline expectation for that state/prompt: $A_t = R - V(s)$ in PPO, or $A_i = (R_i - \\mu)/\\sigma$ in <span class="term" data-term="grpo">GRPO</span>.' },
+      'ppo': { title: 'PPO (Proximal Policy Optimization)', body: 'An <span class="term" data-term="actor-critic">Actor-Critic</span> algorithm that prevents destructive policy updates by clipping the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> inside $[1 - \\epsilon, 1 + \\epsilon]$ (typically $[0.8, 1.2]$).' },
+      'prob-ratio': { title: 'Probability Ratio (r_t)', body: 'The ratio $r_t = \\frac{\\pi_{\\text{new}}(a \\mid s)}{\\pi_{\\text{old}}(a \\mid s)}$. If $r_t = 1.5$, the action is now $1.5\\times$ ($50\\%$) more likely than before the update.' },
+      'clip-eps': { title: 'Clipping Epsilon (epsilon)', body: 'The speed-limit margin in <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span>, usually $\\epsilon = 0.2$, which fences the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> between $1 - 0.2 = 0.8$ and $1 + 0.2 = 1.2$.' },
+      'rlhf': { title: 'RLHF (Reinforcement Learning from Human Feedback)', body: 'Training a reward model on human rankings of answers, then using <span class="term" data-term="ppo">PPO</span> (or <span class="term" data-term="grpo">GRPO</span>) to tune an LLM to maximize that reward.' },
+      'grpo': { title: 'GRPO (Group Relative Policy Optimization)', body: 'Introduced in DeepSeekMath and used in DeepSeek-R1: drops PPO\'s expensive <span class="term" data-term="critic">Critic</span> network by sampling a group of <span class="term" data-term="group-size">$G$</span> responses to the same prompt and using their group mean <span class="term" data-term="group-mean">$\\mu$</span> as the baseline.' },
+      'group-size': { title: 'Group Size (G)', body: 'The number of candidate responses sampled from the LLM for the exact same prompt in <span class="term" data-term="grpo">GRPO</span> (e.g., $G = 4$ or $G = 8$ responses compared side by side).' },
+      'group-mean': { title: 'Group Mean Score (mu)', body: 'The average reward $\\mu = \\frac{1}{G}\\sum_{i=1}^G R_i$ across the <span class="term" data-term="group-size">$G$</span> candidate responses for one prompt in <span class="term" data-term="grpo">GRPO</span>. Serves as the Critic-free baseline.' },
+      'group-std': { title: 'Group Spread / Standard Deviation (sigma)', body: 'Measures how spread out the <span class="term" data-term="group-size">$G$</span> scores are around the <span class="term" data-term="group-mean">group mean $\\mu$</span>. Dividing $(R_i - \\mu)$ by $\\sigma$ keeps <span class="term" data-term="grpo">GRPO</span> advantages on a consistent scale.' },
+      'dpo': { title: 'DPO (Direct Preference Optimization)', body: 'An offline alternative to <span class="term" data-term="rlhf">RLHF</span> that skips live RL generation and trains the LLM directly on pre-collected <code>(chosen, rejected)</code> answer pairs.' }
+    };
+
+    var popBox = document.getElementById('popover-box');
+    var popBody = document.getElementById('popover-body');
+    var popTitle = document.getElementById('popover-term-name');
+    var backBtn = document.getElementById('popover-back');
+    var popHistory = [];
+    var anchorTermEl = null;
+
+    function positionPopover() {
+      if (!anchorTermEl || popBox.style.display !== 'block') { return; }
+      var rect = anchorTermEl.getBoundingClientRect();
+      var vw = document.documentElement.clientWidth;
+      var vh = window.innerHeight;
+      var boxW = popBox.offsetWidth;
+      var boxH = popBox.offsetHeight;
+      var gap = 8;
+      var left = clamp(rect.left + window.scrollX, 12 + window.scrollX, Math.max(12 + window.scrollX, vw - boxW - 12 + window.scrollX));
+      var spaceBelow = vh - rect.bottom;
+      var top = (spaceBelow >= boxH + gap + 8 || spaceBelow >= rect.top)
+        ? rect.bottom + window.scrollY + gap
+        : rect.top + window.scrollY - boxH - gap;
+      popBox.style.left = Math.round(left) + 'px';
+      popBox.style.top = Math.round(Math.max(12, top)) + 'px';
+    }
+
+    function showTerm(key, pushCurrent) {
+      var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
+      if (pushCurrent && popBox.style.display === 'block' && popBox.getAttribute('data-key')) {
+        popHistory.push(popBox.getAttribute('data-key'));
+      }
+      popBox.setAttribute('data-key', key);
+      popTitle.textContent = g.title;
+      popBody.innerHTML = '<p>' + g.body + '</p>';
+      popBody.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      backBtn.style.display = popHistory.length ? 'inline-block' : 'none';
+      popBox.style.display = 'block';
+      renderMathIn(popBody);
+      positionPopover();
+    }
+
+    function closePopover() {
+      popBox.style.display = 'none';
+      popBox.removeAttribute('data-key');
+      popHistory = [];
+      if (anchorTermEl) {
+        anchorTermEl.classList.remove('term-open');
+        if (typeof anchorTermEl.focus === 'function') { anchorTermEl.focus(); }
+        anchorTermEl = null;
+      }
+    }
+
+    backBtn.addEventListener('click', function () {
+      if (popHistory.length) { showTerm(popHistory.pop(), false); }
+    });
+
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest ? e.target.closest('.term') : null;
+      if (el) {
+        e.preventDefault();
+        if (popBox.contains(el)) { showTerm(el.getAttribute('data-term'), true); return; }
+        if (anchorTermEl === el && popBox.style.display === 'block') { closePopover(); return; }
+        if (anchorTermEl) { anchorTermEl.classList.remove('term-open'); }
+        anchorTermEl = el;
+        anchorTermEl.classList.add('term-open');
+        popHistory = [];
+        showTerm(el.getAttribute('data-term'), false);
+        return;
+      }
+      if (popBox.style.display === 'block' && !popBox.contains(e.target)) { closePopover(); }
+    });
+
+    window.addEventListener('resize', positionPopover);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closePopover(); }
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('term')) {
+        document.activeElement.click();
+      }
+    });
+
+    /* ---------- Chapter 2: Advantage POE ---------- */
+    function runAdvPOE(choice) {
+      document.getElementById('adv-reveal').style.display = 'block';
+      var ref = document.getElementById('adv-refutation');
+      ref.innerHTML = '<div class="refutation-title">Why Raw Positive Rewards Mislead Policy Gradients</div>' +
+        '<p style="margin:0;">If you reward every positive score on an easy prompt, a below-average <code>+6</code> answer gets reinforced and steals probability away from the <code>+10</code> answer! ' +
+        'Subtracting the baseline $V(s) = 8$ gives an <strong>Advantage</strong> of $A_t = 6 - 8 = -2$, immediately telling the Actor: <em>"For this easy prompt, +6 is worse than usual—turn its probability down."</em></p>';
+      renderMathIn(ref);
+    }
+
+    /* ---------- Chapter 3: PPO Clipping Widget ---------- */
+    var PPO_CASES = [
+      {
+        r: '1.1',
+        clipR: '1.1 (inside [0.8, 1.2])',
+        unclipObj: '4.4',
+        finalObj: '4.4',
+        note: 'Case 1 (Gentle update): New probability is only 10% higher than old (r_t = 1.1). Since 1.1 is inside the [0.8, 1.2] speed limit, PPO does not clip it: 1.1 * 4 = 4.4.'
+      },
+      {
+        r: '1.5',
+        clipR: '1.2 (capped at 1 + 0.2)',
+        unclipObj: '6.0',
+        finalObj: '4.8',
+        note: 'Case 2 (Aggressive jump): The update tries to boost probability by +50% (r_t = 1.5) on a good action (A_t = +4). PPO clips 1.5 down to 1.2 so the score caps at 1.2 * 4 = 4.8 instead of 6.0, removing any incentive to overshoot.'
+      },
+      {
+        r: '0.5',
+        clipR: '0.8 (floored at 1 - 0.2)',
+        unclipObj: '-2.0',
+        finalObj: '-3.2',
+        note: 'Case 3 (Aggressive drop): On a bad action (A_t = -4), the update tries to slash the probability in half (r_t = 0.5). PPO clips 0.5 at the lower limit 0.8 so the model does not over-correct in a single step.'
+      }
+    ];
+
+    function setPPOCase(idx) {
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('ppo-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var c = PPO_CASES[idx];
+      document.getElementById('ppo-raw-r').textContent = c.r;
+      document.getElementById('ppo-clip-r').textContent = c.clipR;
+      document.getElementById('ppo-unclip-obj').textContent = c.unclipObj;
+      document.getElementById('ppo-final-obj').textContent = c.finalObj;
+      document.getElementById('ppo-explain').textContent = c.note;
+    }
+
+    /* ---------- Chapter 4: GRPO Group Simulator ---------- */
+    var GRPO_CASES = [
+      {
+        scores: [2, 4, 6, 12],
+        mean: 6,
+        diffs: ['-4 (Suppress)', '-2 (Suppress)', '0 (Neutral)', '+6 (Reinforce!)'],
+        note: 'Scenario 1: The 4 answers score [2, 4, 6, 12]. Sum = 24, so Group Mean mu = 24 / 4 = 6. Answers 1 and 2 fall below 6 (negative advantage); Answer 3 equals the mean (0 advantage); Answer 4 beats the mean by +6 and gets reinforced.'
+      },
+      {
+        scores: [7, 8, 9, 12],
+        mean: 9,
+        diffs: ['-2 (Suppress)', '-1 (Suppress)', '0 (Neutral)', '+3 (Reinforce!)'],
+        note: 'Scenario 2 (Easy prompt): Even though all 4 answers got positive raw scores [7, 8, 9, 12], their Group Mean is mu = 36 / 4 = 9. GRPO automatically suppresses the mediocre 7 and 8 answers (-2 and -1) and only reinforces the 12 answer (+3)!'
+      },
+      {
+        scores: [0, 0, 0, 4],
+        mean: 1,
+        diffs: ['-1 (Suppress)', '-1 (Suppress)', '-1 (Suppress)', '+3 (Reinforce!)'],
+        note: 'Scenario 3 (Hard math prompt with a right/wrong verifier): 3 answers fail (0) and 1 answer solves the puzzle (+4). Group Mean is mu = 4 / 4 = 1. The single right answer gets +3 above mean while the 3 wrong attempts get -1.'
+      }
+    ];
+
+    function setGRPOCase(idx) {
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('grpo-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var c = GRPO_CASES[idx];
+      var svg = document.getElementById('grpo-svg');
+      var html = '';
+      html += '<text x="10" y="20" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Group Mean Base (mu) = ' + c.mean + ' (dashed vertical line)</text>';
+      var scale = 18; // max score 12 * 18 = 216px
+      var baseX = 125;
+      var meanX = baseX + c.mean * scale;
+
+      for (var k = 0; k < 4; k++) {
+        var y = 32 + k * 28;
+        var s = c.scores[k];
+        var w = Math.max(4, s * scale);
+        var isPos = s > c.mean;
+        html += '<text x="10" y="' + (y + 15) + '" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Answer ' + (k + 1) + ' (R=' + s + ')</text>';
+        html += '<rect x="' + baseX + '" y="' + y + '" width="' + w + '" height="20" fill="' + (isPos ? '#000' : '#e8e8e8') + '" stroke="#000" stroke-width="1.5"/>';
+        html += '<text x="' + (baseX + w + 10) + '" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">R - mu = ' + c.diffs[k] + '</text>';
+      }
+      html += '<line x1="' + meanX + '" y1="26" x2="' + meanX + '" y2="144" stroke="#000" stroke-width="2" stroke-dasharray="4,3"/>';
+      svg.innerHTML = html;
+      document.getElementById('grpo-explain').textContent = c.note;
+    }
+
+    /* ---------- Chapter 4: Faded Step & Recall ---------- */
+    function checkGRPOFaded() {
+      var val = parseFloat(document.getElementById('grpo-fade-input').value);
+      var fb = document.getElementById('grpo-fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 1) <= 0.05) {
+        fb.innerHTML = '<strong>Correct ($+1$).</strong> Response 3 beat the group mean of $5$ by $+5$, and dividing by the spread $\\sigma = 5$ gives $A_3 = 5 \\div 5 = +1$.';
+      } else {
+        fb.innerHTML = 'Not quite. Compute $(10 - 5) \\div 5 = 5 \\div 5 = 1$.';
+      }
+      renderMathIn(fb);
+    }
+
+    function revealGRPORecall() {
+      var fb = document.getElementById('recall-grpo-feedback');
+      fb.style.display = 'block';
+      renderMathIn(fb);
+    }
+
+    /* ---------- Collapsed MCQs ---------- */
+    var mcqResults = {};
+    function updateScore() {
+      var total = document.querySelectorAll('.mcq-box').length;
+      var answered = 0, right = 0;
+      for (var id in mcqResults) {
+        if (Object.prototype.hasOwnProperty.call(mcqResults, id)) {
+          answered++;
+          if (mcqResults[id].first) { right++; }
+        }
+      }
+      document.getElementById('mcq-score').textContent =
+        'Checks answered: ' + answered + ' of ' + total + '. Right on first try: ' + right + '.';
+    }
+
+    function checkMCQ(boxId) {
+      var box = document.getElementById(boxId);
+      var correct = box.getAttribute('data-correct');
+      var selected = box.querySelector('input[type="radio"]:checked');
+      var fb = box.querySelector('.mcq-feedback');
+      fb.style.display = 'block';
+      if (!selected) { fb.innerHTML = '<p>Pick an option first.</p>'; return; }
+      if (!mcqResults[boxId]) { mcqResults[boxId] = { first: selected.value === correct }; }
+      box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('right', 'wrong'); });
+      var rightOpt = box.querySelector('input[value="' + correct + '"]');
+      rightOpt.closest('.mcq-option').classList.add('right');
+      var html = (selected.value === correct)
+        ? '<p><strong>Correct.</strong> ' + selected.getAttribute('data-explain') + '</p>'
+        : '<p><strong>Not quite (' + selected.value + ').</strong> ' + selected.getAttribute('data-explain') + '</p><p><strong>Answer: ' + correct + '.</strong> ' + rightOpt.getAttribute('data-explain') + '</p>';
+      html += '<details><summary>Why each option is right or wrong</summary><ul>';
+      box.querySelectorAll('input[type="radio"]').forEach(function (o) {
+        html += '<li><strong>' + o.value + ':</strong> ' + o.getAttribute('data-explain') + '</li>';
+      });
+      html += '</ul></details>';
+      fb.innerHTML = html;
+      fb.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      renderMathIn(fb);
+      updateScore();
+    }
+
+    function resetMCQs() {
+      mcqResults = {};
+      document.querySelectorAll('.mcq-box').forEach(function (box) {
+        box.removeAttribute('open');
+        box.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked', 'right', 'wrong'); });
+        var fb = box.querySelector('.mcq-feedback');
+        fb.style.display = 'none';
+        fb.innerHTML = '';
+      });
+      updateScore();
+    }
+
+    /* ---------- Spaced Recall Cards ---------- */
+    var SPACED_CARDS = [
+      { q: 'What does Q*(s, a) ("Q-star") mean in plain English?', a: 'The expected discounted return of taking action a in state s, assuming you play 100% optimally on every step after that.' },
+      { q: 'Why do Actor-Critic algorithms use Advantage (A_t = R - V(s)) instead of raw reward R?', a: 'So they only reinforce actions that scored better than the expected baseline V(s) for that state/prompt, rather than rewarding below-average answers on easy prompts.' },
+      { q: 'What problem does PPO\'s clipping range [1 - epsilon, 1 + epsilon] solve?', a: 'It puts a speed limit (e.g. +/- 20%) on how far the new policy probabilities can move from the old policy in a single update, preventing policy collapse.' },
+      { q: 'How does GRPO compute Advantage without a Critic neural network?', a: 'It samples a group of G answers for the same prompt, computes their average reward mu, and scores each answer relative to that group average: A_i = (R_i - mu) / sigma.' },
+      { q: 'When should you pick DPO vs. GRPO for an LLM?', a: 'Use DPO for fast offline tuning on fixed (chosen, rejected) preference pairs; use GRPO when the model needs online practice and verification (like solving math or code problems).' }
+    ];
+
+    function renderSpacedCards() {
+      document.getElementById('spaced-list').innerHTML = SPACED_CARDS.map(function (c, i) {
+        return '<details class="recall-card"><summary>Card ' + (i + 1) + ': ' + c.q + '</summary><p style="margin:0.5rem 0 0 0;">' + c.a + '</p></details>';
+      }).join('');
+    }
+
+    function copySpacedCards() {
+      var text = SPACED_CARDS.map(function (c, i) {
+        return 'Q' + (i + 1) + ': ' + c.q + '\nA' + (i + 1) + ': ' + c.a;
+      }).join('\n\n');
+      var st = document.getElementById('copy-status');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          st.textContent = 'Copied 5 cards.';
+        }, function () { st.textContent = 'Clipboard blocked; select cards manually.'; });
+      } else {
+        st.textContent = 'Clipboard unavailable in this browser.';
+      }
+    }
+
+    /* ---------- Init ---------- */
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      document.querySelectorAll('.mcq-option input').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          var box = inp.closest('.mcq-box');
+          box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+          inp.closest('.mcq-option').classList.add('picked');
+        });
+      });
+      var boxes = document.querySelectorAll('.mcq-box');
+      boxes.forEach(function (box, i) {
+        var t = box.querySelector('.mcq-title');
+        var topic = box.getAttribute('data-topic');
+        if (t) {
+          t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length +
+            (topic ? ': ' + topic : '') + ' (tap to expand)';
+        }
+      });
+      setPPOCase(0);
+      setGRPOCase(0);
+      renderSpacedCards();
+      updateScore();
+      ensureMathRendered(10);
+    });
+    window.addEventListener('load', function () { renderMathIn(document.body); });
+  </script>
+</body>
+</html>

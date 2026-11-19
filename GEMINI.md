@@ -20,7 +20,8 @@ When creating or editing interactive learning articles in `~/matt-learning`, fol
    - High-contrast monochrome (`#000000` on `#ffffff`), crisp `1px`/`2px`/`3px` solid `#000` borders, `#e8e8e8` highlight fills, zero shadows, zero gradients, and `transition: none !important; animation: none !important;`.
    - Large touch targets (`>= 48px` buttons/inputs, `44px` slider track with `28px` thumb) and working `A-` / `A+` font-scaling controls persisted in `localStorage`.
 
-5. **Interactive Structure & Pedagogy**
+5. **Interactive Structure, Narrative & Pedagogy**
+   - Anchor every article in a continuous, concrete story that explains *why* the problem exists and how each concept fixes a flaw in the previous one (never use raw template labels like "Stage 1" or "Stage 3" as section headings).
    - Start every article with a short bulleted TL;DR.
    - Use worked-out numerical examples, interactive widgets/steppers, and `<details>` for advanced derivations or code.
    - Wrap all MCQs in `<details class="mcq-box">` (collapsed by default) with `data-explain` feedback on every option.
