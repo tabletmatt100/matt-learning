@@ -32,6 +32,8 @@ Every article in `matt-learning` must be a **commitment, feedback, and retrieval
     - Include a **Contrastive Matrix** comparing the new concept to its closest neighbors across 3–4 decision axes (Objective, Failure Mode, Complexity, When to Use).
     - Mix new and neighboring concepts in **Interleaved Diagnostic Checks** (collapsed by default in `<details class="mcq-box">`).
     - Export **5–8 spaced Q&A recall prompts** (`1d / 4d / 14d / 30d`).
+12. **No calculator required for any question.**
+    - Every prediction hook, worked example, backward-faded step, retrieval prompt, and MCQ must be solvable in your head without a calculator. Use clean, mental-math-friendly numbers (small integers, simple fractions, powers of 2 or 10, clean percentages) or test conceptual reasoning directly.
 
 ---
 
@@ -61,7 +63,7 @@ Follow this loop for every major concept:
 - **Monochrome E-ink CSS**: `#000000` text on `#ffffff` background, crisp `1px`/`2px`/`3px` solid `#000` borders, `#e8e8e8` highlight fills, zero shadows, zero gradients, and `transition: none !important; animation: none !important;` on `*`.
 - **Touch targets & font scaling**: Minimum `48px` height on buttons/inputs, `44px` hit track on sliders with `28px` thumbs, working `A-` / `A+` header buttons scaling `:root` `--font-size` and persisting to `localStorage`.
 - **Offline + Online KaTeX**: Load from local `katex/` with `onerror` fallback to jsDelivr.
-- **Aggressive anchored concept popovers**: Tag every non-obvious technical term, acronym, symbol, and prerequisite with `.term[data-term]` (including nested `.term` links inside definitions). Popovers must anchor directly to the clicked term (no full-screen backdrop) so the reader can keep viewing the page.
+- **Aggressive anchored popovers for all concepts AND symbols**: Every non-obvious concept, technical term, acronym, prerequisite, and mathematical symbol/variable/operator (in prose, symbol legends, and equations) must be clickable (`.term[data-term]`) and open an anchored popover explaining what it means in plain English (including nested `.term` links inside popover definitions). Popovers must anchor directly to the clicked term or symbol (no full-screen backdrop) so the reader can keep viewing the page.
 - **Collapsed MCQs by default**: Wrap every MCQ in `<details class="mcq-box">` with `<summary class="mcq-title">` and `data-explain` on every option.
 - **Human prose, zero AI tells**: Plain descriptive headings, varied sentence lengths, concrete numbers, no emojis, no em-dash overuse, no filler ("delve", "crucial", "landscape", "it's important to note", "in conclusion", "let's dive in"), and no padded summaries at the end of every section.
 
@@ -74,4 +76,5 @@ Follow this loop for every major concept:
 3. **Split-Attention Audit**: Are all curves, bars, and symbols labeled directly on the figure and inline in prose without a separate legend?
 4. **Transient-Motion Audit**: Can every state transition be stepped through discretely with prior states still visible?
 5. **Blank-Sheet Test**: Does every major section force at least one eyes-off-the-solution generation (free recall, equation completion, or counterfactual prediction) with explanatory feedback?
-6. **Popover & MCQ Audit**: Are unfamiliar terms tagged aggressively with anchored `.term` popovers, and are all MCQs collapsed by default in `<details class="mcq-box">`?
+6. **Popover & MCQ Audit**: Are all unfamiliar concepts AND mathematical symbols/variables/operators clickable with anchored `.term` popovers, and are all MCQs collapsed by default in `<details class="mcq-box">`?
+7. **No-Calculator Audit**: Can every question, prediction prompt, worked example, and MCQ be solved mentally without a calculator?
