@@ -496,3 +496,54 @@ ol.checklist > li { margin-bottom: 1rem; }
 
 .mcq-option.right { border: 3px solid #000; background: #e8e8e8; }
 .mcq-option.wrong { border: 3px dashed #000; }
+
+/* ---- Boox Palma 3 & Narrow Screen Optimization (~360-520px) ---- */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+@media (max-width: 520px) {
+  header { padding: 0.4rem 0.7rem; }
+  main { padding: 1.2rem 0.75rem 3.5rem 0.75rem; }
+  h1 { font-size: 1.55rem; line-height: 1.22; }
+  h2 { font-size: 1.28rem; margin-top: 2rem; }
+  h3 { font-size: 1.08rem; }
+  .tldr, .interactive-card, .mcq-box, details {
+    padding: 0.85rem 0.85rem;
+    margin: 1.2rem 0;
+  }
+  .math-block, pre {
+    padding: 0.6rem 0.65rem;
+    font-size: 0.88em;
+  }
+  .control-row {
+    gap: 8px;
+  }
+  .control-row label {
+    min-width: 100%;
+  }
+  .control-row .btn, .prev-next a {
+    width: 100%;
+    text-align: center;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .stat .v { font-size: 1.05rem; }
+  table.cm th, table.cm td {
+    padding: 7px 8px;
+    min-width: 4.5rem;
+    font-size: 0.85em;
+  }
+  table.data-table th, table.data-table td {
+    padding: 5px 6px;
+    font-size: 0.82em;
+  }
+  #popover-box {
+    width: 94vw;
+    padding: 0.95rem 1rem;
+    max-height: 82vh;
+  }
+}

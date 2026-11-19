@@ -1,6 +1,6 @@
 # Rules for Writing Interactive Learning Articles
 
-Every article in `matt-learning` must be a **commitment, feedback, and retrieval engine**—not a passive display medium—and must be optimized for the **Onyx Boox Go 10.3** E-ink tablet.
+Every article in `matt-learning` must be a **commitment, feedback, and retrieval engine**—not a passive display medium—and must be optimized for both the **Onyx Boox Go 10.3** E-ink tablet and the **Onyx Boox Palma 3** pocket E-ink reader.
 
 ---
 
@@ -60,9 +60,12 @@ Follow this loop for every major concept:
 
 ---
 
-## 3. Hardware, UI & Prose Rules (Boox Go 10.3)
+## 3. Hardware, UI & Prose Rules (Boox Go 10.3 & Boox Palma 3)
 
 - **Monochrome E-ink CSS**: `#000000` text on `#ffffff` background, crisp `1px`/`2px`/`3px` solid `#000` borders, `#e8e8e8` highlight fills, zero shadows, zero gradients, and `transition: none !important; animation: none !important;` on `*`.
+- **Responsive Layout for Both Go 10.3 (10.3" tablet) and Palma 3 (6.13" pocket reader, ~360–412px CSS width)**:
+  - Never let tables, equations, or SVGs push the page wider than the viewport (`overflow-x: hidden` on `html, body`, every `<table>` inside `.table-wrap { overflow-x: auto; }`, and `.math-block { overflow-x: auto; }`).
+  - Include `@media (max-width: 520px)` rules reducing outer `<main>` and `.interactive-card` padding, scaling `h1`/`h2`, collapsing multi-column grids to `1fr`, and stacking `.control-row` labels/buttons cleanly without horizontal clipping.
 - **Touch targets & font scaling**: Minimum `48px` height on buttons/inputs, `44px` hit track on sliders with `28px` thumbs, working `A-` / `A+` header buttons scaling `:root` `--font-size` and persisting to `localStorage`.
 - **Offline + Online KaTeX**: Load from local `katex/` with `onerror` fallback to jsDelivr.
 - **Aggressive anchored popovers for all concepts AND symbols**: Every non-obvious concept, technical term, acronym, prerequisite, and mathematical symbol/variable/operator (in prose, symbol legends, and equations) must be clickable (`.term[data-term]`) and open an anchored popover explaining what it means in plain English (including nested `.term` links inside popover definitions). Popovers must anchor directly to the clicked term or symbol (no full-screen backdrop) so the reader can keep viewing the page.

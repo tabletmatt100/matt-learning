@@ -13,6 +13,49 @@
     .mode-row .btn { min-width: 10rem; }
     .verdict { border: 2px solid #000; padding: 0.6rem 0.8rem; margin-top: 0.8rem; font-weight: 600; }
     .mcq-box pre { font-size: 0.85em; }
+
+    /* Boox Palma 3 & Narrow Pocket Screen Optimization (~360-520px) */
+    html, body { overflow-x: hidden; max-width: 100%; }
+    .table-wrap { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+    svg, .diagram-svg, .chart { max-width: 100%; height: auto; }
+    @media (max-width: 520px) {
+      header { padding: 0.45rem 0.7rem; }
+      main { padding: 1.2rem 0.75rem 3.5rem 0.75rem; }
+      h1 { font-size: 1.55rem !important; line-height: 1.22; }
+      h2 { font-size: 1.28rem !important; margin-top: 1.9rem; }
+      h3 { font-size: 1.08rem !important; }
+      .tldr, .interactive-card, .mcq-box, .article-card, .story-box, details {
+        padding: 0.85rem 0.85rem !important;
+        margin: 1.15rem 0;
+      }
+      .math-block, pre {
+        padding: 0.6rem 0.65rem !important;
+        font-size: 0.88em;
+      }
+      .control-row, .row { gap: 8px; }
+      .control-row label { min-width: 100% !important; }
+      .control-row .btn, .row .btn, .article-card a.read-btn {
+        width: 100%;
+        text-align: center;
+      }
+      .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 6px; }
+      .stat .v { font-size: 1.02rem; }
+      .small-multiples { grid-template-columns: 1fr !important; }
+      th, td, table.data-table th, table.data-table td {
+        padding: 6px 7px !important;
+        font-size: 0.84em;
+      }
+      .matrix-grid {
+        grid-template-columns: repeat(4, minmax(56px, 1fr)) !important;
+        width: 100%;
+        max-width: 280px;
+      }
+      .matrix-cell { width: auto !important; min-height: 46px; }
+      #popover-box {
+        width: min(94vw, 440px) !important;
+        padding: 0.9rem 0.95rem !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -212,11 +255,11 @@
         <button class="btn" id="t-cost">Cost-optimal t*</button>
         <button class="btn" id="t-f1">Best F1</button>
       </div>
-      <table class="cm">
+      <div class="table-wrap"><table class="cm">
         <tr><th></th><th>Flagged</th><th>Not flagged</th></tr>
         <tr><th>Fraud (100)</th><td id="cm-tp"></td><td id="cm-fn"></td></tr>
         <tr><th>Legit (9,900)</th><td id="cm-fp"></td><td id="cm-tn"></td></tr>
-      </table>
+      </table></div>
       <div class="stat-grid">
         <div class="stat"><div class="k">Precision</div><div class="v" id="st-p"></div></div>
         <div class="stat"><div class="k">Recall</div><div class="v" id="st-r"></div></div>
@@ -310,11 +353,11 @@
         <label for="bp-cfn" style="min-width:auto;">Cost of FN</label>
         <input type="number" id="bp-cfn" value="200" min="0" step="1">
       </div>
-      <table class="cm">
+      <div class="table-wrap"><table class="cm">
         <tr><th></th><th>Flagged</th><th>Not flagged</th></tr>
         <tr><th>Fraud (100)</th><td id="bp-tp"></td><td id="bp-fn"></td></tr>
         <tr><th>Legit (9,900)</th><td id="bp-fp"></td><td id="bp-tn"></td></tr>
-      </table>
+      </table></div>
       <div class="stat-grid">
         <div class="stat"><div class="k">Threshold</div><div class="v" id="bp-t"></div></div>
         <div class="stat"><div class="k">Precision</div><div class="v" id="bp-prec"></div></div>

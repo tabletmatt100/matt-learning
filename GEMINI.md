@@ -16,9 +16,10 @@ When creating or editing interactive learning articles in `~/matt-learning`, fol
    - Every non-obvious concept, technical term, acronym, prerequisite, AND every mathematical symbol, variable, or operator (in prose, legends, and equations) must be clickable (`.term[data-term]`).
    - Clicking any concept or symbol must open an anchored popover explaining what it means in plain English (with nested `.term` links inside popover definitions when helpful), without a full-screen backdrop so the page remains visible.
 
-4. **E-Ink & Tablet Optimization (Onyx Boox Go 10.3)**
+4. **E-Ink Tablet & Pocket Reader Optimization (Onyx Boox Go 10.3 & Boox Palma 3)**
    - High-contrast monochrome (`#000000` on `#ffffff`), crisp `1px`/`2px`/`3px` solid `#000` borders, `#e8e8e8` highlight fills, zero shadows, zero gradients, and `transition: none !important; animation: none !important;`.
    - Large touch targets (`>= 48px` buttons/inputs, `44px` slider track with `28px` thumb) and working `A-` / `A+` font-scaling controls persisted in `localStorage`.
+   - Must render cleanly on both the **10.3-inch Boox Go 10.3** and the **6.13-inch phone-sized Boox Palma 3** (`~360–412px` CSS viewport width): include `@media (max-width: 520px)` rules for tighter container/card padding, single-column grids, wrapped scrollable tables (`.table-wrap`), responsive SVGs (`max-width: 100%; height: auto;`), and popovers clamped within `92vw–94vw`.
 
 5. **Interactive Structure, Narrative & Pedagogy**
    - Anchor every article in a continuous, concrete story that explains *why* the problem exists and how each concept fixes a flaw in the previous one (never use raw template labels like "Stage 1" or "Stage 3" as section headings).
