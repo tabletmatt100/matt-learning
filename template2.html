@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Template 2: Evidence-Backed Interactive Article</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    html { font-size: var(--font-size); }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 1rem;
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    a { color: var(--text); }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem;
+      background: var(--bg);
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+      display: inline-block;
+      padding: 8px 0;
+    }
+
+    .font-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .font-size-label {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      min-width: 3.2em;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thick);
+      padding: 6px 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 48px;
+      min-width: 48px;
+      font-family: inherit;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    .btn-small {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 6px 12px;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    .tag {
+      display: inline-block;
+      border: var(--border-thin);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 2.05rem;
+      line-height: 1.25;
+      margin-top: 0.4rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      margin-top: 1.2rem;
+    }
+
+    .tldr {
+      border: 2px solid var(--border);
+      padding: 1.1rem 1.3rem;
+      margin: 1.3rem 0 1.6rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .tldr h2 {
+      margin-top: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.2rem;
+    }
+
+    .tldr ul { margin: 0.6rem 0 0 0; padding-left: 1.3rem; }
+    .tldr li { margin-bottom: 0.45rem; }
+
+    .toc {
+      border: var(--border-thin);
+      padding: 0.8rem 1.2rem;
+      margin: 1.2rem 0 1.8rem 0;
+    }
+
+    .toc-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.85em;
+      margin-bottom: 0.4rem;
+    }
+
+    .toc ol { margin: 0.3rem 0 0 0; padding-left: 1.4rem; }
+    .toc li { margin-bottom: 0.25rem; }
+    .toc a { display: inline-block; padding: 4px 0; }
+
+    .worked {
+      border-left: 4px solid var(--border);
+      padding: 0.4rem 0 0.4rem 1.1rem;
+      margin: 1.3rem 0;
+    }
+
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.7rem 1rem;
+      margin: 1.3rem 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .refutation {
+      border: var(--border-thick);
+      border-left: 6px solid var(--border);
+      padding: 0.9rem 1.1rem;
+      margin: 1.2rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .refutation-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.82em;
+      margin-bottom: 0.3rem;
+    }
+
+    .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93em;
+    }
+
+    th, td {
+      border: var(--border-thin);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: var(--highlight-bg); font-weight: bold; }
+    .num { font-family: var(--font-mono); text-align: right; }
+
+    code, pre, textarea, input[type="text"] {
+      font-family: var(--font-mono);
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+    }
+
+    pre {
+      padding: 12px;
+      border: var(--border-thin);
+      overflow-x: auto;
+    }
+
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: var(--border-thick);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      min-height: 48px;
+      border-radius: 0;
+    }
+
+    textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+
+    details {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin: 1.2rem 0;
+    }
+
+    summary { font-weight: bold; cursor: pointer; padding: 4px 0; }
+
+    /* Anchored Concept Popovers */
+    .term {
+      border-bottom: 2px dotted var(--border);
+      background: var(--highlight-bg);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .term:focus { outline: 2px solid var(--border); }
+    .term.term-open { background: var(--active-bg); color: var(--active-text); }
+
+    #popover-box {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: min(92vw, 440px);
+      max-height: 60vh;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      padding: 1rem 1.2rem;
+      z-index: 1000;
+    }
+
+    .popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
+      gap: 8px;
+    }
+
+    .popover-title { font-weight: bold; font-size: 1.1rem; }
+
+    /* Interactive Cards & Controls */
+    .interactive-card {
+      border: var(--border-thick);
+      padding: 1.25rem;
+      margin: 1.6rem 0;
+      background: var(--bg);
+    }
+
+    .widget-label {
+      display: inline-block;
+      background: var(--active-bg);
+      color: var(--active-text);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0.9rem 0;
+    }
+
+    .control-row label { font-weight: 600; min-width: 8rem; }
+
+    .control-row .val {
+      font-family: var(--font-mono);
+      font-weight: bold;
+      min-width: 4.2rem;
+      border: var(--border-thin);
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      min-width: 160px;
+      height: 44px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--border); }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px; height: 28px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+      margin-top: -11px;
+    }
+    input[type="range"]::-moz-range-track { height: 6px; background: var(--border); }
+    input[type="range"]::-moz-range-thumb {
+      width: 24px; height: 24px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+    }
+
+    .figure-box {
+      border: var(--border-thin);
+      padding: 0.8rem;
+      margin: 1rem 0;
+      text-align: center;
+    }
+
+    .figure-box svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 1rem 0;
+    }
+
+    .stat { border: var(--border-thick); padding: 8px 10px; }
+    .stat .k { font-size: 0.78rem; text-transform: uppercase; font-weight: bold; }
+    .stat .v { font-family: var(--font-mono); font-size: 1.2rem; font-weight: bold; }
+
+    .readout {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+      background: var(--highlight-bg);
+    }
+
+    .locked-note {
+      border: 2px dashed var(--border);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+    }
+
+    .small-multiples {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 1rem 0;
+    }
+
+    .sm-panel {
+      border: var(--border-thin);
+      padding: 0.6rem;
+    }
+
+    .sm-panel.sm-active {
+      border: 3px solid var(--border);
+      background: var(--highlight-bg);
+    }
+
+    @media (max-width: 680px) {
+      .small-multiples { grid-template-columns: 1fr; }
+    }
+
+    /* Collapsed MCQs */
+    details.mcq-box, .mcq-box {
+      border: var(--border-thick);
+      padding: 0.9rem 1.3rem;
+      margin: 1.3rem 0;
+    }
+
+    summary.mcq-title, .mcq-title {
+      font-size: 0.9em;
+      font-weight: bold;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    details.mcq-box[open] > summary.mcq-title {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.6rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: var(--border-thin);
+      padding: 0.75rem 0.9rem;
+      margin: 0.55rem 0;
+      cursor: pointer;
+      min-height: 48px;
+    }
+
+    .mcq-option input { margin-right: 10px; transform: scale(1.2); }
+    .mcq-option.picked { border-width: 2px; background: var(--highlight-bg); }
+    .mcq-option.right { border: 3px solid var(--border); background: var(--highlight-bg); }
+    .mcq-option.wrong { border: 2px dashed var(--border); }
+    .mcq-feedback { display: none; margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+
+    .score-bar {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin-top: 1.6rem;
+      background: var(--highlight-bg);
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .recall-card {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin: 0.8rem 0;
+    }
+
+    footer.article-footer {
+      border-top: 2px solid var(--border);
+      margin-top: 3rem;
+      padding-top: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-block; }
+
+    @media print {
+      header, .font-controls, footer.article-footer { display: none; }
+      .mcq-box, .interactive-card, .worked, .tldr, details { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header id="top">
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Articles</a>
+      </div>
+      <div class="font-controls">
+        <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <span class="font-size-label" id="font-size-label">18px</span>
+        <button id="font-inc" aria-label="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
+    <div>
+      <span class="tag">Template 2</span>
+      <span class="tag">Constructive Blueprint</span>
+      <span class="tag">Boox Go 10.3</span>
+    </div>
+
+    <h1>Softmax Temperature and Numerical Overflow</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>Problem:</strong> Neural networks output unbounded <span class="term" data-term="logits">logits</span>, which must be turned into probabilities without overflowing <span class="term" data-term="float32">float32</span>.</li>
+        <li><strong>Core mechanism:</strong> <span class="term" data-term="softmax">Softmax</span> divides $e^{(z_i - m)/T}$ by the sum of all terms, where subtracting $m = \max(z)$ prevents overflow and <span class="term" data-term="temperature">temperature</span> $T$ controls sharpness.</li>
+        <li><strong>Where it breaks:</strong> Naive <code>exp(z)</code> turns into <code>NaN</code> once any logit exceeds $88.72$, and setting $T \to 0$ collapses <span class="term" data-term="entropy">entropy</span> to zero.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Typical Range</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>$z_i$</td><td>Raw unnormalized <span class="term" data-term="logits">logit</span> for token $i$</td><td class="num">$(-\infty, +\infty)$</td></tr>
+          <tr><td>$T$</td><td><span class="term" data-term="temperature">Temperature</span> divisor before exponentiation</td><td class="num">$T &gt; 0$</td></tr>
+          <tr><td>$m$</td><td>Maximum logit $\max_j z_j$ subtracted for stability</td><td class="num">$\max(z)$</td></tr>
+          <tr><td>$p_i$</td><td>Output probability for token $i$ ($\sum p_i = 1$)</td><td class="num">$[0, 1]$</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="interactive-card" id="fast-forward-box">
+      <div class="widget-label">Expert Fast-Forward Check</div>
+      <p style="margin-top:0.3rem;">Already know log-sum-exp shifting and temperature scaling? Answer this 1-line check to collapse Stages 1&ndash;3 and jump to practice.</p>
+      <div class="control-row">
+        <label for="ff-input"><code>exp(100 - m)</code> = ?</label>
+        <input type="text" id="ff-input" placeholder="Value of exp(100 - max([100, 99, 98]))" style="flex:1; min-width:180px;">
+        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
+      </div>
+      <div id="ff-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#stage-1">Stage 1 &amp; 2: Predict the Overflow Trap</a></li>
+        <li><a href="#stage-3">Stage 3: Step-by-Step Mechanism and Small Multiples</a></li>
+        <li><a href="#stage-4">Stage 4: Backward-Faded Practice and Free Recall</a></li>
+        <li><a href="#stage-5">Stage 5: Contrastive Matrix, Interleaved Checks, and Recall Cards</a></li>
+      </ol>
+    </nav>
+
+    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
+    <div id="scaffolding-section">
+      <h2 id="stage-1">1. Predict first: what breaks on large logits?</h2>
+      <p>
+        Suppose a <span class="term" data-term="llm">language model</span> outputs logits $z = [100, 99, 98]$ in <span class="term" data-term="float32">float32</span>. Before looking at any formula, commit to what naive <code>exp(z) / sum(exp(z))</code> returns.
+      </p>
+
+      <div class="interactive-card" id="poe-widget">
+        <div class="widget-label">Stage 1: Predict-Observe-Explain (Guess First)</div>
+        <h3>Prediction: Naive Softmax on <code>[100, 99, 98]</code></h3>
+        <p>Pick what you expect <code>p[0]</code> to be, then reveal the true computation.</p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runPOE('A')">A) ~0.665 (normal probability)</button>
+          <button class="btn btn-small" onclick="runPOE('B')">B) 1.0 (winner takes all)</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) NaN (overflow crash)</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="poe-reveal" style="display:none;">
+          <div class="figure-box">
+            <svg id="poe-svg" viewBox="0 0 460 120" width="460" height="120" role="img" aria-label="Prediction vs actual comparison"></svg>
+          </div>
+          <div class="refutation" id="poe-refutation"></div>
+        </div>
+      </div>
+
+      <!-- === STAGE 3: SEGMENTED MECHANISM + WORKED EXAMPLE + STEPPER === -->
+      <h2 id="stage-3">2. Shift by the max, then scale by temperature</h2>
+      <p>
+        Subtracting a constant $m$ from every logit leaves softmax unchanged mathematically because $e^{-m}$ cancels in numerator and denominator. Choosing $m = \max(z)$ guarantees every exponent is $\le 0$, so $e^{z_i - m}$ stays in $(0, 1]$ and never overflows.
+      </p>
+
+      <div class="worked">
+        <p><strong>Concrete trace before the general formula:</strong> Take $z = [100, 99, 98]$ at $T = 1.0$.</p>
+        <p>
+          1. Find $m = \max(100, 99, 98) = 100$.<br>
+          2. Shift: $z - m = [0, -1, -2]$.<br>
+          3. Exponentiate: $[e^0, e^{-1}, e^{-2}] = [1.000, 0.368, 0.135]$, sum $= 1.503$.<br>
+          4. Normalize: $p = [0.665, 0.245, 0.090]$.
+        </p>
+      </div>
+
+      <div class="math-block">
+        $$p_i = \frac{\exp\!\left(\frac{z_i - m}{T}\right)}{\sum_{j} \exp\!\left(\frac{z_j - m}{T}\right)}, \quad m = \max_j z_j$$
+      </div>
+
+      <p>
+        Step through the three <span class="term" data-term="temperature">temperature</span> regimes below. All three states stay visible side-by-side so you can compare slopes without losing earlier frames.
+      </p>
+
+      <div class="interactive-card" id="stepper-widget">
+        <div class="widget-label">Stage 3: Discrete Stepper + Persistent Small Multiples</div>
+        <h3>How Temperature Shapes <code>z = [2.0, 1.0, 0.0]</code></h3>
+        <div class="control-row">
+          <button class="btn btn-small active" id="step-btn-0" onclick="setStep(0)">Step 1: Low (T=0.3)</button>
+          <button class="btn btn-small" id="step-btn-1" onclick="setStep(1)">Step 2: Neutral (T=1.0)</button>
+          <button class="btn btn-small" id="step-btn-2" onclick="setStep(2)">Step 3: High (T=3.0)</button>
+        </div>
+
+        <div class="small-multiples" id="sm-grid"></div>
+        <div class="readout" id="step-explain"></div>
+
+        <div id="slider-gate" class="locked-note">
+          Complete the prediction above (or step through all 3 presets) to unlock the free temperature slider.
+        </div>
+        <div id="slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
+          <div class="control-row">
+            <label for="temp-slider">Free slider $T$</label>
+            <input type="range" id="temp-slider" min="0.2" max="3.0" step="0.1" value="1.0">
+            <span class="val" id="temp-val">1.0</span>
+          </div>
+          <div class="figure-box">
+            <svg id="temp-svg" viewBox="0 0 460 135" width="460" height="135" role="img" aria-label="Live temperature bar chart"></svg>
+          </div>
+          <div class="stat-grid">
+            <div class="stat"><div class="k">Top Prob $p_1$</div><div class="v" id="stat-p1">-</div></div>
+            <div class="stat"><div class="k">Entropy (<span class="term" data-term="nats">nats</span>)</div><div class="v" id="stat-ent">-</div></div>
+            <div class="stat"><div class="k">Max / Min Ratio</div><div class="v" id="stat-ratio">-</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === STAGE 4: BACKWARD-FADED EXAMPLE + CLOSED-BOOK RETRIEVAL === -->
+    <h2 id="stage-4">3. Faded practice and closed-book recall</h2>
+    <p>
+      Reading a worked trace feels effortless; finishing the last step yourself tests whether the <span class="term" data-term="schema">schema</span> actually stuck.
+    </p>
+
+    <div class="interactive-card" id="faded-widget">
+      <div class="widget-label">Stage 4: Backward-Faded Worked Example</div>
+      <h3>Complete Step 3 for <code>z = [4.0, 2.0]</code> at <code>T = 2.0</code></h3>
+      <p>
+        <strong>Step 1 (Shift by max):</strong> $m = 4.0$, so $(z - m)/T = [0.0, -1.0]$.<br>
+        <strong>Step 2 (Exponentiate):</strong> $e^{0.0} = 1.000$, $e^{-1.0} \approx 0.368$. Sum $= 1.368$.<br>
+        <strong>Step 3 (Your turn &mdash; normalize):</strong> Compute $p_0 = 1.000 / 1.368$ to 2 decimal places.
+      </p>
+      <div class="control-row">
+        <label for="fade-input">$p_0 \approx$</label>
+        <input type="number" id="fade-input" step="0.01" placeholder="0.00" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+      </div>
+      <div id="fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-widget">
+      <div class="widget-label">Stage 4: Closed-Book Retrieval (Blank-Sheet Test)</div>
+      <h3>Reconstruct the Stability Rule</h3>
+      <p>Without scrolling up, write in one sentence why subtracting $\max(z)$ fixes overflow without changing the output probabilities.</p>
+      <textarea id="recall-input" placeholder="Type your explanation from memory..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-feedback" class="readout" style="display:none;">
+        <strong>Canonical answer:</strong> Subtracting $m = \max(z)$ multiplies both numerator and denominator by $e^{-m}$, which cancels out in the ratio, while keeping every exponent $\le 0$ so $e^{z_i - m} \in (0, 1]$ never exceeds the <span class="term" data-term="float32">float32</span> limit ($88.72$).
+      </div>
+    </div>
+
+    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
+    <h2 id="stage-5">4. Contrastive matrix, interleaved checks, and spaced cards</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Decoding / Scaling Mode</th>
+            <th>Objective</th>
+            <th>Failure Mode</th>
+            <th><span class="term" data-term="entropy">Entropy</span></th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Greedy Argmax ($T \to 0$)</strong></td>
+            <td>Pick single highest logit</td>
+            <td>Repetitive loops; zero diversity</td>
+            <td class="num">0 nats</td>
+            <td>Deterministic extraction, math checks</td>
+          </tr>
+          <tr>
+            <td><strong>Low-T Softmax ($T = 0.3$)</strong></td>
+            <td>Concentrate mass on top few tokens</td>
+            <td>Drops plausible rare phrasing</td>
+            <td class="num">Low</td>
+            <td>Code generation, factual QA</td>
+          </tr>
+          <tr>
+            <td><strong>Neutral Softmax ($T = 1.0$)</strong></td>
+            <td>Match model's raw calibrated distribution</td>
+            <td>Long tail can still sample noise</td>
+            <td class="num">Medium</td>
+            <td>Training loss, calibrated probabilities</td>
+          </tr>
+          <tr>
+            <td><strong>High-T Softmax ($T = 3.0$)</strong></td>
+            <td>Flatten differences toward uniform</td>
+            <td>Samples low-logit nonsense</td>
+            <td class="num">High</td>
+            <td><span class="term" data-term="distillation">Distillation</span> soft targets, brainstorming</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="Interleaved: Overflow vs Temperature">
+      <summary class="mcq-title"></summary>
+      <p>A model outputs $z = [120, 120, 120]$ and you set $T = 0.5$. What happens if you run naive <code>exp(z / T)</code> without max-shifting?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Equal logits give uniform probabilities mathematically, but float32 overflows before division happens.">A) It returns <code>[0.333, 0.333, 0.333]</code> cleanly because all logits are equal.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Correct. 120 / 0.5 = 240 &gt; 88.72, so exp(240) overflows to Infinity and Infinity / Infinity produces NaN.">B) It returns <code>NaN</code> because $240 &gt; 88.72$ overflows <code>float32</code>.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Underflow to 0 happens for very negative exponents, not positive exponents like +240.">C) It underflows to <code>[0, 0, 0]</code>.</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-2" data-correct="C" data-topic="Interleaved: Identifying the right regime">
+      <summary class="mcq-title"></summary>
+      <p>You want a teacher model's probability distribution to expose relative ranking among runner-up tokens for <span class="term" data-term="distillation">distillation</span>. Which setting fits?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Greedy argmax destroys all runner-up information (entropy = 0).">A) Greedy argmax ($T \to 0$).</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Low temperature suppresses runner-up tokens toward zero.">B) Low temperature ($T = 0.2$).</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Correct. Higher temperature lifts runner-up probabilities so the student sees dark knowledge between non-top tokens.">C) High temperature ($T &gt; 1$, e.g. $2.0$ to $4.0$).</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-3" data-correct="A" data-topic="Interleaved: Entropy conservation">
+      <summary class="mcq-title"></summary>
+      <p>If you add $+50$ to every logit in $z$ while holding $T = 1.0$ fixed, what happens to the output <span class="term" data-term="entropy">entropy</span> $H(p)$?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Correct. Softmax is shift-invariant; adding a constant cancels in numerator and denominator, so p and H(p) stay identical.">A) It stays identical because softmax is shift-invariant.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Only scaling logits (or changing T) changes entropy; shifting by a constant cancels out.">B) Entropy drops because all logits are larger.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Shifting all logits equally does not flatten differences between them.">C) Entropy rises toward uniform.</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <div class="score-bar">
+      <span id="mcq-score">Checks answered: 0 of 3.</span>
+      <button class="btn btn-small" onclick="resetMCQs()">Reset checks</button>
+    </div>
+
+    <div class="interactive-card" id="spaced-widget">
+      <div class="widget-label">Stage 5: Spaced Recall Export (1d / 4d / 14d / 60d)</div>
+      <h3>5 Core Retrieval Prompts</h3>
+      <p>Tap any card to test yourself, or copy all 5 Q&amp;A pairs into your spaced-repetition deck.</p>
+      <div id="spaced-list"></div>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>
+        <span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>
+      </div>
+    </div>
+
+    <footer class="article-footer">
+      <a href="index.html">&larr; All Articles</a>
+      <a href="#top">&uarr; Back to top</a>
+    </footer>
+  </main>
+
+  <div id="popover-box" role="region" aria-labelledby="popover-term-name">
+    <div class="popover-header">
+      <span class="popover-title" id="popover-term-name">Term</span>
+      <div>
+        <button class="btn btn-small" id="popover-back" style="display:none;">Back</button>
+        <button class="btn btn-small" onclick="closePopover()">Close</button>
+      </div>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    /* ---------- Utilities ---------- */
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+    function fmt(x, d) { return Number(x).toFixed(d === undefined ? 2 : d); }
+
+    function softmax(logits, T) {
+      var m = Math.max.apply(null, logits);
+      var exps = logits.map(function (z) { return Math.exp((z - m) / T); });
+      var sum = exps.reduce(function (a, b) { return a + b; }, 0);
+      return exps.map(function (e) { return e / sum; });
+    }
+
+    function entropyNats(probs) {
+      return probs.reduce(function (acc, p) {
+        return p > 1e-12 ? acc - p * Math.log(p) : acc;
+      }, 0);
+    }
+
+    /* ---------- Font Controls ---------- */
+    var FONT_KEY = 'matt_learning_font_px';
+    var currentFontSize = 18;
+    try {
+      var savedFont = parseInt(localStorage.getItem(FONT_KEY), 10);
+      if (savedFont >= 14 && savedFont <= 28) { currentFontSize = savedFont; }
+    } catch (e) {}
+
+    function applyFontSize(px) {
+      currentFontSize = clamp(px, 14, 28);
+      document.documentElement.style.setProperty('--font-size', currentFontSize + 'px');
+      var lbl = document.getElementById('font-size-label');
+      if (lbl) { lbl.textContent = currentFontSize + 'px'; }
+      try { localStorage.setItem(FONT_KEY, String(currentFontSize)); } catch (e) {}
+    }
+
+    document.getElementById('font-inc').addEventListener('click', function () { applyFontSize(currentFontSize + 2); });
+    document.getElementById('font-dec').addEventListener('click', function () { applyFontSize(currentFontSize - 2); });
+    applyFontSize(currentFontSize);
+
+    /* ---------- KaTeX ---------- */
+    var katexOptions = {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    };
+    function renderMathIn(el) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(el, katexOptions);
+        return true;
+      }
+      return false;
+    }
+    function ensureMathRendered(tries) {
+      if (renderMathIn(document.body) || tries <= 0) { return; }
+      setTimeout(function () { ensureMathRendered(tries - 1); }, 250);
+    }
+
+    /* ---------- Anchored Glossary Popovers ---------- */
+    var GLOSSARY = {
+      'logits': {
+        title: 'Logits',
+        body: 'Unnormalized real-valued scores on $(-\\infty, +\\infty)$ output by the final linear layer before <span class="term" data-term="softmax">softmax</span>.'
+      },
+      'softmax': {
+        title: 'Softmax',
+        body: 'Turns <span class="term" data-term="logits">logits</span> into probabilities that are positive and sum to $1$: $p_i = \\frac{e^{(z_i - m)/T}}{\\sum_j e^{(z_j - m)/T}}$.'
+      },
+      'temperature': {
+        title: 'Temperature (T)',
+        body: 'Positive divisor applied before exponentiation. $T &lt; 1$ sharpens peaks (lower <span class="term" data-term="entropy">entropy</span>); $T &gt; 1$ flattens toward uniform.'
+      },
+      'float32': {
+        title: 'float32',
+        body: '32-bit IEEE floating-point number. Its max finite value is $\\approx 3.4 \\times 10^{38}$, so $\\exp(x)$ overflows to <code>Infinity</code> past $x = 88.72$.'
+      },
+      'entropy': {
+        title: 'Shannon entropy H(p)',
+        body: 'Uncertainty of a distribution: $H(p) = -\\sum_i p_i \\ln p_i$ measured in <span class="term" data-term="nats">nats</span>. Zero means 100% deterministic.'
+      },
+      'nats': {
+        title: 'Nats',
+        body: 'Information unit using natural log $\\ln$ instead of $\\log_2$ (bits). $1\\text{ nat} \\approx 1.443\\text{ bits}$.'
+      },
+      'llm': {
+        title: 'LLM (Large Language Model)',
+        body: 'Autoregressive neural network predicting the next token by outputting <span class="term" data-term="logits">logits</span> over the vocabulary.'
+      },
+      'schema': {
+        title: 'Mental schema',
+        body: 'Structured mental pattern linking conditions to steps so you can solve new variations without overloading working memory.'
+      },
+      'distillation': {
+        title: 'Knowledge distillation',
+        body: 'Training a smaller student model to match a teacher model\'s <span class="term" data-term="softmax">softmax</span> probabilities, often at $T &gt; 1$ to expose runner-up rankings.'
+      }
+    };
+
+    var popBox = document.getElementById('popover-box');
+    var popBody = document.getElementById('popover-body');
+    var popTitle = document.getElementById('popover-term-name');
+    var backBtn = document.getElementById('popover-back');
+    var popHistory = [];
+    var anchorTermEl = null;
+
+    function positionPopover() {
+      if (!anchorTermEl || popBox.style.display !== 'block') { return; }
+      var rect = anchorTermEl.getBoundingClientRect();
+      var vw = document.documentElement.clientWidth;
+      var vh = window.innerHeight;
+      var boxW = popBox.offsetWidth;
+      var boxH = popBox.offsetHeight;
+      var gap = 8;
+      var left = clamp(rect.left + window.scrollX, 12 + window.scrollX, Math.max(12 + window.scrollX, vw - boxW - 12 + window.scrollX));
+      var spaceBelow = vh - rect.bottom;
+      var top = (spaceBelow >= boxH + gap + 8 || spaceBelow >= rect.top)
+        ? rect.bottom + window.scrollY + gap
+        : rect.top + window.scrollY - boxH - gap;
+      popBox.style.left = Math.round(left) + 'px';
+      popBox.style.top = Math.round(Math.max(12, top)) + 'px';
+    }
+
+    function showTerm(key, pushCurrent) {
+      var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
+      if (pushCurrent && popBox.style.display === 'block' && popBox.getAttribute('data-key')) {
+        popHistory.push(popBox.getAttribute('data-key'));
+      }
+      popBox.setAttribute('data-key', key);
+      popTitle.textContent = g.title;
+      popBody.innerHTML = '<p>' + g.body + '</p>';
+      popBody.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      backBtn.style.display = popHistory.length ? 'inline-block' : 'none';
+      popBox.style.display = 'block';
+      renderMathIn(popBody);
+      positionPopover();
+    }
+
+    function closePopover() {
+      popBox.style.display = 'none';
+      popBox.removeAttribute('data-key');
+      popHistory = [];
+      if (anchorTermEl) {
+        anchorTermEl.classList.remove('term-open');
+        if (typeof anchorTermEl.focus === 'function') { anchorTermEl.focus(); }
+        anchorTermEl = null;
+      }
+    }
+
+    backBtn.addEventListener('click', function () {
+      if (popHistory.length) { showTerm(popHistory.pop(), false); }
+    });
+
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest ? e.target.closest('.term') : null;
+      if (el) {
+        e.preventDefault();
+        if (popBox.contains(el)) { showTerm(el.getAttribute('data-term'), true); return; }
+        if (anchorTermEl === el && popBox.style.display === 'block') { closePopover(); return; }
+        if (anchorTermEl) { anchorTermEl.classList.remove('term-open'); }
+        anchorTermEl = el;
+        anchorTermEl.classList.add('term-open');
+        popHistory = [];
+        showTerm(el.getAttribute('data-term'), false);
+        return;
+      }
+      if (popBox.style.display === 'block' && !popBox.contains(e.target)) { closePopover(); }
+    });
+
+    window.addEventListener('resize', positionPopover);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closePopover(); }
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('term')) {
+        document.activeElement.click();
+      }
+    });
+
+    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
+    function checkFastForward() {
+      var raw = document.getElementById('ff-input').value.trim();
+      var fb = document.getElementById('ff-feedback');
+      fb.style.display = 'block';
+      if (raw === '1' || raw === '1.0' || raw.toLowerCase() === 'e^0') {
+        fb.innerHTML = '<strong>Verified.</strong> <code>exp(100 - 100) = exp(0) = 1</code>. Stages 1&ndash;3 collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Stages 1&ndash;3</button>';
+        toggleScaffolding(false);
+        unlockSlider();
+      } else {
+        fb.innerHTML = 'Not quite (hint: $m = 100$, so $100 - m = 0$). Work through Stages 1&ndash;3 below.';
+        renderMathIn(fb);
+      }
+    }
+
+    function toggleScaffolding(show) {
+      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
+    }
+
+    /* ---------- Stage 1 & 2: POE + Refutation + Slider Unlock ---------- */
+    var poeDone = false;
+    var stepsVisited = { 0: true };
+
+    function unlockSlider() {
+      document.getElementById('slider-gate').style.display = 'none';
+      document.getElementById('slider-unlocked').style.display = 'block';
+      updateTempWidget();
+    }
+
+    function runPOE(choice) {
+      poeDone = true;
+      document.getElementById('poe-reveal').style.display = 'block';
+      var svg = document.getElementById('poe-svg');
+      var guessLabel = choice === 'A' ? 'Your guess: 0.665' : choice === 'B' ? 'Your guess: 1.0' : choice === 'C' ? 'Your guess: NaN' : 'Skipped guess';
+      var guessW = choice === 'A' ? 160 : choice === 'B' ? 240 : 0;
+
+      var html = '';
+      html += '<text x="10" y="34" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + guessLabel + '</text>';
+      html += '<rect x="175" y="16" width="240" height="24" fill="#fff" stroke="#000" stroke-dasharray="4 3"/>';
+      if (guessW > 0) { html += '<rect x="175" y="16" width="' + guessW + '" height="24" fill="#ccc" stroke="#000"/>'; }
+      html += '<text x="10" y="82" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Actual naive: NaN</text>';
+      html += '<rect x="175" y="64" width="240" height="24" fill="#fff" stroke="#000" stroke-width="2"/>';
+      html += '<text x="260" y="81" font-family="monospace" font-size="13" font-weight="bold" fill="#000">Inf / Inf = NaN</text>';
+      svg.innerHTML = html;
+
+      var ref = document.getElementById('poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Misconception Refutation</div>' +
+        '<p style="margin:0;">Most people guess <strong>0.665</strong> because mathematically $e^{100}/(e^{100}+e^{99}+e^{98})$ equals $e^0/(e^0+e^{-1}+e^{-2}) \\approx 0.665$. ' +
+        'That breaks in <code>float32</code> because <code>exp(100)</code> overflows $3.4 \\times 10^{38}$ to <code>Infinity</code> before the division ever runs, giving <code>Infinity / Infinity = NaN</code>.</p>';
+      renderMathIn(ref);
+      unlockSlider();
+    }
+
+    /* ---------- Stage 3: Discrete Stepper + Persistent Small Multiples ---------- */
+    var STEP_PRESETS = [
+      { T: 0.3, title: 'Step 1: Low (T=0.3)', note: 'Dividing by 0.3 stretches gaps 3.3x. Token A takes 96.5% of mass; entropy drops to 0.160 nats.' },
+      { T: 1.0, title: 'Step 2: Neutral (T=1.0)', note: 'Raw unscaled gaps [2, 1, 0]. Token A gets 66.5%, Token B gets 24.5%, Token C gets 9.0% (H = 0.824 nats).' },
+      { T: 3.0, title: 'Step 3: High (T=3.0)', note: 'Dividing by 3.0 shrinks gaps. Token A drops to 44.6% while Token C rises to 22.9% (H = 1.064 nats).' }
+    ];
+
+    function setStep(idx) {
+      stepsVisited[idx] = true;
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('step-btn-' + i).classList.toggle('active', i === idx);
+      }
+      renderSmallMultiples(idx);
+      document.getElementById('step-explain').textContent = STEP_PRESETS[idx].note;
+      if (Object.keys(stepsVisited).length === 3) { unlockSlider(); }
+    }
+
+    function renderSmallMultiples(activeIdx) {
+      var grid = document.getElementById('sm-grid');
+      var logits = [2.0, 1.0, 0.0];
+      var html = '';
+      STEP_PRESETS.forEach(function (preset, idx) {
+        var probs = softmax(logits, preset.T);
+        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
+        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.85em; margin-bottom:4px;">' + preset.title + '</div>';
+        html += '<svg viewBox="0 0 200 84" width="200" height="84" role="img" aria-label="' + preset.title + '">';
+        probs.forEach(function (p, j) {
+          var y = 6 + j * 25;
+          var w = Math.max(2, Math.round(p * 110));
+          html += '<text x="2" y="' + (y + 14) + '" font-family="monospace" font-size="11" fill="#000">' + ['A', 'B', 'C'][j] + '</text>';
+          html += '<rect x="18" y="' + y + '" width="110" height="18" fill="#fff" stroke="#000" stroke-width="1"/>';
+          html += '<rect x="18" y="' + y + '" width="' + w + '" height="18" fill="#000"/>';
+          html += '<text x="134" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + fmt(p * 100, 1) + '%</text>';
+        });
+        html += '</svg></div>';
+      });
+      grid.innerHTML = html;
+    }
+
+    function updateTempWidget() {
+      var slider = document.getElementById('temp-slider');
+      var svg = document.getElementById('temp-svg');
+      if (!slider || !svg) { return; }
+      var T = parseFloat(slider.value);
+      document.getElementById('temp-val').textContent = fmt(T, 1);
+
+      var probs = softmax([2.0, 1.0, 0.0], T);
+      var labels = ['A (z=2.0)', 'B (z=1.0)', 'C (z=0.0)'];
+      document.getElementById('stat-p1').textContent = fmt(probs[0], 3);
+      document.getElementById('stat-ent').textContent = fmt(entropyNats(probs), 3);
+      document.getElementById('stat-ratio').textContent = fmt(probs[0] / probs[2], 1) + 'x';
+
+      var out = '';
+      probs.forEach(function (p, i) {
+        var y = 14 + i * 40;
+        var w = Math.max(2, Math.round(p * 240));
+        out += '<text x="10" y="' + (y + 18) + '" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + labels[i] + '</text>';
+        out += '<rect x="115" y="' + y + '" width="240" height="25" fill="#fff" stroke="#000" stroke-width="1"/>';
+        out += '<rect x="115" y="' + y + '" width="' + w + '" height="25" fill="#000"/>';
+        out += '<text x="365" y="' + (y + 18) + '" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(p * 100, 1) + '%</text>';
+      });
+      svg.innerHTML = out;
+    }
+
+    /* ---------- Stage 4: Faded Step & Closed-Book Recall ---------- */
+    function checkFaded() {
+      var val = parseFloat(document.getElementById('fade-input').value);
+      var fb = document.getElementById('fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 0.731) <= 0.02) {
+        fb.innerHTML = '<strong>Correct.</strong> $1.000 / 1.368 \\approx 0.731$ (and $p_1 \\approx 0.269$).';
+      } else {
+        fb.innerHTML = 'Not quite. Divide the unnormalized weight $1.000$ by the sum $1.368$ to get $0.731$.';
+      }
+      renderMathIn(fb);
+    }
+
+    function revealRecall() {
+      var fb = document.getElementById('recall-feedback');
+      fb.style.display = 'block';
+      renderMathIn(fb);
+    }
+
+    /* ---------- Stage 5: Collapsed Interleaved MCQs ---------- */
+    var mcqResults = {};
+    function updateScore() {
+      var total = document.querySelectorAll('.mcq-box').length;
+      var answered = 0, right = 0;
+      for (var id in mcqResults) {
+        if (Object.prototype.hasOwnProperty.call(mcqResults, id)) {
+          answered++;
+          if (mcqResults[id].first) { right++; }
+        }
+      }
+      document.getElementById('mcq-score').textContent =
+        'Checks answered: ' + answered + ' of ' + total + '. Right on first try: ' + right + '.';
+    }
+
+    function checkMCQ(boxId) {
+      var box = document.getElementById(boxId);
+      var correct = box.getAttribute('data-correct');
+      var selected = box.querySelector('input[type="radio"]:checked');
+      var fb = box.querySelector('.mcq-feedback');
+      fb.style.display = 'block';
+      if (!selected) { fb.innerHTML = '<p>Pick an option first.</p>'; return; }
+      if (!mcqResults[boxId]) { mcqResults[boxId] = { first: selected.value === correct }; }
+      box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('right', 'wrong'); });
+      var rightOpt = box.querySelector('input[value="' + correct + '"]');
+      rightOpt.closest('.mcq-option').classList.add('right');
+      var html = (selected.value === correct)
+        ? '<p><strong>Correct.</strong> ' + selected.getAttribute('data-explain') + '</p>'
+        : '<p><strong>Not quite (' + selected.value + ').</strong> ' + selected.getAttribute('data-explain') + '</p><p><strong>Answer: ' + correct + '.</strong> ' + rightOpt.getAttribute('data-explain') + '</p>';
+      html += '<details><summary>Why each option is right or wrong</summary><ul>';
+      box.querySelectorAll('input[type="radio"]').forEach(function (o) {
+        html += '<li><strong>' + o.value + ':</strong> ' + o.getAttribute('data-explain') + '</li>';
+      });
+      html += '</ul></details>';
+      fb.innerHTML = html;
+      renderMathIn(fb);
+      updateScore();
+    }
+
+    function resetMCQs() {
+      mcqResults = {};
+      document.querySelectorAll('.mcq-box').forEach(function (box) {
+        box.removeAttribute('open');
+        box.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked', 'right', 'wrong'); });
+        var fb = box.querySelector('.mcq-feedback');
+        fb.style.display = 'none';
+        fb.innerHTML = '';
+      });
+      updateScore();
+    }
+
+    /* ---------- Stage 5: Spaced Recall Cards ---------- */
+    var SPACED_CARDS = [
+      { q: 'At what exponent x does exp(x) overflow float32?', a: 'x > 88.72 (max float32 is ~3.4e38).' },
+      { q: 'Why does subtracting max(z) leave softmax unchanged?', a: 'exp(z_i - m) / sum(exp(z_j - m)) cancels e^(-m) in numerator and denominator.' },
+      { q: 'What happens to entropy as T -> 0?', a: 'Entropy collapses toward 0 nats (approaching greedy argmax).' },
+      { q: 'What happens to probabilities as T -> infinity?', a: 'All probabilities flatten toward the uniform distribution 1/K.' },
+      { q: 'Why use T > 1 in knowledge distillation?', a: 'Higher T lifts runner-up probabilities so the student learns relative rankings.' }
+    ];
+
+    function renderSpacedCards() {
+      var list = document.getElementById('spaced-list');
+      list.innerHTML = SPACED_CARDS.map(function (c, i) {
+        return '<details class="recall-card"><summary>Card ' + (i + 1) + ': ' + c.q + '</summary><p style="margin:0.5rem 0 0 0;">' + c.a + '</p></details>';
+      }).join('');
+    }
+
+    function copySpacedCards() {
+      var text = SPACED_CARDS.map(function (c, i) {
+        return 'Q' + (i + 1) + ': ' + c.q + '\nA' + (i + 1) + ': ' + c.a;
+      }).join('\n\n');
+      var st = document.getElementById('copy-status');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          st.textContent = 'Copied 5 cards (review at 1d, 4d, 14d, 60d).';
+        }, function () { st.textContent = 'Clipboard blocked; select cards manually.'; });
+      } else {
+        st.textContent = 'Clipboard unavailable in this browser.';
+      }
+    }
+
+    /* ---------- Init ---------- */
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      document.querySelectorAll('.mcq-option input').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          var box = inp.closest('.mcq-box');
+          box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+          inp.closest('.mcq-option').classList.add('picked');
+        });
+      });
+      var boxes = document.querySelectorAll('.mcq-box');
+      boxes.forEach(function (box, i) {
+        var t = box.querySelector('.mcq-title');
+        var topic = box.getAttribute('data-topic');
+        if (t) {
+          t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length +
+            (topic ? ': ' + topic : '') + ' (tap to expand)';
+        }
+      });
+      var tempSlider = document.getElementById('temp-slider');
+      if (tempSlider) { tempSlider.addEventListener('input', updateTempWidget); }
+      setStep(0);
+      renderSpacedCards();
+      updateScore();
+      ensureMathRendered(10);
+    });
+    window.addEventListener('load', function () { renderMathIn(document.body); });
+  </script>
+</body>
+</html>
