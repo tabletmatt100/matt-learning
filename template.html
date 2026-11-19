@@ -252,26 +252,22 @@
       outline: 2px solid var(--border);
     }
 
-    #popover-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(255, 255, 255, 0.78);
-      z-index: 900;
+    .term.term-open {
+      background: var(--active-bg);
+      color: var(--active-text);
     }
 
     #popover-box {
       display: none;
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: min(92vw, 540px);
-      max-height: 80vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: min(92vw, 440px);
+      max-height: 60vh;
       overflow-y: auto;
       background: var(--bg);
       border: 3px solid var(--border);
-      padding: 1.2rem 1.4rem;
+      padding: 1rem 1.2rem;
       z-index: 1000;
     }
 
@@ -839,8 +835,7 @@
     </footer>
   </main>
 
-  <div id="popover-backdrop" onclick="closePopover()"></div>
-  <div id="popover-box" role="dialog" aria-modal="true" aria-labelledby="popover-term-name">
+  <div id="popover-box" role="region" aria-labelledby="popover-term-name">
     <div class="popover-header">
       <span class="popover-title" id="popover-term-name">Term</span>
       <div>
@@ -942,7 +937,7 @@
       },
       'popover': {
         title: 'Concept popover',
-        body: 'A modal definition triggered by tapping a dotted <code>.term</code> span. Tag concepts aggressively—including nested terms inside definitions—so readers can always tap to learn more.'
+        body: 'An anchored definition attached right to a dotted <code>.term</code> span so you can keep reading the page. Tag concepts aggressively—including nested terms inside definitions—so readers can always tap to learn more.'
       },
       'logits': {
         title: 'Logits',
@@ -971,12 +966,34 @@
     };
 
     var popBox = document.getElementById('popover-box');
-    var popBackdrop = document.getElementById('popover-backdrop');
     var popBody = document.getElementById('popover-body');
     var popTitle = document.getElementById('popover-term-name');
     var backBtn = document.getElementById('popover-back');
     var popHistory = [];
-    var lastTermTrigger = null;
+    var anchorTermEl = null;
+
+    function positionPopover() {
+      if (!anchorTermEl || popBox.style.display !== 'block') { return; }
+      var rect = anchorTermEl.getBoundingClientRect();
+      var vw = document.documentElement.clientWidth;
+      var vh = window.innerHeight;
+      var boxW = popBox.offsetWidth;
+      var boxH = popBox.offsetHeight;
+      var gap = 8;
+
+      var left = rect.left + window.scrollX;
+      left = clamp(left, 12 + window.scrollX, Math.max(12 + window.scrollX, vw - boxW - 12 + window.scrollX));
+
+      var spaceBelow = vh - rect.bottom;
+      var top;
+      if (spaceBelow >= boxH + gap + 8 || spaceBelow >= rect.top) {
+        top = rect.bottom + window.scrollY + gap;
+      } else {
+        top = rect.top + window.scrollY - boxH - gap;
+      }
+      popBox.style.left = Math.round(left) + 'px';
+      popBox.style.top = Math.round(Math.max(12, top)) + 'px';
+    }
 
     function showTerm(key, pushCurrent) {
       var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
@@ -986,20 +1003,24 @@
       popBox.setAttribute('data-key', key);
       popTitle.textContent = g.title;
       popBody.innerHTML = '<p>' + g.body + '</p>';
+      popBody.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
       backBtn.style.display = popHistory.length ? 'inline-block' : 'none';
-      popBackdrop.style.display = 'block';
       popBox.style.display = 'block';
       renderMathIn(popBody);
+      positionPopover();
     }
 
     function closePopover() {
-      popBackdrop.style.display = 'none';
       popBox.style.display = 'none';
       popBox.removeAttribute('data-key');
       popHistory = [];
-      if (lastTermTrigger && typeof lastTermTrigger.focus === 'function') {
-        lastTermTrigger.focus();
-        lastTermTrigger = null;
+      if (anchorTermEl) {
+        anchorTermEl.classList.remove('term-open');
+        if (typeof anchorTermEl.focus === 'function') { anchorTermEl.focus(); }
+        anchorTermEl = null;
       }
     }
 
@@ -1009,11 +1030,29 @@
 
     document.addEventListener('click', function (e) {
       var el = e.target.closest ? e.target.closest('.term') : null;
-      if (!el) { return; }
-      e.preventDefault();
-      if (!popBox.contains(el)) { lastTermTrigger = el; }
-      showTerm(el.getAttribute('data-term'), popBox.contains(el));
+      if (el) {
+        e.preventDefault();
+        if (popBox.contains(el)) {
+          showTerm(el.getAttribute('data-term'), true);
+          return;
+        }
+        if (anchorTermEl === el && popBox.style.display === 'block') {
+          closePopover();
+          return;
+        }
+        if (anchorTermEl) { anchorTermEl.classList.remove('term-open'); }
+        anchorTermEl = el;
+        anchorTermEl.classList.add('term-open');
+        popHistory = [];
+        showTerm(el.getAttribute('data-term'), false);
+        return;
+      }
+      if (popBox.style.display === 'block' && !popBox.contains(e.target)) {
+        closePopover();
+      }
     });
+
+    window.addEventListener('resize', positionPopover);
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { closePopover(); }
