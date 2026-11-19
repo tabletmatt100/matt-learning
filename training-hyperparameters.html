@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Hyperparameters: Learning Rate, Batch Size, Schedules &amp; AdamW</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #000000;
+      --border-thick: 2px solid #000000;
+      --border-thin: 1px solid #000000;
+      --highlight-bg: #e8e8e8;
+      --active-bg: #000000;
+      --active-text: #ffffff;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Charter", Georgia, serif;
+      --font-mono: "Courier New", Courier, monospace;
+      --font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    html { font-size: var(--font-size); }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 1rem;
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+
+    a { color: var(--text); }
+
+    header {
+      border-bottom: 3px solid var(--border);
+      padding: 1rem;
+      background: var(--bg);
+    }
+
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-links a {
+      text-decoration: underline;
+      font-weight: 600;
+      margin-right: 15px;
+      display: inline-block;
+      padding: 8px 0;
+    }
+
+    .font-controls { display: flex; gap: 6px; align-items: center; }
+
+    .font-size-label {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      min-width: 3.2em;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .font-controls button, .btn {
+      background: var(--bg);
+      color: var(--text);
+      border: var(--border-thick);
+      padding: 6px 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 2px;
+      min-height: 48px;
+      min-width: 48px;
+      font-family: inherit;
+    }
+
+    .font-controls button:active, .btn:active, .btn.active {
+      background: var(--active-bg);
+      color: var(--active-text);
+    }
+
+    .btn-small {
+      min-height: 48px;
+      min-width: 48px;
+      padding: 6px 12px;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.2rem 5rem 1.2rem;
+    }
+
+    .tag {
+      display: inline-block;
+      border: var(--border-thin);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 6px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 2.05rem;
+      line-height: 1.25;
+      margin-top: 0.4rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+
+    h3 { font-size: 1.15rem; margin-top: 1.2rem; }
+
+    .tldr {
+      border: 2px solid var(--border);
+      padding: 1.1rem 1.3rem;
+      margin: 1.3rem 0 1.6rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .tldr h2 {
+      margin-top: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.2rem;
+    }
+
+    .tldr ul { margin: 0.6rem 0 0 0; padding-left: 1.3rem; }
+    .tldr li { margin-bottom: 0.45rem; }
+
+    .story-box {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin: 1.2rem 0;
+      background: var(--bg);
+    }
+
+    .story-label {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+
+    .toc {
+      border: var(--border-thin);
+      padding: 0.8rem 1.2rem;
+      margin: 1.2rem 0 1.8rem 0;
+    }
+
+    .toc-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.85em;
+      margin-bottom: 0.4rem;
+    }
+
+    .toc ol { margin: 0.3rem 0 0 0; padding-left: 1.4rem; }
+    .toc li { margin-bottom: 0.25rem; }
+    .toc a { display: inline-block; padding: 4px 0; }
+
+    .worked {
+      border-left: 4px solid var(--border);
+      padding: 0.5rem 0 0.5rem 1.1rem;
+      margin: 1.3rem 0;
+    }
+
+    .math-block {
+      border: var(--border-thick);
+      padding: 0.9rem 1rem;
+      margin: 1.3rem 0;
+      overflow-x: auto;
+      text-align: center;
+      font-size: 1.08rem;
+    }
+
+    .math-hint {
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      margin-top: 0.45rem;
+      border-top: 1px dashed var(--border);
+      padding-top: 0.35rem;
+    }
+
+    .refutation {
+      border: var(--border-thick);
+      border-left: 6px solid var(--border);
+      padding: 0.9rem 1.1rem;
+      margin: 1.2rem 0;
+      background: var(--highlight-bg);
+    }
+
+    .refutation-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 0.82em;
+      margin-bottom: 0.3rem;
+    }
+
+    .table-wrap { overflow-x: auto; margin: 1.2rem 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93em;
+    }
+
+    th, td {
+      border: var(--border-thin);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: var(--highlight-bg); font-weight: bold; }
+    .num { font-family: var(--font-mono); text-align: right; }
+
+    code, pre, textarea, input[type="text"], input[type="number"] {
+      font-family: var(--font-mono);
+      background: var(--highlight-bg);
+      padding: 2px 5px;
+    }
+
+    pre {
+      padding: 12px;
+      border: var(--border-thin);
+      overflow-x: auto;
+    }
+
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: var(--border-thick);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      min-height: 48px;
+      border-radius: 0;
+    }
+
+    textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+
+    details {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin: 1.2rem 0;
+    }
+
+    summary { font-weight: bold; cursor: pointer; padding: 4px 0; }
+
+    /* Anchored Concept & Symbol Popovers */
+    .term {
+      border-bottom: 2px dotted var(--border);
+      background: var(--highlight-bg);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 1px 4px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .term:focus { outline: 2px solid var(--border); }
+    .term.term-open { background: var(--active-bg); color: var(--active-text); }
+
+    #popover-box {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: min(92vw, 440px);
+      max-height: 60vh;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      padding: 1rem 1.2rem;
+      z-index: 1000;
+    }
+
+    .popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
+      gap: 8px;
+    }
+
+    .popover-title { font-weight: bold; font-size: 1.05rem; }
+
+    /* Interactive Cards & Controls */
+    .interactive-card {
+      border: var(--border-thick);
+      padding: 1.25rem;
+      margin: 1.6rem 0;
+      background: var(--bg);
+    }
+
+    .widget-label {
+      display: inline-block;
+      background: var(--active-bg);
+      color: var(--active-text);
+      font-size: 12px;
+      font-weight: bold;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0.9rem 0;
+    }
+
+    .control-row label { font-weight: 600; min-width: 7rem; }
+
+    .control-row .val {
+      font-family: var(--font-mono);
+      font-weight: bold;
+      min-width: 4.5rem;
+      border: var(--border-thin);
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      min-width: 160px;
+      height: 44px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; background: var(--border); }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px; height: 28px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+      margin-top: -11px;
+    }
+    input[type="range"]::-moz-range-track { height: 6px; background: var(--border); }
+    input[type="range"]::-moz-range-thumb {
+      width: 24px; height: 24px;
+      background: var(--bg);
+      border: 3px solid var(--border);
+      border-radius: 50%;
+    }
+
+    .figure-box {
+      border: var(--border-thin);
+      padding: 0.8rem;
+      margin: 1rem 0;
+      text-align: center;
+    }
+
+    .figure-box svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 1rem 0;
+    }
+
+    .stat { border: var(--border-thick); padding: 8px 10px; }
+    .stat .k { font-size: 0.78rem; text-transform: uppercase; font-weight: bold; }
+    .stat .v { font-family: var(--font-mono); font-size: 1.15rem; font-weight: bold; }
+
+    .readout {
+      border: var(--border-thin);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+      background: var(--highlight-bg);
+    }
+
+    .locked-note {
+      border: 2px dashed var(--border);
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+    }
+
+    .small-multiples {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 1rem 0;
+    }
+
+    .sm-panel { border: var(--border-thin); padding: 0.6rem; }
+    .sm-panel.sm-active { border: 3px solid var(--border); background: var(--highlight-bg); }
+
+    @media (max-width: 680px) {
+      .small-multiples { grid-template-columns: 1fr; }
+    }
+
+    /* Collapsed MCQs */
+    details.mcq-box, .mcq-box {
+      border: var(--border-thick);
+      padding: 0.9rem 1.3rem;
+      margin: 1.3rem 0;
+    }
+
+    summary.mcq-title, .mcq-title {
+      font-size: 0.9em;
+      font-weight: bold;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    details.mcq-box[open] > summary.mcq-title {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.6rem;
+    }
+
+    .mcq-option {
+      display: block;
+      border: var(--border-thin);
+      padding: 0.75rem 0.9rem;
+      margin: 0.55rem 0;
+      cursor: pointer;
+      min-height: 48px;
+    }
+
+    .mcq-option input { margin-right: 10px; transform: scale(1.2); }
+    .mcq-option.picked { border-width: 2px; background: var(--highlight-bg); }
+    .mcq-option.right { border: 3px solid var(--border); background: var(--highlight-bg); }
+    .mcq-option.wrong { border: 2px dashed var(--border); }
+    .mcq-feedback { display: none; margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+
+    .score-bar {
+      border: var(--border-thick);
+      padding: 1rem 1.2rem;
+      margin-top: 1.6rem;
+      background: var(--highlight-bg);
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .recall-card { border: var(--border-thin); padding: 0.8rem 1rem; margin: 0.8rem 0; }
+
+    footer.article-footer {
+      border-top: 2px solid var(--border);
+      margin-top: 3rem;
+      padding-top: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-block; }
+
+    @media print {
+      header, .font-controls, footer.article-footer { display: none; }
+      .mcq-box, .interactive-card, .worked, .tldr, details { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header id="top">
+    <div class="header-inner">
+      <div class="nav-links">
+        <a href="index.html">&larr; All Articles</a>
+      </div>
+      <div class="font-controls">
+        <button id="font-dec" aria-label="Decrease font size">A-</button>
+        <span class="font-size-label" id="font-size-label">18px</span>
+        <button id="font-inc" aria-label="Increase font size">A+</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div>
+      <span class="tag">Training Dynamics</span>
+      <span class="tag">Optimization</span>
+      <span class="tag">Boox Go 10.3</span>
+    </div>
+
+    <h1>Training Hyperparameters: Why Runs Explode, Stall, or Overfit</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>The core coupling:</strong> Training hyperparameters are not independent dials. <span class="term" data-term="learning-rate">Learning rate ($\eta$)</span> sets step length, <span class="term" data-term="batch-size">batch size ($B$)</span> sets gradient signal-to-noise, and <span class="term" data-term="gradient-accumulation">gradient accumulation ($K$)</span> lets small GPUs simulate large <span class="term" data-term="effective-batch-size">effective batches ($B_{\text{eff}} = B_{\text{micro}} \times K$)</span>.</li>
+        <li><strong>Why runs explode at step 1:</strong> Above the stability ceiling $\eta > 2/\text{curvature}$, gradient descent bounces higher on every step. And in <span class="term" data-term="adamw">AdamW</span>, the early variance estimate <span class="term" data-term="second-moment">$v_t$</span> has tiny sample size on steps $1\text{--}100$, so you need <span class="term" data-term="warmup">linear warmup</span> before decaying $\eta$ with a <span class="term" data-term="cosine-schedule">cosine schedule</span> and <span class="term" data-term="gradient-clipping">gradient clipping</span>.</li>
+        <li><strong>Why <span class="term" data-term="adamw">AdamW</span> replaced <span class="term" data-term="l2-regularization">L2 regularization</span>:</strong> Adding $\lambda w^2$ to the loss mixes weight decay into the adaptive denominator $\sqrt{v_t}$, shrinking heavily updated weights <em>less</em> than idle weights. <span class="term" data-term="adamw">AdamW</span> decouples <span class="term" data-term="weight-decay">weight decay ($\lambda$)</span> so every weight shrinks by the exact fraction $\eta \lambda$ per step.</li>
+      </ul>
+    </div>
+
+    <p>
+      <em>Tip: Tap any highlighted concept or mathematical symbol (like <span class="term" data-term="learning-rate">$\eta$</span>, <span class="term" data-term="gradient">$g_t$</span>, <span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span>, <span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span>, or <span class="term" data-term="weight-decay">$\lambda$</span>) to open an anchored explanation popover. Every question and worked example uses mental-math numbers—no calculator needed.</em>
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Clickable Symbol</th><th>Plain-English Meaning</th><th>Typical Scale</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term" data-term="learning-rate">$\eta$</span> (or <span class="term" data-term="learning-rate">$\text{LR}$</span>)</td>
+            <td><span class="term" data-term="learning-rate">Learning rate</span>: multiplier controlling how far weights move along the step direction</td>
+            <td class="num">$10^{-5}$ to $10^{-2}$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="gradient">$g_t$</span></td>
+            <td><span class="term" data-term="gradient">Gradient</span> $\nabla \mathcal{L}(w_t)$: slope of the <span class="term" data-term="loss-function">loss</span> pointing uphill (we step in $-g_t$)</td>
+            <td class="num">Vector in $\mathbb{R}^d$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span></td>
+            <td><span class="term" data-term="effective-batch-size">Effective batch size</span> $= B_{\text{micro}} \times K \times N_{\text{GPU}}$ examples averaged per weight update</td>
+            <td class="num">$32$ to $4096$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span></td>
+            <td>Running average of gradients (<span class="term" data-term="first-moment">momentum $m_t$</span>, controlled by <span class="term" data-term="beta1">$\beta_1$</span>) and squared gradients (<span class="term" data-term="second-moment">variance $v_t$</span>, controlled by <span class="term" data-term="beta2">$\beta_2$</span>)</td>
+            <td class="num">$\beta_1 = 0.9, \beta_2 = 0.999$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="weight-decay">$\lambda$</span></td>
+            <td><span class="term" data-term="weight-decay">Weight decay</span> strength: pulls weights toward zero by fraction $\eta \lambda$ each step</td>
+            <td class="num">$0.01$ to $0.1$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="clip-threshold">$c$</span></td>
+            <td><span class="term" data-term="gradient-clipping">Gradient clipping</span> threshold on global norm <span class="term" data-term="grad-norm">$\lVert g \rVert_2$</span></td>
+            <td class="num">$1.0$</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="interactive-card" id="fast-forward-box">
+      <div class="widget-label">Fast-Forward Diagnostic</div>
+      <p style="margin-top:0.3rem;">Already comfortable with basic gradient descent and batch scaling? Answer this quick mental check to collapse Chapters 1&ndash;2 and jump straight to schedules and AdamW.</p>
+      <div class="control-row">
+        <label for="ff-input">On $\mathcal{L}(w) = w^2$ at $w_0 = 4$ (so $g_0 = 8$), what $\eta$ lands at $w_1 = -4$?</label>
+        <input type="number" id="ff-input" step="0.1" placeholder="e.g. 1.0" style="width:9rem;">
+        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
+      </div>
+      <div id="ff-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">The 5-Chapter Narrative</div>
+      <ol>
+        <li><a href="#ch-1">1. Chapter 1: The Step-Size Cliff — Learning Rate ($\eta$) and Curvature</a></li>
+        <li><a href="#ch-2">2. Chapter 2: Batch Size ($B$), Gradient Noise, and Accumulation ($K$)</a></li>
+        <li><a href="#ch-3">3. Chapter 3: Warmup, Cosine Decay, and Gradient Clipping ($c$)</a></li>
+        <li><a href="#ch-4">4. Chapter 4: Inside AdamW — Momentum ($m_t$), Variance ($v_t$), and Decoupled Decay ($\lambda$)</a></li>
+        <li><a href="#ch-5">5. Chapter 5: The Hyperparameter Debugging Matrix, Interleaved Checks &amp; Recall Cards</a></li>
+      </ol>
+    </nav>
+
+    <div id="basic-scaffolding">
+      <!-- === CHAPTER 1: LEARNING RATE & CURVATURE === -->
+      <h2 id="ch-1">1. Chapter 1: The Step-Size Cliff — <span class="term" data-term="learning-rate">Learning Rate ($\eta$)</span> and <span class="term" data-term="curvature">Curvature</span></h2>
+      <p>
+        Every training story starts with the same disaster: you kick off a fine-tuning job at <span class="term" data-term="learning-rate">$\eta = 0.1$</span>, walk away for coffee, and return five minutes later to find <code>Loss: NaN</code>.
+      </p>
+      <p>
+        Why doesn't a bigger <span class="term" data-term="learning-rate">learning rate</span> simply reach the bottom of the valley faster? To see why there is a hard cliff between convergence and explosion, watch one <span class="term" data-term="weight">weight $w$</span> move down a simple parabola <span class="term" data-term="loss-function">$\mathcal{L}(w) = w^2$</span>. Its minimum sits at $w^* = 0$, and its slope (<span class="term" data-term="gradient">gradient $g$</span>) at any point is $g = 2w$.
+      </p>
+
+      <div class="interactive-card" id="poe-lr-widget">
+        <div class="widget-label">Guess First: The Overshoot Cliff</div>
+        <h3>Where Does $w_0 = 4$ Land When <span class="term" data-term="learning-rate">$\eta = 1.0$</span>?</h3>
+        <p>
+          Suppose our weight starts at <span class="term" data-term="weight">$w_0 = 4$</span> on the bowl <span class="term" data-term="loss-function">$\mathcal{L}(w) = w^2$</span> (so the initial loss is $4^2 = 16$ and the slope is <span class="term" data-term="gradient">$g_0 = 2 \times 4 = 8$</span>). Using the update rule $w_1 = w_0 - \eta g_0$ with <span class="term" data-term="learning-rate">$\eta = 1.0$</span>, what happens to the loss after one step?
+        </p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runLRPOE('A')">A) It drops to 0 (hits the bottom in one step)</button>
+          <button class="btn btn-small" onclick="runLRPOE('B')">B) It lands at w = -4 with the EXACT same loss (16) on the opposite wall!</button>
+          <button class="btn btn-small" onclick="runLRPOE('C')">C) It shrinks halfway to w = +2 (loss = 4)</button>
+          <button class="btn btn-small" onclick="runLRPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="lr-poe-reveal" style="display:none;">
+          <div class="figure-box">
+            <svg id="lr-poe-svg" viewBox="0 0 460 130" width="460" height="130" role="img" aria-label="Learning rate overshoot comparison"></svg>
+          </div>
+          <div class="refutation" id="lr-poe-refutation"></div>
+        </div>
+      </div>
+
+      <p>
+        That symmetry reveals the most important number in optimization. On <span class="term" data-term="loss-function">$\mathcal{L}(w) = w^2$</span>, the second derivative (<span class="term" data-term="curvature">curvature $H$</span>) is $2$. Whenever <span class="term" data-term="learning-rate">$\eta$</span> exceeds the stability limit $2 / H = 1.0$, each step jumps past zero and lands <em>higher</em> up the opposite wall than where it started.
+      </p>
+
+      <div class="math-block">
+        <div>
+          <span class="term" data-term="weight">$w_{t+1}$</span>
+          $=$
+          <span class="term" data-term="weight">$w_t$</span>
+          $-$
+          <span class="term" data-term="learning-rate">$\eta$</span>
+          $\cdot$
+          <span class="term" data-term="gradient">$g_t$</span>
+        </div>
+        <div class="math-hint">
+          Gradient Descent Step (tap any symbol): New weight = Old weight minus (learning rate $\eta \times$ uphill slope $g_t$)
+        </div>
+      </div>
+
+      <div class="worked">
+        <p><strong>Worked Example (Tracing 3 steps across 3 learning rates from $w_0 = 4$):</strong></p>
+        <p>
+          Since <span class="term" data-term="gradient">$g_t = 2 w_t$</span>, the update is $w_{t+1} = w_t - \eta(2 w_t) = w_t(1 - 2\eta)$. Compare three distinct settings of <span class="term" data-term="learning-rate">$\eta$</span>:
+        </p>
+        <ul>
+          <li><strong>Regime 1 — Too Small (<span class="term" data-term="learning-rate">$\eta = 0.25$</span>):</strong> Multiplier is $1 - 2(0.25) = 0.5$. The weight halves each step: $w_0 = 4 \to w_1 = 2 \to w_2 = 1 \to w_3 = 0.5$. Smooth descent, no sign flip.</li>
+          <li><strong>Regime 2 — Exact Optimum (<span class="term" data-term="learning-rate">$\eta = 0.5$</span>):</strong> Multiplier is $1 - 2(0.5) = 0$. One step takes $w_0 = 4 \to w_1 = 4 - 0.5(8) = 0$.</li>
+          <li><strong>Regime 3 — Past the Cliff (<span class="term" data-term="learning-rate">$\eta = 1.5$</span>):</strong> Multiplier is $1 - 2(1.5) = -2$. The weight doubles and flips sign every step: $w_0 = 4 \to w_1 = -8 \to w_2 = +16 \to w_3 = -32$. By step 3, loss has exploded from $16$ to $1024$.</li>
+        </ul>
+      </div>
+
+      <div class="interactive-card" id="lr-stepper-widget">
+        <div class="widget-label">Discrete Stepper + Persistent Small Multiples</div>
+        <h3>Compare Three <span class="term" data-term="learning-rate">Learning Rate</span> Regimes Side-by-Side ($w_0 = 4$ on $\mathcal{L}(w) = w^2$)</h3>
+        <div class="control-row">
+          <button class="btn btn-small active" id="lr-step-0" onclick="setLRRegime(0)">Regime 1: Steady ($\eta = 0.25$)</button>
+          <button class="btn btn-small" id="lr-step-1" onclick="setLRRegime(1)">Regime 2: Wall-to-Wall ($\eta = 1.0$)</button>
+          <button class="btn btn-small" id="lr-step-2" onclick="setLRRegime(2)">Regime 3: Explosion ($\eta = 1.5$)</button>
+        </div>
+
+        <div class="small-multiples" id="lr-sm-grid"></div>
+        <div class="readout" id="lr-step-explain"></div>
+
+        <div id="lr-slider-gate" class="locked-note">
+          Make a prediction above (or step through all 3 regimes) to unlock the free learning-rate slider.
+        </div>
+        <div id="lr-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
+          <div class="control-row">
+            <label for="lr-slider">Free slider <span class="term" data-term="learning-rate">$\eta$</span></label>
+            <input type="range" id="lr-slider" min="0.1" max="1.5" step="0.05" value="0.25">
+            <span class="val" id="lr-slider-val">0.25</span>
+          </div>
+          <div class="stat-grid">
+            <div class="stat"><div class="k">Step Multiplier $(1 - 2\eta)$</div><div class="v" id="lr-stat-mult">+0.50</div></div>
+            <div class="stat"><div class="k">Positions $w_0 \to w_1 \to w_2$</div><div class="v" id="lr-stat-pos">4 &rarr; 2 &rarr; 1</div></div>
+            <div class="stat"><div class="k">Step-2 Loss $\mathcal{L}(w_2)$</div><div class="v" id="lr-stat-loss">1.0</div></div>
+          </div>
+        </div>
+      </div>
+
+      <details class="mcq-box" id="mcq-lr" data-correct="C" data-topic="Mental Math: Learning Rate Overshoot">
+        <summary class="mcq-title"></summary>
+        <p>On the parabola <span class="term" data-term="loss-function">$\mathcal{L}(w) = w^2$</span> starting at <span class="term" data-term="weight">$w_0 = 5$</span> (where <span class="term" data-term="gradient">$g_0 = 2w_0 = 10$</span>), you set <span class="term" data-term="learning-rate">$\eta = 0.8$</span>. Where does $w_1 = w_0 - \eta g_0$ land, and why?</p>
+        <label class="mcq-option"><input type="radio" name="qlr" value="A" data-explain="w_1 = +1 would come from eta = 0.4 (5 - 0.4*10 = 1), which stays on the positive side without crossing zero.">A) $w_1 = +1$ (smooth decay without crossing $0$)</label>
+        <label class="mcq-option"><input type="radio" name="qlr" value="B" data-explain="To explode past -5, eta would need to exceed 1.0.">B) $w_1 = -10$ (diverging explosion)</label>
+        <label class="mcq-option"><input type="radio" name="qlr" value="C" data-explain="Correct. The step is 0.8 * 10 = 8, so w_1 = 5 - 8 = -3. Because 0.5 < eta < 1.0, it overshoots across the valley floor (0) to the opposite wall (-3), though it still shrinks closer to 0 than +5.">C) $w_1 = -3$ (overshoots across $0$ to the opposite wall, damped oscillation)</label>
+        <button class="btn" onclick="checkMCQ('mcq-lr')">Check answer</button>
+        <div class="mcq-feedback"></div>
+      </details>
+
+      <!-- === CHAPTER 2: BATCH SIZE, NOISE & ACCUMULATION === -->
+      <h2 id="ch-2">2. Chapter 2: <span class="term" data-term="batch-size">Batch Size ($B$)</span>, Gradient Noise, and <span class="term" data-term="gradient-accumulation">Accumulation ($K$)</span></h2>
+      <p>
+        In our parabola example, we knew the exact true slope <span class="term" data-term="gradient">$g_t$</span>. In real machine learning, computing the true gradient requires running all $10\text{ million}$ training examples through the network before taking a single step.
+      </p>
+      <p>
+        Instead, <span class="term" data-term="sgd">Stochastic Gradient Descent (SGD)</span> estimates the slope from a small <span class="term" data-term="batch-size">mini-batch of $B$ examples</span>. That introduces a crucial trade-off between speed, GPU memory, and <span class="term" data-term="gradient-noise">gradient noise</span>:
+      </p>
+
+      <div class="math-block">
+        <div>
+          <span class="term" data-term="batch-gradient">$\bar{g}_B$</span>
+          $=$
+          $\dfrac{1}{B}$
+          $\displaystyle\sum_{i=1}^{B}$
+          <span class="term" data-term="sample-gradient">$g^{(i)}$</span>
+          $, \qquad$
+          <span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span>
+          $=$
+          <span class="term" data-term="micro-batch">$B_{\text{micro}}$</span>
+          $\times$
+          <span class="term" data-term="gradient-accumulation">$K$</span>
+        </div>
+        <div class="math-hint">
+          Tap any symbol: Mini-batch gradient averages $B$ sample gradients | Effective batch = micro-batch $\times$ accumulation steps $K$
+        </div>
+      </div>
+
+      <div class="interactive-card" id="poe-batch-widget">
+        <div class="widget-label">Guess First: The Batch-Size Scaling Trap</div>
+        <h3>You Quadruple <span class="term" data-term="batch-size">Batch Size $B$</span> From $8$ to $32$ for the Same Number of <span class="term" data-term="epoch">Epochs</span></h3>
+        <p>
+          Suppose you train on $320$ examples for $1$ <span class="term" data-term="epoch">epoch</span>. At <span class="term" data-term="batch-size">$B = 8$</span>, the optimizer takes $320 \div 8 = 40$ weight updates. If you switch to <span class="term" data-term="batch-size">$B = 32$</span> <em>without</em> changing your <span class="term" data-term="learning-rate">learning rate $\eta$</span>, what happens?
+        </p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runBatchPOE('A')">A) It reaches the exact same loss 4x faster</button>
+          <button class="btn btn-small" onclick="runBatchPOE('B')">B) It under-trains—it only takes 10 steps of the old size instead of 40!</button>
+          <button class="btn btn-small" onclick="runBatchPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="batch-poe-reveal" style="display:none;">
+          <div class="refutation" id="batch-poe-refutation"></div>
+        </div>
+      </div>
+
+      <div class="worked">
+        <p><strong>Worked Example (Tracing <span class="term" data-term="gradient-accumulation">Gradient Accumulation</span> across distinct sample gradients):</strong></p>
+        <p>
+          Suppose your GPU only has enough VRAM for a <span class="term" data-term="micro-batch">micro-batch of $B_{\text{micro}} = 2$</span> examples at a time, but you want the smooth, low-noise gradient of <span class="term" data-term="effective-batch-size">$B_{\text{eff}} = 4$</span>. You set <span class="term" data-term="gradient-accumulation">accumulation steps $K = 2$</span>.
+        </p>
+        <p>
+          Four training examples have four distinct per-sample gradients:
+          <span class="term" data-term="sample-gradient">$g^{(1)} = 2$</span>,
+          <span class="term" data-term="sample-gradient">$g^{(2)} = 10$</span>,
+          <span class="term" data-term="sample-gradient">$g^{(3)} = 4$</span>, and
+          <span class="term" data-term="sample-gradient">$g^{(4)} = 12$</span>.
+        </p>
+        <p>
+          <strong>Micro-step 1 (Examples 1 &amp; 2):</strong> Forward + backward pass on $[2, 10]$. Micro-batch average is $(2 + 10) \div 2 = 6$. <em>Do not update weights yet!</em> Store $6$ in the gradient buffer.<br>
+          <strong>Micro-step 2 (Examples 3 &amp; 4):</strong> Forward + backward pass on $[4, 12]$. Micro-batch average is $(4 + 12) \div 2 = 8$.<br>
+          <strong>Optimizer Step (Average over $K = 2$ micro-steps):</strong>
+          <span class="term" data-term="batch-gradient">$\bar{g}_{\text{eff}}$</span> $= (6 + 8) \div 2 = 7$.<br>
+          Notice that $(2 + 10 + 4 + 12) \div 4 = 28 \div 4 = 7$. You get the <strong>exact same</strong> gradient update as a single batch of $4$, using half the activation memory!
+        </p>
+      </div>
+
+      <div class="interactive-card" id="batch-sim-widget">
+        <div class="widget-label">Interactive Simulator: Batch Size, Steps per Epoch &amp; LR Scaling</div>
+        <h3>Dataset of $64$ Examples — Compare Three Batch Configurations</h3>
+        <div class="control-row">
+          <button class="btn btn-small active" id="batch-btn-0" onclick="setBatchCase(0)">Config 1: Noisy ($B_{\text{micro}}=2, K=1$)</button>
+          <button class="btn btn-small" id="batch-btn-1" onclick="setBatchCase(1)">Config 2: Accumulated ($B_{\text{micro}}=2, K=4$)</button>
+          <button class="btn btn-small" id="batch-btn-2" onclick="setBatchCase(2)">Config 3: Large Batch ($B_{\text{micro}}=8, K=4$)</button>
+        </div>
+        <div class="stat-grid">
+          <div class="stat"><div class="k">Effective Batch $B_{\text{eff}}$</div><div class="v" id="b-stat-eff">2</div></div>
+          <div class="stat"><div class="k">Optimizer Steps / Epoch</div><div class="v" id="b-stat-steps">32</div></div>
+          <div class="stat"><div class="k">Noise Multiplier $1/\sqrt{B_{\text{eff}}}$</div><div class="v" id="b-stat-noise">0.71x</div></div>
+          <div class="stat"><div class="k">Linear-Scaled LR $\eta$</div><div class="v" id="b-stat-lr">1x base</div></div>
+        </div>
+        <div class="readout" id="batch-explain"></div>
+      </div>
+
+      <div class="interactive-card" id="faded-batch-widget">
+        <div class="widget-label">Your Turn: Complete the Accumulation Trace</div>
+        <h3>Compute the Accumulated Update Step</h3>
+        <p>
+          You run <span class="term" data-term="micro-batch">$B_{\text{micro}} = 1$</span> with <span class="term" data-term="gradient-accumulation">$K = 3$</span> accumulation steps on three examples whose distinct gradients are <span class="term" data-term="sample-gradient">$g^{(1)} = 3$</span>, <span class="term" data-term="sample-gradient">$g^{(2)} = 6$</span>, and <span class="term" data-term="sample-gradient">$g^{(3)} = 15$</span>. Starting from weight <span class="term" data-term="weight">$w_0 = 20$</span> with <span class="term" data-term="learning-rate">$\eta = 0.5$</span>:<br>
+          <strong>Step 1 (Sum the 3 micro-gradients):</strong> $3 + 6 + 15 = 24$.<br>
+          <strong>Step 2 (Divide by $K = 3$):</strong> <span class="term" data-term="batch-gradient">$\bar{g}_{\text{eff}}$</span> $= 24 \div 3 = 8$.<br>
+          <strong>Step 3 (Your turn):</strong> Apply the weight update $w_1 = w_0 - \eta \cdot \bar{g}_{\text{eff}} = 20 - 0.5 \times 8$:
+        </p>
+        <div class="control-row">
+          <label for="batch-fade-input"><span class="term" data-term="weight">$w_1$</span> $=$</label>
+          <input type="number" id="batch-fade-input" step="1" placeholder="e.g. 16" style="width:8rem;">
+          <button class="btn btn-small" onclick="checkBatchFaded()">Check Step 3</button>
+        </div>
+        <div id="batch-fade-feedback" class="readout" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- === CHAPTER 3: WARMUP, COSINE SCHEDULES & CLIPPING === -->
+    <h2 id="ch-3">3. Chapter 3: <span class="term" data-term="warmup">Warmup</span>, <span class="term" data-term="cosine-schedule">Cosine Decay</span>, and <span class="term" data-term="gradient-clipping">Gradient Clipping ($c$)</span></h2>
+    <p>
+      Suppose you picked a sensible peak learning rate (<span class="term" data-term="learning-rate">$\eta_{\max} = 10^{-3}$</span>) and a clean <span class="term" data-term="effective-batch-size">effective batch size ($B_{\text{eff}} = 64$)</span>. Why do modern Transformer runs <em>still</em> destabilize if you use a constant learning rate from step 1 to the end?
+    </p>
+    <p>
+      Because a training run passes through three completely different physical phases:
+    </p>
+    <ol>
+      <li><strong>Steps $1 \to W$ (Cold Start):</strong> At step 1, network weights are random and the <span class="term" data-term="adamw">AdamW</span> optimizer has zero history of how noisy each weight's gradient is (<span class="term" data-term="second-moment">$v_0 = 0$</span>). Firing a full-size step immediately sends weights flying into saturated activations. <strong>Fix: <span class="term" data-term="warmup">Linear Warmup</span></strong> ramps <span class="term" data-term="learning-rate">$\eta_t$</span> smoothly from $0$ up to $\eta_{\max}$ over $W$ steps while optimizer statistics stabilize.</li>
+      <li><strong>Middle Steps (Fast Traversal):</strong> Near $\eta_{\max}$, large steps cross flat plateaus and bounce out of sharp, narrow traps.</li>
+      <li><strong>Final Steps (Settling into the Valley Floor):</strong> Because mini-batch gradients always contain random noise, a big learning rate keeps bouncing around the valley walls forever. <strong>Fix: <span class="term" data-term="cosine-schedule">Cosine Decay</span></strong> smoothly lowers <span class="term" data-term="learning-rate">$\eta_t$</span> down toward a floor $\eta_{\min}$ (typically $10\%$ of $\eta_{\max}$) so the weights settle to the bottom.</li>
+    </ol>
+
+    <div class="math-block">
+      <div>
+        <strong>Warmup ($t \le W$):</strong>
+        &nbsp;
+        <span class="term" data-term="learning-rate">$\eta_t$</span>
+        $=$
+        <span class="term" data-term="peak-lr">$\eta_{\max}$</span>
+        $\cdot \dfrac{t}{W}$
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        <strong>Clip:</strong>
+        &nbsp;
+        <span class="term" data-term="clipped-grad">$\tilde{g}$</span>
+        $=$
+        <span class="term" data-term="gradient">$g$</span>
+        $\cdot \min\!\left(1,\; \dfrac{c}{\lVert g \rVert_2}\right)$
+      </div>
+      <div class="math-hint">
+        Tap any symbol: $W$ = warmup steps | $c$ = max allowed gradient norm $\lVert g \rVert_2$
+      </div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked Example (Mental-math trace of Warmup + <span class="term" data-term="gradient-clipping">Gradient Clipping</span>):</strong></p>
+      <p>
+        <strong>Part A (<span class="term" data-term="warmup">Linear Warmup</span>):</strong> Your peak learning rate is <span class="term" data-term="peak-lr">$\eta_{\max} = 10$</span> (in units of $10^{-4}$) with warmup length <span class="term" data-term="warmup-steps">$W = 5$</span> steps.<br>
+        At step $t = 1$: $\eta_1 = 10 \times (1/5) = 2$.<br>
+        At step $t = 3$: $\eta_3 = 10 \times (3/5) = 6$.<br>
+        At step $t = 5$: $\eta_5 = 10 \times (5/5) = 10$ (reaches full peak!).
+      </p>
+      <p>
+        <strong>Part B (<span class="term" data-term="gradient-clipping">Gradient Norm Clipping</span> with distinct 3-4-5 triangle numbers):</strong> Suppose a corrupted batch causes a sudden gradient spike across two weights: <span class="term" data-term="gradient">$g = [6, 8]$</span>, and your clip threshold is <span class="term" data-term="clip-threshold">$c = 5$</span>.<br>
+        1. Compute the vector length (<span class="term" data-term="grad-norm">L2 norm $\lVert g \rVert_2$</span>): $\sqrt{6^2 + 8^2} = \sqrt{36 + 64} = \sqrt{100} = 10$.<br>
+        2. Compare against threshold <span class="term" data-term="clip-threshold">$c = 5$</span>: Since $10 > 5$, scale the vector by $\dfrac{c}{\lVert g \rVert_2} = \dfrac{5}{10} = 0.5$.<br>
+        3. Clipped gradient: <span class="term" data-term="clipped-grad">$\tilde{g}$</span> $= 0.5 \times [6, 8] = [3, 4]$.<br>
+        Check: The direction ($3:4$ ratio) is $100\%$ preserved, while the new length is $\sqrt{3^2 + 4^2} = 5 = c$.
+      </p>
+    </div>
+
+    <div class="interactive-card" id="sched-widget">
+      <div class="widget-label">Interactive Schedule &amp; Spike Inspector</div>
+      <h3>Step Through a 10-Step Training Run (<span class="term" data-term="warmup-steps">$W = 2$</span>, <span class="term" data-term="peak-lr">$\eta_{\max} = 10$</span>, <span class="term" data-term="min-lr">$\eta_{\min} = 2$</span>)</h3>
+      <div class="control-row">
+        <button class="btn btn-small active" id="sched-btn-0" onclick="setSchedPhase(0)">Phase 1: Warmup ($t = 1$)</button>
+        <button class="btn btn-small" id="sched-btn-1" onclick="setSchedPhase(1)">Phase 2: Peak + Spike Clip ($t = 2$)</button>
+        <button class="btn btn-small" id="sched-btn-2" onclick="setSchedPhase(2)">Phase 3: Cosine Midpoint ($t = 6$)</button>
+        <button class="btn btn-small" id="sched-btn-3" onclick="setSchedPhase(3)">Phase 4: Final Floor ($t = 10$)</button>
+      </div>
+      <div class="figure-box">
+        <svg id="sched-svg" viewBox="0 0 480 155" width="480" height="155" role="img" aria-label="Warmup and cosine decay learning rate curve"></svg>
+      </div>
+      <div class="readout" id="sched-explain"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-sched-widget">
+      <div class="widget-label">Closed-Book Retrieval (Blank-Sheet Check)</div>
+      <h3>Why Both Warmup AND Clipping?</h3>
+      <p>Without looking above, state in one sentence what <span class="term" data-term="warmup">warmup</span> protects against at the start of training versus what <span class="term" data-term="gradient-clipping">gradient clipping</span> protects against mid-training.</p>
+      <textarea id="recall-sched-input" placeholder="Write your explanation in plain words..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealSchedRecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-sched-feedback" class="readout" style="display:none;">
+        <strong>Key distinction:</strong> <span class="term" data-term="warmup">Warmup</span> prevents early instability during steps $1\text{--}W$ while random weights and AdamW's variance estimate <span class="term" data-term="second-moment">$v_t$</span> are still uncalibrated; <span class="term" data-term="gradient-clipping">gradient clipping</span> acts as a circuit breaker at <em>any</em> step $t$ by scaling down rare, extreme gradient spikes (where <span class="term" data-term="grad-norm">$\lVert g \rVert_2 > c$</span>) without changing their direction.
+      </div>
+    </div>
+
+    <!-- === CHAPTER 4: INSIDE ADAMW === -->
+    <h2 id="ch-4">4. Chapter 4: Inside <span class="term" data-term="adamw">AdamW</span> — Momentum (<span class="term" data-term="first-moment">$m_t$</span>), Variance (<span class="term" data-term="second-moment">$v_t$</span>), and Decoupled Decay (<span class="term" data-term="weight-decay">$\lambda$</span>)</h2>
+    <p>
+      Why did <span class="term" data-term="adamw">AdamW</span> become the universal default optimizer for Transformers over plain <span class="term" data-term="sgd">SGD</span>?
+    </p>
+    <p>
+      In a deep network, different layers have wildly different gradient scales: an embedding weight for a rare word might get a gradient of $0.001$, while an output projection weight gets a gradient of $10.0$. No single <span class="term" data-term="learning-rate">learning rate $\eta$</span> works for both under plain <span class="term" data-term="sgd">SGD</span>.
+    </p>
+    <p>
+      <span class="term" data-term="adamw">AdamW</span> solves this by keeping two running trackers for <em>every individual weight</em>:
+    </p>
+    <ul>
+      <li><strong>1. <span class="term" data-term="first-moment">First Moment $m_t$</span> (Momentum, controlled by <span class="term" data-term="beta1">$\beta_1 \approx 0.9$</span>):</strong> A smoothed moving average of the gradient $g_t$. If gradients keep pointing in the same direction, $m_t$ builds up speed; if gradients zig-zag positive and negative, they cancel out.</li>
+      <li><strong>2. <span class="term" data-term="second-moment">Second Moment $v_t$</span> (Adaptive Scale, controlled by <span class="term" data-term="beta2">$\beta_2 \approx 0.999$</span>):</strong> A moving average of the <em>squared</em> gradient $g_t^2$. Dividing the update by $\sqrt{\hat{v}_t} + \epsilon$ normalizes each weight by its typical gradient size—giving quiet weights bigger effective steps and loud weights smaller steps!</li>
+    </ul>
+
+    <div class="interactive-card" id="poe-adamw-widget">
+      <div class="widget-label">Guess First: Why AdamW Replaced L2 Regularization</div>
+      <h3>Two Weights Both Have Value $w = 10$, But Different Gradient Histories</h3>
+      <p>
+        Suppose Weight A is noisy (<span class="term" data-term="second-moment">$\sqrt{v_A} = 10$</span>) and Weight B is quiet (<span class="term" data-term="second-moment">$\sqrt{v_B} = 1$</span>). We want to shrink both weights toward zero to prevent overfitting. What happens if we use classic <span class="term" data-term="l2-regularization">L2 regularization</span> (adding $\frac{\lambda}{2}w^2$ to the loss so $\lambda w$ gets added into the gradient <em>before</em> Adam divides by $\sqrt{v_t}$)?
+      </p>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="runAdamPOE('A')">A) Both weights shrink by the exact same amount</button>
+        <button class="btn btn-small" onclick="runAdamPOE('B')">B) Noisy Weight A gets divided by 10, so it barely decays compared to Weight B!</button>
+        <button class="btn btn-small" onclick="runAdamPOE('skip')">I have no idea &mdash; show me</button>
+      </div>
+      <div id="adam-poe-reveal" style="display:none;">
+        <div class="refutation" id="adam-poe-refutation"></div>
+      </div>
+    </div>
+
+    <p>
+      That flaw is why Loshchilov &amp; Hutter invented <span class="term" data-term="adamw">AdamW</span> ("Adam with Decoupled Weight Decay"). Instead of mixing $\lambda w_t$ into the gradient <span class="term" data-term="gradient">$g_t$</span>, <span class="term" data-term="adamw">AdamW</span> applies <span class="term" data-term="weight-decay">weight decay</span> <em>directly to the weight</em> outside the adaptive $\hat{m}_t / \sqrt{\hat{v}_t}$ term:
+    </p>
+
+    <div class="math-block">
+      <div>
+        <span class="term" data-term="weight">$w_{t+1}$</span>
+        $=$
+        <span class="term" data-term="weight">$w_t$</span>
+        $-$
+        $\underbrace{\eta \cdot \lambda \cdot w_t}_{\text{1. Decoupled Weight Decay}}$
+        $-$
+        $\underbrace{\eta \cdot \dfrac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}}_{\text{2. Adaptive Gradient Step}}$
+      </div>
+      <div class="math-hint">
+        Tap any symbol: $\hat{m}_t = \frac{m_t}{1 - \beta_1^t}$ (bias-corrected momentum) | $\hat{v}_t = \frac{v_t}{1 - \beta_2^t}$ (bias-corrected variance) | $\epsilon \approx 10^{-8}$
+      </div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked Example (Tracing One Complete <span class="term" data-term="adamw">AdamW</span> Step by Hand—Mental Math Only):</strong></p>
+      <p>
+        Let's trace a single weight starting at <span class="term" data-term="weight">$w_1 = 10$</span> using distinct, clean numbers:
+        <span class="term" data-term="learning-rate">$\eta = 0.5$</span>,
+        <span class="term" data-term="weight-decay">$\lambda = 0.2$</span>,
+        and after bias correction our smoothed momentum is <span class="term" data-term="first-moment">$\hat{m}_1 = 6$</span> while our smoothed squared gradient is <span class="term" data-term="second-moment">$\hat{v}_1 = 9$</span> (with tiny <span class="term" data-term="adam-eps">$\epsilon = 0$</span> for mental arithmetic).
+      </p>
+      <p>
+        <strong>Part 1 — Decoupled Weight Decay ($\eta \cdot \lambda \cdot w_1$):</strong><br>
+        Multiply $\eta \times \lambda = 0.5 \times 0.2 = 0.1$ ($10\%$ shrinkage).<br>
+        Weight decay subtracts $0.1 \times 10 = 1$, pulling $w_1$ from $10$ down to $9$.
+      </p>
+      <p>
+        <strong>Part 2 — Adaptive Gradient Step ($\eta \cdot \frac{\hat{m}_1}{\sqrt{\hat{v}_1}}$):</strong><br>
+        1. Take the square root of variance: $\sqrt{\hat{v}_1} = \sqrt{9} = 3$.<br>
+        2. Normalize momentum by scale: $\dfrac{\hat{m}_1}{\sqrt{\hat{v}_1}} = \dfrac{6}{3} = 2$.<br>
+        3. Multiply by learning rate <span class="term" data-term="learning-rate">$\eta = 0.5$</span>: $0.5 \times 2 = 1$.
+      </p>
+      <p>
+        <strong>Part 3 — Final Updated Weight ($w_2$):</strong><br>
+        <span class="term" data-term="weight">$w_2$</span> $= 10 - \underbrace{1}_{\text{decay}} - \underbrace{1}_{\text{adaptive step}} = 8$.
+      </p>
+    </div>
+
+    <details>
+      <summary>Why do $\hat{m}_t$ and $\hat{v}_t$ have hats? (Bias Correction Derivation)</summary>
+      <p>
+        At step $t = 0$, Adam initializes both trackers to zero: $m_0 = 0$ and $v_0 = 0$. On step $t = 1$ with <span class="term" data-term="beta1">$\beta_1 = 0.9$</span>:
+        $$m_1 = 0.9(0) + 0.1 g_1 = 0.1 g_1$$
+        That means $m_1$ is biased toward zero—it is only $10\%$ of the true gradient $g_1$! Dividing by $(1 - \beta_1^1) = (1 - 0.9) = 0.1$ restores the true scale:
+        $$\hat{m}_1 = \frac{0.1 g_1}{1 - 0.9} = g_1$$
+        As $t$ grows large, $\beta_1^t \to 0$, so the bias correction denominator $(1 - \beta_1^t) \to 1$ and automatically disappears.
+      </p>
+    </details>
+
+    <div class="interactive-card" id="faded-adamw-widget">
+      <div class="widget-label">Your Turn: Backward-Faded AdamW Step</div>
+      <h3>Complete the Final Update for Weight <span class="term" data-term="weight">$w_1 = 20$</span></h3>
+      <p>
+        Given <span class="term" data-term="weight">$w_1 = 20$</span>, <span class="term" data-term="learning-rate">$\eta = 0.5$</span>, <span class="term" data-term="weight-decay">$\lambda = 0.1$</span>, bias-corrected momentum <span class="term" data-term="first-moment">$\hat{m}_1 = 12$</span>, and bias-corrected variance <span class="term" data-term="second-moment">$\hat{v}_1 = 16$</span>:<br>
+        <strong>Step 1 (Decoupled Weight Decay):</strong> $\eta \cdot \lambda \cdot w_1 = 0.5 \times 0.1 \times 20 = 1$.<br>
+        <strong>Step 2 (Normalized Adaptive Step):</strong> $\sqrt{\hat{v}_1} = \sqrt{16} = 4$, so $\eta \cdot \dfrac{\hat{m}_1}{\sqrt{\hat{v}_1}} = 0.5 \times \dfrac{12}{4} = 0.5 \times 3 = 1.5$.<br>
+        <strong>Step 3 (Your turn):</strong> Subtract both parts from $w_1 = 20$ to find $w_2 = 20 - 1 - 1.5$:
+      </p>
+      <div class="control-row">
+        <label for="adam-fade-input"><span class="term" data-term="weight">$w_2$</span> $=$</label>
+        <input type="number" id="adam-fade-input" step="0.5" placeholder="e.g. 17.5" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkAdamFaded()">Check Step 3</button>
+      </div>
+      <div id="adam-fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <!-- === CHAPTER 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED RECALL === -->
+    <h2 id="ch-5">5. Chapter 5: The Hyperparameter Debugging Matrix, Interleaved Checks &amp; Recall Cards</h2>
+    <p>
+      When a real training run misbehaves, use this contrastive matrix to map the symptom you see in your loss curve directly to the hyperparameter mechanism causing it.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Hyperparameter</th>
+            <th>Core Mechanism</th>
+            <th>Too Low / Missing Symptom</th>
+            <th>Too High Symptom</th>
+            <th>Standard Recipe</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="learning-rate">Learning Rate ($\eta$)</span></strong></td>
+            <td>Scales weight update step length</td>
+            <td>Loss crawls downward; gets stuck in poor local minima</td>
+            <td>Loss oscillates wildly or explodes to <code>NaN</code> ($\eta > 2/H$)</td>
+            <td>$10^{-4}$ to $3 \times 10^{-4}$ (pretraining); $10^{-5}$ to $5 \times 10^{-5}$ (fine-tuning)</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="effective-batch-size">Effective Batch ($B_{\text{eff}}$)</span></strong></td>
+            <td>Averages $B_{\text{micro}} \times K$ sample gradients to cut variance by $1/B_{\text{eff}}$</td>
+            <td>High gradient noise; poor GPU utilization</td>
+            <td>Too few updates per epoch; converges to sharp minima unless $\eta$ is scaled</td>
+            <td>Scale $\eta \propto B_{\text{eff}}$ (SGD) or $\eta \propto \sqrt{B_{\text{eff}}}$ (AdamW) up to critical batch size</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="warmup">Warmup ($W$)</span> + <span class="term" data-term="cosine-schedule">Cosine Decay</span></strong></td>
+            <td>Ramps $\eta$ from $0 \to \eta_{\max}$, then decays toward $\eta_{\min}$</td>
+            <td>Early loss spike in first $100$ steps while <span class="term" data-term="second-moment">$v_t$</span> has tiny sample size</td>
+            <td>Warmup too long wastes compute budget at low speed</td>
+            <td>Warmup $1\%\text{--}5\%$ of total steps; cosine decay to $0.1 \times \eta_{\max}$</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="gradient-clipping">Gradient Clipping ($c$)</span></strong></td>
+            <td>Caps global norm <span class="term" data-term="grad-norm">$\lVert g \rVert_2 \le c$</span> while keeping vector direction</td>
+            <td>No effect when $\lVert g \rVert_2 \le c$; if disabled ($c=\infty$), one bad batch can wreck weights</td>
+            <td>If $c$ is tiny ($c \ll 1$), acts like an unintended learning-rate cut</td>
+            <td>Global L2 norm clip $c = 1.0$</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="weight-decay">Decoupled Weight Decay ($\lambda$)</span></strong></td>
+            <td>Shrinks weights by $\eta \lambda w_t$ outside Adam's $\sqrt{v_t}$ divider</td>
+            <td>Weights grow unbounded; validation loss rises (<span class="term" data-term="overfitting">overfitting</span>)</td>
+            <td>Underfitting; model capacity collapses toward zero weights</td>
+            <td>$\lambda = 0.01$ to $0.1$ (exclude biases and LayerNorm scales)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="Interleaved: Gradient Accumulation & Memory">
+      <summary class="mcq-title"></summary>
+      <p>Your GPU runs out of memory at batch size $32$, and the largest micro-batch that fits in VRAM is <span class="term" data-term="micro-batch">$B_{\text{micro}} = 4$</span>. How many <span class="term" data-term="gradient-accumulation">gradient accumulation steps $K$</span> do you need to match an <span class="term" data-term="effective-batch-size">effective batch size of $B_{\text{eff}} = 32$</span>?</p>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="K = 4 would give B_eff = 4 * 4 = 16.">A) $K = 4$ steps</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Correct. Since B_eff = B_micro * K, setting K = 32 / 4 = 8 accumulates 8 micro-batches of 4 examples before each weight update.">B) $K = 8$ steps (since $4 \times 8 = 32$)</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="K = 32 would give an effective batch size of 4 * 32 = 128.">C) $K = 32$ steps</label>
+      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-2" data-correct="A" data-topic="Interleaved: Mental Math on Gradient Clipping">
+      <summary class="mcq-title"></summary>
+      <p>A two-parameter layer receives a spike gradient <span class="term" data-term="gradient">$g = [3, 4]$</span> (so its L2 norm is <span class="term" data-term="grad-norm">$\lVert g \rVert_2 = \sqrt{3^2 + 4^2} = 5$</span>). If your <span class="term" data-term="gradient-clipping">gradient clipping</span> threshold is <span class="term" data-term="clip-threshold">$c = 10$</span>, what is the clipped gradient <span class="term" data-term="clipped-grad">$\tilde{g}$</span>?</p>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because the gradient norm (5) is already below the threshold (c = 10), min(1, 10/5) = 1, leaving [3, 4] untouched.">A) $[3, 4]$ (untouched because $\lVert g \rVert_2 = 5 \le 10$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Gradient clipping never amplifies gradients that are below the threshold c; it takes min(1, c / ||g||).">B) $[6, 8]$ (scaled up to match length $10$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Dividing by 2 happens only when ||g|| is twice as large as c (e.g. ||g|| = 10 and c = 5).">C) $[1.5, 2.0]$ (halved)</label>
+      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-3" data-correct="C" data-topic="Interleaved: Why AdamW Beats L2 in Adaptive Optimizers">
+      <summary class="mcq-title"></summary>
+      <p>Why does <span class="term" data-term="adamw">AdamW</span> decouple <span class="term" data-term="weight-decay">weight decay ($\lambda$)</span> from the gradient step instead of adding $\frac{\lambda}{2}w^2$ (<span class="term" data-term="l2-regularization">L2 penalty</span>) to the loss function?</p>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Computing lambda * w takes the exact same arithmetic either way; the difference is mathematical, not speed.">A) Because computing $\lambda w^2$ inside the loss is too slow on GPUs.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="AdamW still uses both m_t (first moment) and v_t (second moment) for the gradient step.">B) Because AdamW removes the second-moment variance tracker <span class="term" data-term="second-moment">$v_t$</span>.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Correct. In Adam, anything added to the gradient gets divided by sqrt(v_t), so weights with large historical gradients get less weight decay. Decoupling shrinks every weight by the uniform fraction eta * lambda.">C) Because L2 regularization gets divided by <span class="term" data-term="second-moment">$\sqrt{\hat{v}_t}$</span>, which unfairly weakens weight decay on weights with large historical gradients.</label>
+      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <details class="mcq-box" id="mcq-4" data-correct="B" data-topic="Interleaved: Diagnosing a Real Loss Curve">
+      <summary class="mcq-title"></summary>
+      <p>You launch a Transformer run with <span class="term" data-term="adamw">AdamW</span> at peak learning rate <span class="term" data-term="learning-rate">$\eta = 3 \times 10^{-4}$</span> and <strong>zero warmup steps ($W = 0$)</strong>. On step 15, the training loss spikes from $9.2$ to $48.0$ and never recovers. What is the primary mechanism behind that early crash?</p>
+      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Overfitting happens late in training when training loss is low and validation loss rises, not on step 15.">A) The model memorized the training set on step 15 (<span class="term" data-term="overfitting">overfitting</span>).</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="Correct. In the first few steps, AdamW's second-moment estimate v_t is computed from only a handful of noisy batches, producing erratic adaptive step sizes if hit with the full peak learning rate.">B) <span class="term" data-term="adamw">AdamW</span>'s variance estimate <span class="term" data-term="second-moment">$v_t$</span> is unreliable in the first few steps, so taking full $\eta_{\max}$ steps without <span class="term" data-term="warmup">warmup</span> destabilizes the weights.</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="Cosine decay only lowers the learning rate late in training; it does not prevent step-15 cold-start spikes unless paired with warmup.">C) You forgot to turn on cosine decay at the end of training.</label>
+      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
+      <div class="mcq-feedback"></div>
+    </details>
+
+    <div class="score-bar">
+      <span id="mcq-score">Checks answered: 0 of 5.</span>
+      <button class="btn btn-small" onclick="resetMCQs()">Reset checks</button>
+    </div>
+
+    <div class="interactive-card" id="spaced-widget">
+      <div class="widget-label">Spaced Recall Export (1d / 4d / 14d / 30d)</div>
+      <h3>6 Core Retrieval Prompts</h3>
+      <p>Tap any card to test your recall from memory, or copy all 6 Q&amp;A cards into your spaced-repetition deck.</p>
+      <div id="spaced-list"></div>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>
+        <span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>
+      </div>
+    </div>
+
+    <footer class="article-footer">
+      <a href="index.html">&larr; All Articles</a>
+      <a href="#top">&uarr; Back to top</a>
+    </footer>
+  </main>
+
+  <div id="popover-box" role="region" aria-labelledby="popover-term-name">
+    <div class="popover-header">
+      <span class="popover-title" id="popover-term-name">Term</span>
+      <div>
+        <button class="btn btn-small" id="popover-back" style="display:none;">Back</button>
+        <button class="btn btn-small" onclick="closePopover()">Close</button>
+      </div>
+    </div>
+    <div id="popover-body"></div>
+  </div>
+
+  <script>
+    /* ---------- Utilities ---------- */
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+    /* ---------- Font Controls ---------- */
+    var FONT_KEY = 'matt_learning_font_px';
+    var currentFontSize = 18;
+    try {
+      var savedFont = parseInt(localStorage.getItem(FONT_KEY), 10);
+      if (savedFont >= 14 && savedFont <= 28) { currentFontSize = savedFont; }
+    } catch (e) {}
+
+    function applyFontSize(px) {
+      currentFontSize = clamp(px, 14, 28);
+      document.documentElement.style.setProperty('--font-size', currentFontSize + 'px');
+      var lbl = document.getElementById('font-size-label');
+      if (lbl) { lbl.textContent = currentFontSize + 'px'; }
+      try { localStorage.setItem(FONT_KEY, String(currentFontSize)); } catch (e) {}
+    }
+
+    document.getElementById('font-inc').addEventListener('click', function () { applyFontSize(currentFontSize + 2); });
+    document.getElementById('font-dec').addEventListener('click', function () { applyFontSize(currentFontSize - 2); });
+    applyFontSize(currentFontSize);
+
+    /* ---------- KaTeX ---------- */
+    var katexOptions = {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    };
+    function renderMathIn(el) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(el, katexOptions);
+        return true;
+      }
+      return false;
+    }
+    function ensureMathRendered(tries) {
+      if (renderMathIn(document.body) || tries <= 0) { return; }
+      setTimeout(function () { ensureMathRendered(tries - 1); }, 250);
+    }
+
+    /* ---------- Anchored Glossary Popovers ---------- */
+    var GLOSSARY = {
+      'learning-rate': {
+        title: 'Learning Rate (eta or LR)',
+        body: 'The step-size multiplier $\\eta$ applied to the <span class="term" data-term="gradient">gradient $g_t$</span> during each parameter update ($w_{t+1} = w_t - \\eta g_t$). Too small stalls training; above $2/\\text{curvature}$ causes diverging oscillation.'
+      },
+      'peak-lr': {
+        title: 'Peak Learning Rate (eta_max)',
+        body: 'The maximum <span class="term" data-term="learning-rate">learning rate $\\eta_{\\max}$</span> reached at the end of <span class="term" data-term="warmup">warmup</span> step $W$ before <span class="term" data-term="cosine-schedule">cosine decay</span> begins.'
+      },
+      'min-lr': {
+        title: 'Minimum Learning Rate Floor (eta_min)',
+        body: 'The final floor learning rate at the end of a <span class="term" data-term="cosine-schedule">cosine schedule</span>, typically set to $10\\%$ of <span class="term" data-term="peak-lr">$\\eta_{\\max}$</span>.'
+      },
+      'weight': {
+        title: 'Model Weight / Parameter (w or w_t)',
+        body: 'A trainable number inside the neural network at step $t$, adjusted by the optimizer to minimize the <span class="term" data-term="loss-function">loss $\\mathcal{L}(w)$</span>.'
+      },
+      'loss-function': {
+        title: 'Loss Function L(w)',
+        body: 'Measures how wrong the model\'s predictions are at weight setting <span class="term" data-term="weight">$w$</span>. Training seeks the valley floor where $\\mathcal{L}(w)$ is minimized.'
+      },
+      'gradient': {
+        title: 'Gradient (g_t = nabla L(w_t))',
+        body: 'The slope of the <span class="term" data-term="loss-function">loss function</span> with respect to the <span class="term" data-term="weight">weights $w_t$</span>. Because the gradient points uphill, gradient descent steps in the opposite direction ($-g_t$).'
+      },
+      'curvature': {
+        title: 'Curvature / Sharpness (H)',
+        body: 'The second derivative $\\frac{d^2 \\mathcal{L}}{dw^2}$ measuring how steep and narrow the loss valley is. The maximum stable <span class="term" data-term="learning-rate">learning rate</span> before divergence is $\\eta_{\\text{crit}} = 2 / H$.'
+      },
+      'batch-size': {
+        title: 'Mini-Batch Size (B)',
+        body: 'The number of training examples averaged together to compute one <span class="term" data-term="batch-gradient">gradient step $\\bar{g}_B$</span>. Larger $B$ cuts <span class="term" data-term="gradient-noise">gradient noise</span> variance by $1/B$.'
+      },
+      'micro-batch': {
+        title: 'Micro-Batch Size (B_micro)',
+        body: 'The number of examples processed in a single GPU forward/backward pass before <span class="term" data-term="gradient-accumulation">accumulating</span> across $K$ passes.'
+      },
+      'gradient-accumulation': {
+        title: 'Gradient Accumulation Steps (K)',
+        body: 'Running $K$ sequential forward/backward passes on small <span class="term" data-term="micro-batch">micro-batches $B_{\\text{micro}}$</span> and averaging their gradients before taking one optimizer step, giving <span class="term" data-term="effective-batch-size">$B_{\\text{eff}} = B_{\\text{micro}} \\times K$</span>.'
+      },
+      'effective-batch-size': {
+        title: 'Effective Batch Size (B_eff)',
+        body: 'Total examples contributing to a single weight update: $B_{\\text{eff}} = B_{\\text{micro}} \\times K \\times N_{\\text{GPU}}$.'
+      },
+      'sample-gradient': {
+        title: 'Per-Sample Gradient g^(i)',
+        body: 'The gradient computed on a single training example $i$. Averaging $B$ of these gives the <span class="term" data-term="batch-gradient">mini-batch gradient $\\bar{g}_B$</span>.'
+      },
+      'batch-gradient': {
+        title: 'Mini-Batch Gradient (g-bar)',
+        body: 'The average gradient $\\bar{g}_B = \\frac{1}{B}\\sum_{i=1}^B g^{(i)}$ over a batch of $B$ examples.'
+      },
+      'gradient-noise': {
+        title: 'Gradient Noise',
+        body: 'Random fluctuation between a mini-batch gradient $\\bar{g}_B$ and the true full-dataset gradient. Standard deviation scales as $1/\\sqrt{B}$.'
+      },
+      'sgd': {
+        title: 'SGD (Stochastic Gradient Descent)',
+        body: 'Updates weights using the mini-batch gradient directly ($w_{t+1} = w_t - \\eta \\bar{g}_B$) without per-parameter adaptive variance scaling.'
+      },
+      'epoch': {
+        title: 'Epoch',
+        body: 'One complete pass through all examples in the training dataset. If a dataset has $N$ examples, one epoch equals $N / B_{\\text{eff}}$ optimizer steps.'
+      },
+      'warmup': {
+        title: 'Linear Warmup',
+        body: 'Ramping the <span class="term" data-term="learning-rate">learning rate $\\eta_t$</span> linearly from $0$ up to <span class="term" data-term="peak-lr">$\\eta_{\\max}$</span> over the first <span class="term" data-term="warmup-steps">$W$ steps</span> so <span class="term" data-term="adamw">AdamW</span>\'s variance estimate <span class="term" data-term="second-moment">$v_t$</span> stabilizes before full-size steps are taken.'
+      },
+      'warmup-steps': {
+        title: 'Warmup Duration (W steps)',
+        body: 'Number of initial optimizer steps over which <span class="term" data-term="learning-rate">$\\eta_t = \\eta_{\\max} \\cdot (t/W)$</span> ramps up to peak.'
+      },
+      'cosine-schedule': {
+        title: 'Cosine Annealing / Decay Schedule',
+        body: 'Smoothly decays the <span class="term" data-term="learning-rate">learning rate</span> following a half-cosine curve from <span class="term" data-term="peak-lr">$\\eta_{\\max}$</span> down to <span class="term" data-term="min-lr">$\\eta_{\\min}$</span> so weights settle into the valley floor at the end of training.'
+      },
+      'gradient-clipping': {
+        title: 'Gradient Norm Clipping',
+        body: 'Rescales the entire gradient vector $g$ whenever its length <span class="term" data-term="grad-norm">$\\lVert g \\rVert_2$</span> exceeds threshold <span class="term" data-term="clip-threshold">$c$</span>: $\\tilde{g} = g \\cdot \\min(1, c/\\lVert g \\rVert_2)$. Preserves direction while preventing spike crashes.'
+      },
+      'clip-threshold': {
+        title: 'Clipping Threshold (c)',
+        body: 'Maximum allowed L2 norm <span class="term" data-term="grad-norm">$\\lVert g \\rVert_2$</span> for a gradient vector before <span class="term" data-term="gradient-clipping">clipping</span> kicks in (typically $c = 1.0$).'
+      },
+      'grad-norm': {
+        title: 'Global Gradient L2 Norm ||g||_2',
+        body: 'The Euclidean length of the gradient vector across all parameters: $\\lVert g \\rVert_2 = \\sqrt{\\sum_j g_j^2}$.'
+      },
+      'clipped-grad': {
+        title: 'Clipped Gradient (g-tilde)',
+        body: 'The gradient vector after applying <span class="term" data-term="gradient-clipping">norm clipping</span> so its length is at most <span class="term" data-term="clip-threshold">$c$</span>.'
+      },
+      'adamw': {
+        title: 'AdamW Optimizer',
+        body: 'Combines per-weight <span class="term" data-term="first-moment">momentum $m_t$</span> and adaptive <span class="term" data-term="second-moment">variance scaling $1/\\sqrt{v_t}$</span> with <strong>decoupled</strong> <span class="term" data-term="weight-decay">weight decay $\\lambda$</span>.'
+      },
+      'first-moment': {
+        title: 'First Moment / Momentum (m_t and m-hat_t)',
+        body: 'Exponential moving average of gradients: $m_t = \\beta_1 m_{t-1} + (1 - \\beta_1) g_t$. Smooths out zig-zag oscillations and builds speed along consistent slopes.'
+      },
+      'second-moment': {
+        title: 'Second Moment / Uncentered Variance (v_t and v-hat_t)',
+        body: 'Exponential moving average of squared gradients: $v_t = \\beta_2 v_{t-1} + (1 - \\beta_2) g_t^2$. Dividing by $\\sqrt{\\hat{v}_t}$ normalizes each weight\'s step size by its typical gradient magnitude.'
+      },
+      'beta1': {
+        title: 'Momentum Decay Factor (beta_1)',
+        body: 'Controls how much history <span class="term" data-term="first-moment">$m_t$</span> remembers (typically $\\beta_1 = 0.9$, averaging roughly the last $1/(1-\\beta_1) = 10$ steps).'
+      },
+      'beta2': {
+        title: 'Variance Decay Factor (beta_2)',
+        body: 'Controls how much squared-gradient history <span class="term" data-term="second-moment">$v_t$</span> remembers (typically $\\beta_2 = 0.999$ or $0.95$ in LLMs).'
+      },
+      'adam-eps': {
+        title: 'Numerical Stability Epsilon (epsilon)',
+        body: 'Tiny constant ($\\epsilon \\approx 10^{-8}$) added to $\\sqrt{\\hat{v}_t} + \\epsilon$ in <span class="term" data-term="adamw">AdamW</span> so the denominator never divides by zero.'
+      },
+      'weight-decay': {
+        title: 'Decoupled Weight Decay (lambda)',
+        body: 'Shrinks every weight directly toward zero by fraction $\\eta \\lambda$ on each step ($w \\leftarrow w - \\eta \\lambda w$), preventing weights from growing huge and <span class="term" data-term="overfitting">overfitting</span>.'
+      },
+      'l2-regularization': {
+        title: 'L2 Regularization',
+        body: 'Adding $\\frac{\\lambda}{2}\\sum w^2$ to the loss function. Equivalent to <span class="term" data-term="weight-decay">weight decay</span> in plain <span class="term" data-term="sgd">SGD</span>, but broken in Adam because the $\\lambda w$ gradient term gets divided by <span class="term" data-term="second-moment">$\\sqrt{v_t}$</span>.'
+      },
+      'overfitting': {
+        title: 'Overfitting',
+        body: 'When a model memorizes noise in the training set so training loss keeps dropping while validation loss on unseen data rises.'
+      }
+    };
+
+    var popBox = document.getElementById('popover-box');
+    var popBody = document.getElementById('popover-body');
+    var popTitle = document.getElementById('popover-term-name');
+    var backBtn = document.getElementById('popover-back');
+    var popHistory = [];
+    var anchorTermEl = null;
+
+    function positionPopover() {
+      if (!anchorTermEl || popBox.style.display !== 'block') { return; }
+      var rect = anchorTermEl.getBoundingClientRect();
+      var vw = document.documentElement.clientWidth;
+      var vh = window.innerHeight;
+      var boxW = popBox.offsetWidth;
+      var boxH = popBox.offsetHeight;
+      var gap = 8;
+      var left = clamp(rect.left + window.scrollX, 12 + window.scrollX, Math.max(12 + window.scrollX, vw - boxW - 12 + window.scrollX));
+      var spaceBelow = vh - rect.bottom;
+      var top = (spaceBelow >= boxH + gap + 8 || spaceBelow >= rect.top)
+        ? rect.bottom + window.scrollY + gap
+        : rect.top + window.scrollY - boxH - gap;
+      popBox.style.left = Math.round(left) + 'px';
+      popBox.style.top = Math.round(Math.max(12, top)) + 'px';
+    }
+
+    function showTerm(key, pushCurrent) {
+      var g = GLOSSARY[key] || { title: key, body: 'Definition not found.' };
+      if (pushCurrent && popBox.style.display === 'block' && popBox.getAttribute('data-key')) {
+        popHistory.push(popBox.getAttribute('data-key'));
+      }
+      popBox.setAttribute('data-key', key);
+      popTitle.textContent = g.title;
+      popBody.innerHTML = '<p>' + g.body + '</p>';
+      popBody.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      backBtn.style.display = popHistory.length ? 'inline-block' : 'none';
+      popBox.style.display = 'block';
+      renderMathIn(popBody);
+      positionPopover();
+    }
+
+    function closePopover() {
+      popBox.style.display = 'none';
+      popBox.removeAttribute('data-key');
+      popHistory = [];
+      if (anchorTermEl) {
+        anchorTermEl.classList.remove('term-open');
+        if (typeof anchorTermEl.focus === 'function') { anchorTermEl.focus(); }
+        anchorTermEl = null;
+      }
+    }
+
+    backBtn.addEventListener('click', function () {
+      if (popHistory.length) { showTerm(popHistory.pop(), false); }
+    });
+
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest ? e.target.closest('.term') : null;
+      if (el) {
+        e.preventDefault();
+        if (popBox.contains(el)) { showTerm(el.getAttribute('data-term'), true); return; }
+        if (anchorTermEl === el && popBox.style.display === 'block') { closePopover(); return; }
+        if (anchorTermEl) { anchorTermEl.classList.remove('term-open'); }
+        anchorTermEl = el;
+        anchorTermEl.classList.add('term-open');
+        popHistory = [];
+        showTerm(el.getAttribute('data-term'), false);
+        return;
+      }
+      if (popBox.style.display === 'block' && !popBox.contains(e.target)) { closePopover(); }
+    });
+
+    window.addEventListener('resize', positionPopover);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closePopover(); }
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('term')) {
+        document.activeElement.click();
+      }
+    });
+
+    /* ---------- Fast-Forward Diagnostic ---------- */
+    var basicCollapsed = false;
+    function checkFastForward() {
+      var val = parseFloat(document.getElementById('ff-input').value);
+      var fb = document.getElementById('ff-feedback');
+      fb.style.display = 'block';
+      var sec = document.getElementById('basic-scaffolding');
+      if (!isNaN(val) && Math.abs(val - 1.0) <= 0.05) {
+        basicCollapsed = !basicCollapsed;
+        sec.style.display = basicCollapsed ? 'none' : 'block';
+        fb.innerHTML = basicCollapsed
+          ? '<strong>Correct ($\\eta = 1.0$).</strong> Since $w_1 = 4 - 1.0(8) = -4$, $\\eta = 1.0$ is the exact stability boundary $2/H$. Chapters 1&ndash;2 collapsed (click Verify &amp; Skip again to re-open).'
+          : 'Chapters 1&ndash;2 restored.';
+      } else {
+        fb.innerHTML = 'Solve $4 - \\eta \\cdot 8 = -4 \\implies 8\\eta = 8 \\implies \\eta = 1.0$.';
+      }
+      renderMathIn(fb);
+    }
+
+    /* ---------- Chapter 1: Learning Rate POE & Stepper ---------- */
+    var lrStepsVisited = { 0: true, 1: false, 2: false };
+    var lrPredictionDone = false;
+
+    function maybeUnlockLRSlider() {
+      if (lrPredictionDone || (lrStepsVisited[0] && lrStepsVisited[1] && lrStepsVisited[2])) {
+        document.getElementById('lr-slider-gate').style.display = 'none';
+        document.getElementById('lr-slider-unlocked').style.display = 'block';
+      }
+    }
+
+    function runLRPOE(choice) {
+      lrPredictionDone = true;
+      maybeUnlockLRSlider();
+      document.getElementById('lr-poe-reveal').style.display = 'block';
+      var svg = document.getElementById('lr-poe-svg');
+      var guessLabel = choice === 'A' ? 'Your guess: w_1 = 0 (Loss 0)' : (choice === 'C' ? 'Your guess: w_1 = +2 (Loss 4)' : 'Your guess: w_1 = -4 (Loss 16)');
+      var html = '';
+      html += '<line x1="40" y1="95" x2="420" y2="95" stroke="#000" stroke-width="2"/>';
+      html += '<line x1="230" y1="20" x2="230" y2="105" stroke="#000" stroke-width="1.5" stroke-dasharray="4,3"/>';
+      html += '<text x="230" y="118" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">w = 0 (Valley Floor)</text>';
+      html += '<circle cx="370" cy="45" r="8" fill="#e8e8e8" stroke="#000" stroke-width="2"/>';
+      html += '<text x="370" y="28" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">Start w_0 = +4 (L=16)</text>';
+      html += '<circle cx="90" cy="45" r="8" fill="#000" stroke="#000" stroke-width="2"/>';
+      html += '<text x="90" y="28" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">Actual w_1 = -4 (L=16)</text>';
+      html += '<path d="M 358 45 Q 230 15 102 45" fill="none" stroke="#000" stroke-width="2"/>';
+      html += '<text x="230" y="75" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">' + guessLabel + ' | Step = -1.0 * 8 = -8</text>';
+      svg.innerHTML = html;
+
+      var ref = document.getElementById('lr-poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Why Naive "Bigger Step = Faster Descent" Breaks</div>' +
+        '<p style="margin:0;">Most people guess $\\eta = 1.0$ reaches the bottom because the slope is downward. That breaks here because the gradient $g_0 = 8$ only measures the steepness right at $w_0 = 4$. Taking a full step of $-1.0 \\times 8 = -8$ shoots straight past the valley floor ($w = 0$) and lands at $w_1 = -4$ on the opposite wall—where the loss is still $(-4)^2 = 16$! Any $\\eta > 1.0$ bounces even higher and explodes.</p>';
+      renderMathIn(ref);
+    }
+
+    var LR_REGIMES = [
+      {
+        title: 'Regime 1: Steady (eta = 0.25)',
+        eta: 0.25,
+        w: [4, 2, 1],
+        losses: [16, 4, 1],
+        note: 'At eta = 0.25 (below the 0.5 optimum), the weight moves halfway to 0 on every step: 4 -> 2 -> 1. Loss drops monotonically (16 -> 4 -> 1) with zero oscillation.'
+      },
+      {
+        title: 'Regime 2: Wall-to-Wall (eta = 1.0)',
+        eta: 1.0,
+        w: [4, -4, 4],
+        losses: [16, 16, 16],
+        note: 'At the critical ceiling eta = 2/H = 1.0, the weight bounces perpetually between +4 and -4. Loss stays stuck at 16 forever.'
+      },
+      {
+        title: 'Regime 3: Explosion (eta = 1.5)',
+        eta: 1.5,
+        w: [4, -8, 16],
+        losses: [16, 64, 256],
+        note: 'At eta = 1.5 (above the 1.0 cliff), each step overshoots and doubles in distance: +4 -> -8 -> +16. Loss quadruples every step (16 -> 64 -> 256 -> NaN).'
+      }
+    ];
+
+    function renderLRSmallMultiples(activeIdx) {
+      var grid = document.getElementById('lr-sm-grid');
+      grid.innerHTML = LR_REGIMES.map(function (reg, idx) {
+        var cls = idx === activeIdx ? 'sm-panel sm-active' : 'sm-panel';
+        return '<div class="' + cls + '">' +
+          '<div style="font-weight:bold; font-size:0.88rem; margin-bottom:4px;">' + reg.title + '</div>' +
+          '<div style="font-family:monospace; font-size:0.85rem;">w: ' + reg.w.join(' &rarr; ') + '</div>' +
+          '<div style="font-family:monospace; font-size:0.85rem; margin-top:2px;">Loss: ' + reg.losses.join(' &rarr; ') + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function setLRRegime(idx) {
+      lrStepsVisited[idx] = true;
+      maybeUnlockLRSlider();
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('lr-step-' + i).classList.toggle('active', i === idx);
+      }
+      renderLRSmallMultiples(idx);
+      document.getElementById('lr-step-explain').textContent = LR_REGIMES[idx].note;
+    }
+
+    document.getElementById('lr-slider').addEventListener('input', function (e) {
+      var eta = parseFloat(e.target.value);
+      document.getElementById('lr-slider-val').textContent = eta.toFixed(2);
+      var mult = 1 - 2 * eta;
+      var w0 = 4;
+      var w1 = w0 * mult;
+      var w2 = w1 * mult;
+      document.getElementById('lr-stat-mult').textContent = (mult >= 0 ? '+' : '') + mult.toFixed(2);
+      document.getElementById('lr-stat-pos').textContent = w0 + ' \u2192 ' + Number(w1.toFixed(1)) + ' \u2192 ' + Number(w2.toFixed(1));
+      document.getElementById('lr-stat-loss').textContent = (w2 * w2).toFixed(1);
+    });
+
+    /* ---------- Chapter 2: Batch Size POE, Simulator & Faded ---------- */
+    function runBatchPOE(choice) {
+      document.getElementById('batch-poe-reveal').style.display = 'block';
+      var ref = document.getElementById('batch-poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Why Increasing Batch Size Requires Scaling Learning Rate (or Steps)</div>' +
+        '<p style="margin:0;">Most people assume a $4\\times$ larger batch automatically trains just as far in $1$ epoch. That breaks because $B = 32$ only takes $320 \\div 32 = 10$ weight updates per epoch instead of $40$! If your step size $\\eta$ stays unchanged, the weights travel only one-quarter of the distance. Because a $4\\times$ larger batch cuts gradient noise std by $\\sqrt{4} = 2\\times$, you can safely increase $\\eta$ (linearly for SGD, or by $\\sqrt{4} = 2\\times$ for AdamW) so each cleaner step covers more ground.</p>';
+      renderMathIn(ref);
+    }
+
+    var BATCH_CASES = [
+      {
+        eff: '2',
+        steps: '32 steps',
+        noise: '0.71x',
+        lr: '1x base',
+        note: 'Config 1 (Micro-batch 2, K=1): Updates weights 32 times per 64-example epoch, but each step averages only 2 examples, leaving high gradient noise.'
+      },
+      {
+        eff: '8 (2 x 4)',
+        steps: '8 steps',
+        noise: '0.35x (2x cleaner)',
+        lr: '2x to 4x base',
+        note: 'Config 2 (Gradient Accumulation, B_micro=2, K=4): Uses the EXACT same tiny GPU memory as Config 1, but averages 4 micro-batches before stepping (B_eff = 8), cutting noise in half.'
+      },
+      {
+        eff: '32 (8 x 4)',
+        steps: '2 steps',
+        noise: '0.18x (4x cleaner)',
+        lr: '4x to 16x base',
+        note: 'Config 3 (Large Effective Batch 32): Only 2 updates per 64-example epoch. Very clean gradient direction, so you must scale up the learning rate eta (or run more epochs) to make enough progress.'
+      }
+    ];
+
+    function setBatchCase(idx) {
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('batch-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var c = BATCH_CASES[idx];
+      document.getElementById('b-stat-eff').textContent = c.eff;
+      document.getElementById('b-stat-steps').textContent = c.steps;
+      document.getElementById('b-stat-noise').textContent = c.noise;
+      document.getElementById('b-stat-lr').textContent = c.lr;
+      document.getElementById('batch-explain').textContent = c.note;
+    }
+
+    function checkBatchFaded() {
+      var val = parseFloat(document.getElementById('batch-fade-input').value);
+      var fb = document.getElementById('batch-fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 16) <= 0.05) {
+        fb.innerHTML = '<strong>Correct ($w_1 = 16$).</strong> The accumulated gradient is $\\bar{g}_{\\text{eff}} = 8$, and stepping with $\\eta = 0.5$ subtracts $0.5 \\times 8 = 4$ from $w_0 = 20$ to land at $16$.';
+      } else {
+        fb.innerHTML = 'Not quite. Compute $w_1 = 20 - (0.5 \\times 8) = 20 - 4 = 16$.';
+      }
+      renderMathIn(fb);
+    }
+
+    /* ---------- Chapter 3: Schedule & Clipping Inspector ---------- */
+    var SCHED_POINTS = [
+      { t: 1, eta: 5, label: 'Warmup (t=1): eta_1 = 10 * (1/2) = 5. Gentle half-sized step while AdamW calibrates v_t.' },
+      { t: 2, eta: 10, label: 'Peak + Spike (t=2): Reaches eta_max = 10. A bad batch spikes ||g||_2 to 10; clipping at c=5 scales g by 5/10 = 0.5 before stepping.' },
+      { t: 6, eta: 6, label: 'Cosine Midpoint (t=6): Halfway through decay (steps 2->10), cosine smoothly lowers eta to the midpoint (10 + 2)/2 = 6.' },
+      { t: 10, eta: 2, label: 'Final Floor (t=10): Cosine reaches eta_min = 2 (20% of peak), letting weights settle softly into the minimum without bouncing.' }
+    ];
+
+    function setSchedPhase(idx) {
+      for (var i = 0; i < 4; i++) {
+        document.getElementById('sched-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var allPts = [
+        { t: 0, eta: 0 },
+        { t: 1, eta: 5 },
+        { t: 2, eta: 10 },
+        { t: 4, eta: 8.8 },
+        { t: 6, eta: 6 },
+        { t: 8, eta: 3.2 },
+        { t: 10, eta: 2 }
+      ];
+      var svg = document.getElementById('sched-svg');
+      var x0 = 45, y0 = 125, w = 400, h = 95;
+      function tx(t) { return x0 + (t / 10) * w; }
+      function ty(eta) { return y0 - (eta / 10) * h; }
+
+      var html = '';
+      html += '<line x1="' + x0 + '" y1="' + y0 + '" x2="' + (x0 + w) + '" y2="' + y0 + '" stroke="#000" stroke-width="2"/>';
+      html += '<line x1="' + x0 + '" y1="20" x2="' + x0 + '" y2="' + y0 + '" stroke="#000" stroke-width="2"/>';
+      html += '<line x1="' + tx(2) + '" y1="20" x2="' + tx(2) + '" y2="' + y0 + '" stroke="#000" stroke-width="1.5" stroke-dasharray="4,3"/>';
+      html += '<text x="' + tx(2) + '" y="16" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">Warmup End (W=2)</text>';
+
+      var poly = allPts.map(function (p) { return tx(p.t) + ',' + ty(p.eta); }).join(' ');
+      html += '<polyline points="' + poly + '" fill="none" stroke="#000" stroke-width="2.5"/>';
+
+      var activeT = SCHED_POINTS[idx].t;
+      var activeEta = SCHED_POINTS[idx].eta;
+      html += '<circle cx="' + tx(activeT) + '" cy="' + ty(activeEta) + '" r="7" fill="#000" stroke="#fff" stroke-width="2"/>';
+      html += '<text x="' + clamp(tx(activeT), 95, 385) + '" y="' + (ty(activeEta) - 12) + '" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">t=' + activeT + ', eta=' + activeEta + '</text>';
+      html += '<text x="245" y="146" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">Training Step t (0 to 10)</text>';
+      svg.innerHTML = html;
+      document.getElementById('sched-explain').textContent = SCHED_POINTS[idx].label;
+    }
+
+    function revealSchedRecall() {
+      var fb = document.getElementById('recall-sched-feedback');
+      fb.style.display = 'block';
+      renderMathIn(fb);
+    }
+
+    /* ---------- Chapter 4: AdamW POE & Faded ---------- */
+    function runAdamPOE(choice) {
+      document.getElementById('adam-poe-reveal').style.display = 'block';
+      var ref = document.getElementById('adam-poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Why Coupling L2 Penalty Into Adam\'s Gradient Breaks Weight Decay</div>' +
+        '<p style="margin:0;">Most people assume L2 regularization and weight decay are identical because they are equal in plain SGD. In Adam, every term inside the gradient gets divided by $\\sqrt{\\hat{v}_t}$. So if you add $\\lambda w$ into the gradient, noisy Weight A ($\\sqrt{v_A} = 10$) has its regularization divided by $10$, whereas quiet Weight B ($\\sqrt{v_B} = 1$) gets $10\\times$ stronger shrinkage! <strong>AdamW</strong> fixes this by subtracting $\\eta \\lambda w_t$ directly from the weight <em>outside</em> the $\\sqrt{\\hat{v}_t}$ denominator.</p>';
+      renderMathIn(ref);
+    }
+
+    function checkAdamFaded() {
+      var val = parseFloat(document.getElementById('adam-fade-input').value);
+      var fb = document.getElementById('adam-fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 17.5) <= 0.05) {
+        fb.innerHTML = '<strong>Correct ($w_2 = 17.5$).</strong> Decoupled weight decay subtracts $1.0$ and the adaptive gradient step subtracts $1.5$, taking $w_1 = 20$ cleanly down to $17.5$.';
+      } else {
+        fb.innerHTML = 'Not quite. Subtract both steps from $20$: $20 - 1 - 1.5 = 17.5$.';
+      }
+      renderMathIn(fb);
+    }
+
+    /* ---------- Collapsed MCQs ---------- */
+    var mcqResults = {};
+    function updateScore() {
+      var total = document.querySelectorAll('.mcq-box').length;
+      var answered = 0, right = 0;
+      for (var id in mcqResults) {
+        if (Object.prototype.hasOwnProperty.call(mcqResults, id)) {
+          answered++;
+          if (mcqResults[id].first) { right++; }
+        }
+      }
+      document.getElementById('mcq-score').textContent =
+        'Checks answered: ' + answered + ' of ' + total + '. Right on first try: ' + right + '.';
+    }
+
+    function checkMCQ(boxId) {
+      var box = document.getElementById(boxId);
+      var correct = box.getAttribute('data-correct');
+      var selected = box.querySelector('input[type="radio"]:checked');
+      var fb = box.querySelector('.mcq-feedback');
+      fb.style.display = 'block';
+      if (!selected) { fb.innerHTML = '<p>Pick an option first.</p>'; return; }
+      if (!mcqResults[boxId]) { mcqResults[boxId] = { first: selected.value === correct }; }
+      box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('right', 'wrong'); });
+      var rightOpt = box.querySelector('input[value="' + correct + '"]');
+      rightOpt.closest('.mcq-option').classList.add('right');
+      var html = (selected.value === correct)
+        ? '<p><strong>Correct.</strong> ' + selected.getAttribute('data-explain') + '</p>'
+        : '<p><strong>Not quite (' + selected.value + ').</strong> ' + selected.getAttribute('data-explain') + '</p><p><strong>Answer: ' + correct + '.</strong> ' + rightOpt.getAttribute('data-explain') + '</p>';
+      html += '<details><summary>Why each option is right or wrong</summary><ul>';
+      box.querySelectorAll('input[type="radio"]').forEach(function (o) {
+        html += '<li><strong>' + o.value + ':</strong> ' + o.getAttribute('data-explain') + '</li>';
+      });
+      html += '</ul></details>';
+      fb.innerHTML = html;
+      fb.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      renderMathIn(fb);
+      updateScore();
+    }
+
+    function resetMCQs() {
+      mcqResults = {};
+      document.querySelectorAll('.mcq-box').forEach(function (box) {
+        box.removeAttribute('open');
+        box.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked', 'right', 'wrong'); });
+        var fb = box.querySelector('.mcq-feedback');
+        fb.style.display = 'none';
+        fb.innerHTML = '';
+      });
+      updateScore();
+    }
+
+    /* ---------- Spaced Recall Cards ---------- */
+    var SPACED_CARDS = [
+      { q: '[1d] Above what threshold does gradient descent diverge on a valley with curvature H?', a: 'When learning rate eta > 2 / H. Each step jumps past the minimum and lands higher up the opposite wall.' },
+      { q: '[4d] How does Gradient Accumulation (K steps) achieve a large effective batch size B_eff on a small GPU?', a: 'It runs K forward/backward passes of micro-batch B_micro and averages their gradients before updating weights once, giving B_eff = B_micro * K without storing all B_eff activations at once.' },
+      { q: '[4d] If you quadruple effective batch size B_eff for a fixed number of epochs, why must you adjust the learning rate eta?', a: 'Because 4x larger batches take 4x fewer optimizer steps per epoch (and have 2x lower gradient noise std), so eta must be scaled up (linearly for SGD, or by sqrt(4) = 2x for AdamW) to cover the same progress.' },
+      { q: '[14d] Why does AdamW need linear warmup during the first W steps of Transformer training?', a: 'Because at step 0 the second-moment variance estimate v_t has almost no sample history, so taking full peak-LR steps immediately produces erratic adaptive jumps.' },
+      { q: '[14d] How does Gradient Norm Clipping at threshold c protect training without distorting the update direction?', a: 'Whenever ||g||_2 > c, it multiplies the entire gradient vector by the scalar c / ||g||_2, shrinking its length to c while preserving the exact ratio between all coordinates.' },
+      { q: '[30d] What is the mathematical difference between AdamW and Adam + L2 regularization?', a: 'Adam + L2 adds lambda*w into the gradient, where it gets divided by sqrt(v_t) (weakening decay on high-gradient weights). AdamW decouples weight decay outside the adaptive term: w <- w - eta*lambda*w.' }
+    ];
+
+    function renderSpacedCards() {
+      document.getElementById('spaced-list').innerHTML = SPACED_CARDS.map(function (c, i) {
+        return '<details class="recall-card"><summary>Card ' + (i + 1) + ' ' + c.q + '</summary><p style="margin:0.5rem 0 0 0;">' + c.a + '</p></details>';
+      }).join('');
+    }
+
+    function copySpacedCards() {
+      var text = SPACED_CARDS.map(function (c, i) {
+        return 'Q' + (i + 1) + ': ' + c.q + '\nA' + (i + 1) + ': ' + c.a;
+      }).join('\n\n');
+      var st = document.getElementById('copy-status');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          st.textContent = 'Copied 6 cards.';
+        }, function () { st.textContent = 'Clipboard blocked; select cards manually.'; });
+      } else {
+        st.textContent = 'Clipboard unavailable in this browser.';
+      }
+    }
+
+    /* ---------- Init ---------- */
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.term').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+      });
+      document.querySelectorAll('.mcq-option input').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          var box = inp.closest('.mcq-box');
+          box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+          inp.closest('.mcq-option').classList.add('picked');
+        });
+      });
+      var boxes = document.querySelectorAll('.mcq-box');
+      boxes.forEach(function (box, i) {
+        var t = box.querySelector('.mcq-title');
+        var topic = box.getAttribute('data-topic');
+        if (t) {
+          t.textContent = 'Check ' + (i + 1) + ' of ' + boxes.length +
+            (topic ? ': ' + topic : '') + ' (tap to expand)';
+        }
+      });
+      setLRRegime(0);
+      setBatchCase(0);
+      setSchedPhase(0);
+      renderSpacedCards();
+      updateScore();
+      ensureMathRendered(10);
+    });
+    window.addEventListener('load', function () { renderMathIn(document.body); });
+  </script>
+</body>
+</html>
