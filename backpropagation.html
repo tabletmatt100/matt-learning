@@ -414,37 +414,37 @@
 
     <details class="mcq-box" data-correct="C" data-topic="Interleaved 1: Computational complexity of Backprop vs Finite Differences">
       <p>A small model has $d = 1{,}000{,}000$ weights and outputs a single scalar loss $L$. Roughly how many forward-pass equivalents does central finite differences take to compute the full gradient $\nabla_w L$, compared to backpropagation?</p>
-      <label class="mcq-option" data-explain="Both methods compute all 1,000,000 partial derivatives, not just 1; the difference is how many passes they need.">Both take roughly 2 passes because the loss $L$ is a single scalar.</label>
-      <label class="mcq-option" data-explain="Backpropagation takes ~2 forward-pass equivalents (1 forward + 1 backward), not 1,000,000.">Both take roughly $1{,}000{,}000$ passes because there are $1{,}000{,}000$ weights.</label>
-      <label class="mcq-option" data-explain="Correct. Perturbing each weight individually requires O(d) forward passes (~1–2 million passes), whereas reverse-mode autodiff (backprop) computes all 1,000,000 partials in 1 forward pass + 1 backward pass (~2–3 forward-pass equivalents).">Finite differences takes $\sim 2{,}000{,}000$ forward passes, while backpropagation takes $1$ forward + $1$ backward pass ($\sim 2\text{–}3$ forward-pass equivalents total).</label>
+      <label class="mcq-option" data-explain="Both methods compute all $1{,}000{,}000$ partial derivatives, not just $1$; the difference is how many passes they need.">Both take roughly 2 passes because the loss $L$ is a single scalar.</label>
+      <label class="mcq-option" data-explain="Backpropagation takes $\sim 2$ forward-pass equivalents ($1$ forward $+ 1$ backward), not $1{,}000{,}000$.">Both take roughly $1{,}000{,}000$ passes because there are $1{,}000{,}000$ weights.</label>
+      <label class="mcq-option" data-explain="Correct. Perturbing each weight individually requires $O(d)$ forward passes ($\sim 1\text{–}2$ million passes), whereas reverse-mode autodiff (backprop) computes all $1{,}000{,}000$ partials in $1$ forward pass $+ 1$ backward pass ($\sim 2\text{–}3$ forward-pass equivalents total).">Finite differences takes $\sim 2{,}000{,}000$ forward passes, while backpropagation takes $1$ forward + $1$ backward pass ($\sim 2\text{–}3$ forward-pass equivalents total).</label>
     </details>
 
     <details class="mcq-box" data-correct="A" data-topic="Interleaved 2: Zero activation vs Zero weight">
       <p>In a linear + ReLU layer $z = w \cdot x + b$, $a = \max(0, z)$, suppose on the forward pass $x = 0$, $w = 4$, $b = 3$, and the upstream gradient arriving at $a$ is $\bar{a} = +5$. What are the gradients $\bar{w} = \frac{\partial L}{\partial w}$ and $\bar{x} = \frac{\partial L}{\partial x}$?</p>
-      <label class="mcq-option" data-explain="Correct. Since z = 4(0) + 3 = +3 &gt; 0, ReLU is active (slope = 1), so z_bar = +5. At the multiply gate u = w*x, partners swap: w_bar = x * z_bar = 0 * 5 = 0, while x_bar = w * z_bar = 4 * 5 = +20.">$\bar{w} = 0$ and $\bar{x} = +20$.</label>
-      <label class="mcq-option" data-explain="That reverses the multiply-gate swap! w_bar multiplies by x (= 0), and x_bar multiplies by w (= 4).">$\bar{w} = +20$ and $\bar{x} = 0$.</label>
-      <label class="mcq-option" data-explain="ReLU checks whether z = wx + b &gt; 0, not whether x &gt; 0. Here z = +3 &gt; 0, so ReLU is open.">$\bar{w} = 0$ and $\bar{x} = 0$ because $x = 0$ kills the ReLU gate.</label>
+      <label class="mcq-option" data-explain="Correct. Since $z = 4(0) + 3 = +3 &gt; 0$, ReLU is active ($\text{slope} = 1$), so $\bar{z} = +5$. At the multiply gate $u = w \cdot x$, partners swap: $\bar{w} = x \cdot \bar{z} = 0 \times 5 = 0$, while $\bar{x} = w \cdot \bar{z} = 4 \times 5 = +20$.">$\bar{w} = 0$ and $\bar{x} = +20$.</label>
+      <label class="mcq-option" data-explain="That reverses the multiply-gate swap! $\bar{w}$ multiplies by $x$ ($= 0$), and $\bar{x}$ multiplies by $w$ ($= 4$).">$\bar{w} = +20$ and $\bar{x} = 0$.</label>
+      <label class="mcq-option" data-explain="ReLU checks whether $z = wx + b &gt; 0$, not whether $x &gt; 0$. Here $z = +3 &gt; 0$, so ReLU is open.">$\bar{w} = 0$ and $\bar{x} = 0$ because $x = 0$ kills the ReLU gate.</label>
     </details>
 
     <details class="mcq-box" data-correct="B" data-topic="Interleaved 3: Dead ReLU vs Vanishing Sigmoid">
       <p>You initialize a single ReLU neuron $a = \max(0, wx + b)$ with bias $b = -10$ so that for every training example in your dataset, $z = wx + b &lt; 0$. What happens during gradient descent?</p>
-      <label class="mcq-option" data-explain="Sigmoid has a small nonzero slope everywhere, so it recovers slowly; ReLU has an exact 0 slope for z &lt; 0.">The neuron recovers slowly over a few thousand steps because the gradient is small ($\approx 10^{-4}$) but nonzero.</label>
-      <label class="mcq-option" data-explain="Correct. Because z &lt; 0 on every example, the local ReLU derivative is exactly 0 everywhere, making w_bar = 0 and b_bar = 0 on every batch. The neuron is permanently dead.">$\bar{w} = 0$ and $\bar{b} = 0$ on every batch, so the weights and bias never update (&ldquo;dead ReLU&rdquo;).</label>
-      <label class="mcq-option" data-explain="The Add gate has local derivative 1, so b_bar = z_bar. Because z_bar = a_bar * 0 = 0 after the closed ReLU switch, b_bar is also 0.">$\bar{w} = 0$, but $\bar{b}$ still receives the upstream gradient $\bar{a}$ and pushes $b$ positive.</label>
+      <label class="mcq-option" data-explain="Sigmoid has a small nonzero slope everywhere, so it recovers slowly; ReLU has an exact $0$ slope for $z &lt; 0$.">The neuron recovers slowly over a few thousand steps because the gradient is small ($\approx 10^{-4}$) but nonzero.</label>
+      <label class="mcq-option" data-explain="Correct. Because $z &lt; 0$ on every example, the local ReLU derivative is exactly $0$ everywhere, making $\bar{w} = 0$ and $\bar{b} = 0$ on every batch. The neuron is permanently dead.">$\bar{w} = 0$ and $\bar{b} = 0$ on every batch, so the weights and bias never update (&ldquo;dead ReLU&rdquo;).</label>
+      <label class="mcq-option" data-explain="The Add gate has local derivative $1$, so $\bar{b} = \bar{z}$. Because $\bar{z} = \bar{a} \cdot 0 = 0$ after the closed ReLU switch, $\bar{b}$ is also $0$.">$\bar{w} = 0$, but $\bar{b}$ still receives the upstream gradient $\bar{a}$ and pushes $b$ positive.</label>
     </details>
 
     <details class="mcq-box" data-correct="B" data-topic="Interleaved 4: Matrix Backprop Shape Matching">
       <p>A linear layer computes $z = Wx + b$ where $W$ has shape $(4 \times 3)$, $x$ has shape $(3 \times 1)$, and $z$ has shape $(4 \times 1)$. Given upstream gradient $\bar{z}$ of shape $(4 \times 1)$, which expression computes $\bar{x} = \frac{\partial L}{\partial x}$?</p>
-      <label class="mcq-option" data-explain="W is (4x3) and z_bar is (4x1); inner dimensions 3 and 4 do not match.">$W \bar{z}$ of shape $(4 \times 1)$.</label>
-      <label class="mcq-option" data-explain="Correct. W^T has shape (3x4) and z_bar has shape (4x1), so W^T z_bar has shape (3x1), matching x."> $W^\top \bar{z}$ of shape $(3 \times 1)$.</label>
-      <label class="mcq-option" data-explain="z_bar x^T has shape (4x1)(1x3) = (4x3), which is the weight gradient W_bar, not the input gradient x_bar.">$\bar{z} x^\top$ of shape $(4 \times 3)$.</label>
+      <label class="mcq-option" data-explain="$W$ is $(4\times 3)$ and $\bar{z}$ is $(4\times 1)$; inner dimensions $3$ and $4$ do not match.">$W \bar{z}$ of shape $(4 \times 1)$.</label>
+      <label class="mcq-option" data-explain="Correct. $W^\top$ has shape $(3\times 4)$ and $\bar{z}$ has shape $(4\times 1)$, so $W^\top \bar{z}$ has shape $(3\times 1)$, matching $x$."> $W^\top \bar{z}$ of shape $(3 \times 1)$.</label>
+      <label class="mcq-option" data-explain="$\bar{z} x^\top$ has shape $(4\times 1)(1\times 3) = (4\times 3)$, which is the weight gradient $\bar{W}$, not the input gradient $\bar{x}$.">$\bar{z} x^\top$ of shape $(4 \times 3)$.</label>
     </details>
 
     <details class="mcq-box" data-correct="C" data-topic="Interleaved 5: Shared / Tied Weights (Fan-Out Rule)">
       <p>In a Recurrent Neural Network or a Transformer with tied weights, the <em>same</em> weight matrix $W$ is used at two different steps ($z_1 = W x_1$ and $z_2 = W x_2$). How does backpropagation compute the total gradient $\bar{W} = \frac{\partial L}{\partial W}$?</p>
       <label class="mcq-option" data-explain="Multiplying gradients happens along a serial chain of different variables; branching from one shared variable adds the branches.">It multiplies the two step gradients elementwise: $\bar{W} = (\bar{z}_1 x_1^\top) \odot (\bar{z}_2 x_2^\top)$.</label>
       <label class="mcq-option" data-explain="Ignoring the first branch violates the multivariable chain rule and gives the wrong gradient.">It only keeps the gradient from the most recent step $\bar{z}_2 x_2^\top$ and overwrites the earlier step.</label>
-      <label class="mcq-option" data-explain="Correct. A shared parameter is a fan-out node in the computation graph, so its total gradient is the sum of the gradients arriving from every place it was used: W_bar = z1_bar x1^T + z2_bar x2^T.">It adds the gradients from both usages: $\bar{W} = \bar{z}_1 x_1^\top + \bar{z}_2 x_2^\top$.</label>
+      <label class="mcq-option" data-explain="Correct. A shared parameter is a fan-out node in the computation graph, so its total gradient is the sum of the gradients arriving from every place it was used: $\bar{W} = \bar{z}_1 x_1^\top + \bar{z}_2 x_2^\top$.">It adds the gradients from both usages: $\bar{W} = \bar{z}_1 x_1^\top + \bar{z}_2 x_2^\top$.</label>
     </details>
 
     <div class="score-bar"></div>
@@ -606,28 +606,28 @@
 
     var SPACED_CARDS = [
       {
-        q: 'Why does backpropagation compute gradients for d = 1,000,000 weights in O(1) passes while finite differences requires O(d) passes?',
-        a: 'Finite differences perturbs one weight at a time Forward -> Loss (d + 1 forward passes). Backpropagation (reverse-mode autodiff) caches intermediate values in 1 forward pass and propagates sensitivities from the single scalar loss L backward to all d weights in 1 backward pass.'
+        q: 'Why does backpropagation compute gradients for $d = 1{,}000{,}000$ weights in $O(1)$ passes while finite differences requires $O(d)$ passes?',
+        a: 'Finite differences perturbs one weight at a time Forward $\\to$ Loss ($d + 1$ forward passes). Backpropagation (reverse-mode autodiff) caches intermediate values in $1$ forward pass and propagates sensitivities from the single scalar loss $L$ backward to all $d$ weights in $1$ backward pass.'
       },
       {
-        q: 'At a multiply gate u = w * x receiving upstream gradient u_bar = dL/du, what are w_bar and x_bar?',
-        a: 'They swap partners: w_bar = x * u_bar and x_bar = w * u_bar. Consequently, a huge input x produces a huge gradient on the weight w, and x = 0 gives w_bar = 0.'
+        q: 'At a multiply gate $u = w \\cdot x$ receiving upstream gradient $\\bar{u} = \\frac{\\partial L}{\\partial u}$, what are $\\bar{w}$ and $\\bar{x}$?',
+        a: 'They swap partners: $\\bar{w} = x \\cdot \\bar{u}$ and $\\bar{x} = w \\cdot \\bar{u}$. Consequently, a huge input $x$ produces a huge gradient on the weight $w$, and $x = 0$ gives $\\bar{w} = 0$.'
       },
       {
-        q: 'At an add gate z = u + b receiving upstream gradient z_bar, and at a fan-out branch where variable w feeds two paths z1 and z2, how do gradients flow backward?',
-        a: 'Add gate distributes (copies) the upstream gradient unchanged to each input: u_bar = z_bar and b_bar = z_bar. A fan-out branch adds the incoming gradients from all downstream paths: w_bar = w_bar_1 + w_bar_2.'
+        q: 'At an add gate $z = u + b$ receiving upstream gradient $\\bar{z}$, and at a fan-out branch where variable $w$ feeds two paths $z_1$ and $z_2$, how do gradients flow backward?',
+        a: 'Add gate distributes (copies) the upstream gradient unchanged to each input: $\\bar{u} = \\bar{z}$ and $\\bar{b} = \\bar{z}$. A fan-out branch adds the incoming gradients from all downstream paths: $\\bar{w} = \\bar{w}_1 + \\bar{w}_2$.'
       },
       {
-        q: 'For a matrix linear layer z = W x + b with W in R^(m x n), x in R^(n x 1), and upstream gradient z_bar in R^(m x 1), what are the exact formulas for W_bar, x_bar, and b_bar?',
-        a: 'By shape matching: W_bar = z_bar * x^T (m x n outer product), x_bar = W^T * z_bar (n x 1), and b_bar = z_bar (m x 1).'
+        q: 'For a matrix linear layer $z = W x + b$ with $W \\in \\mathbb{R}^{m \\times n}$, $x \\in \\mathbb{R}^{n \\times 1}$, and upstream gradient $\\bar{z} \\in \\mathbb{R}^{m \\times 1}$, what are the exact formulas for $\\bar{W}$, $\\bar{x}$, and $\\bar{b}$?',
+        a: 'By shape matching: $\\bar{W} = \\bar{z} x^\\top$ ($m \\times n$ outer product), $\\bar{x} = W^\\top \\bar{z}$ ($n \\times 1$), and $\\bar{b} = \\bar{z}$ ($m \\times 1$).'
       },
       {
-        q: 'Why does neural network training require 3-4x more memory than inference?',
-        a: 'Because W_bar = z_bar * x^T and activation derivatives (like ReLU or Sigmoid) depend on the forward activations x and z. Training must keep every layer\'s intermediate forward activations cached in RAM/VRAM until the backward pass reaches that layer, whereas inference discards them immediately.'
+        q: 'Why does neural network training require 3–4x more memory than inference?',
+        a: 'Because $\\bar{W} = \\bar{z} x^\\top$ and activation derivatives (like ReLU or Sigmoid) depend on the forward activations $x$ and $z$. Training must keep every layer\'s intermediate forward activations cached in RAM/VRAM until the backward pass reaches that layer, whereas inference discards them immediately.'
       },
       {
-        q: 'What is the architectural difference between a Dead ReLU and a Vanishing Sigmoid gradient, and how does a residual connection h_l = h_{l-1} + F(h_{l-1}) prevent vanishing gradients?',
-        a: 'A Dead ReLU has z <= 0 so its local derivative is literally 0 (blocking all gradient in 1 step). Sigmoid has a max derivative of 0.25, so stacking L layers multiplies <= 0.25^L -> 0. A residual block has local derivative 1 + F\', creating a +1 additive highway that carries upstream gradients straight through.'
+        q: 'What is the architectural difference between a Dead ReLU and a Vanishing Sigmoid gradient, and how does a residual connection $h_\\ell = h_{\\ell-1} + F(h_{\\ell-1})$ prevent vanishing gradients?',
+        a: 'A Dead ReLU has $z \\le 0$ so its local derivative is literally $0$ (blocking all gradient in $1$ step). Sigmoid has a max derivative of $0.25$, so stacking $L$ layers multiplies $\\le 0.25^L \\to 0$. A residual block has local derivative $1 + F\'$, creating a $+1$ additive highway that carries upstream gradients straight through.'
       }
     ];
 
@@ -707,10 +707,10 @@
 
     /* ---------- Stage 3A: Discrete Computation Graph Stepper ---------- */
     var GRAPH_STEP_NOTES = [
-      'Step 1 (Forward Pass): Compute left-to-right and cache inputs. u = w*x = 3*2 = 6; z = u + b = 6 + (-1) = 5; a = ReLU(5) = 5; L = 0.5*(5 - 2)^2 = 4.5.',
-      'Step 2 (Loss & ReLU Backward): Start with L_bar = 1. Slope of 0.5*(a - y)^2 is (a - y) = 5 - 2 = +3, so a_bar = +3. Since forward z = 5 > 0, ReLU switch is open (local slope = 1), giving z_bar = +3 * 1 = +3.',
-      'Step 3 (Add Gate Backward): z = u + b has local slopes dz/du = 1 and dz/db = 1. The add gate copies z_bar = +3 unchanged to both branches: u_bar = +3 and b_bar = +3.',
-      'Step 4 (Multiply Gate Backward): u = w * x swaps partners! w_bar = x * u_bar = 2 * (+3) = +6, and x_bar = w * u_bar = 3 * (+3) = +9.'
+      'Step 1 (Forward Pass): Compute left-to-right and cache inputs. $u = w \\cdot x = 3 \\times 2 = 6$; $z = u + b = 6 + (-1) = 5$; $a = \\text{ReLU}(5) = 5$; $L = \\frac{1}{2}(5 - 2)^2 = 4.5$.',
+      'Step 2 (Loss & ReLU Backward): Start with $\\bar{L} = 1$. Slope of $\\frac{1}{2}(a - y)^2$ is $(a - y) = 5 - 2 = +3$, so $\\bar{a} = +3$. Since forward $z = 5 > 0$, ReLU switch is open (local slope $= 1$), giving $\\bar{z} = +3 \\times 1 = +3$.',
+      'Step 3 (Add Gate Backward): $z = u + b$ has local slopes $\\frac{\\partial z}{\\partial u} = 1$ and $\\frac{\\partial z}{\\partial b} = 1$. The add gate copies $\\bar{z} = +3$ unchanged to both branches: $\\bar{u} = +3$ and $\\bar{b} = +3$.',
+      'Step 4 (Multiply Gate Backward): $u = w \\cdot x$ swaps partners! $\\bar{w} = x \\cdot \\bar{u} = 2 \\times (+3) = +6$, and $\\bar{x} = w \\cdot \\bar{u} = 3 \\times (+3) = +9$.'
     ];
 
     var currentGraphStep = 0;
@@ -723,7 +723,9 @@
         if (btn) { btn.classList.toggle('active', i === idx); }
       }
       drawComputationGraph(2, 3, -1, 2, idx);
-      document.getElementById('graph-step-explain').textContent = GRAPH_STEP_NOTES[idx];
+      var expEl = document.getElementById('graph-step-explain');
+      expEl.innerHTML = GRAPH_STEP_NOTES[idx];
+      renderMathIn(expEl);
       if (Object.keys(graphStepsVisited).length === 4) {
         unlockGraphSliders();
       }
@@ -817,10 +819,11 @@
       drawComputationGraph(x, w, b, y, 3);
       var noteEl = document.getElementById('graph-step-explain');
       if (z <= 0) {
-        noteEl.textContent = 'Dead ReLU state: z = ' + z + ' <= 0, so ReLU slope = 0. Even though a - y = ' + da + ', the closed ReLU gate blocks all upstream signal: z_bar = 0, w_bar = 0, b_bar = 0.';
+        noteEl.innerHTML = 'Dead ReLU state: $z = ' + z + ' \\le 0$, so ReLU slope $= 0$. Even though $a - y = ' + da + '$, the closed ReLU gate blocks all upstream signal: $\\bar{z} = 0, \\bar{w} = 0, \\bar{b} = 0$.';
       } else {
-        noteEl.textContent = 'Active ReLU state: z = +' + z + ' > 0 (slope = 1). Upstream a_bar = ' + (da >= 0 ? '+' : '') + da + ' passes straight to z_bar and b_bar, and multiplies by x = ' + x + ' to give w_bar = ' + (dw >= 0 ? '+' : '') + dw + '.';
+        noteEl.innerHTML = 'Active ReLU state: $z = +' + z + ' > 0$ (slope $= 1$). Upstream $\\bar{a} = ' + (da >= 0 ? '+' : '') + da + '$ passes straight to $\\bar{z}$ and $\\bar{b}$, and multiplies by $x = ' + x + '$ to give $\\bar{w} = ' + (dw >= 0 ? '+' : '') + dw + '$.';
       }
+      renderMathIn(noteEl);
     }
 
     /* ---------- Stage 3C: Depth Regime Small Multiples ---------- */
@@ -829,19 +832,19 @@
         title: 'Sigmoid Chain (slope = 0.25)',
         factor: 0.25,
         maxCap: 1.0,
-        note: 'At 0.25 per layer, layer 8 receives upstream gradient = 1.0, layer 6 receives 0.063, and layer 1 receives 0.25^7 = 0.00006 — early layers barely move.'
+        note: 'At $0.25$ per layer, layer 8 receives upstream gradient $= 1.0$, layer 6 receives $0.063$, and layer 1 receives $0.25^7 = 0.00006$ — early layers barely move.'
       },
       {
         title: 'Exploding Chain (slope = 1.50)',
         factor: 1.5,
         maxCap: 18.0,
-        note: 'At 1.50 per layer, the gradient grows by 50% at every step backward, reaching 1.5^7 = 17.09 at layer 1 (and 3,325 across 20 layers).'
+        note: 'At $1.50$ per layer, the gradient grows by $50\\%$ at every step backward, reaching $1.5^7 = 17.09$ at layer 1 (and $3{,}325$ across $20$ layers).'
       },
       {
         title: 'Residual Highway (1 + F\' = 1.05)',
         factor: 1.05,
         maxCap: 2.0,
-        note: 'Because h_l = h_{l-1} + F(h_{l-1}) has local derivative 1 + F\', the +1 identity path keeps layer 1\'s gradient near 1.05^7 = 1.41 even across deep stacks.'
+        note: 'Because $h_\\ell = h_{\\ell-1} + F(h_{\\ell-1})$ has local derivative $1 + F\'$, the $+1$ identity path keeps layer 1\'s gradient near $1.05^7 = 1.41$ even across deep stacks.'
       }
     ];
 
@@ -851,7 +854,9 @@
         if (btn) { btn.classList.toggle('active', i === idx); }
       }
       renderDepthSmallMultiples(idx);
-      document.getElementById('depth-explain').textContent = DEPTH_REGIMES[idx].note;
+      var expEl = document.getElementById('depth-explain');
+      expEl.innerHTML = DEPTH_REGIMES[idx].note;
+      renderMathIn(expEl);
     }
 
     function renderDepthSmallMultiples(activeIdx) {

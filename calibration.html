@@ -69,9 +69,9 @@
 
     <details class="mcq-box" data-correct="B" data-topic="Calibration vs Ranking">
       <p>Model A predicts $0.20$ for all negative examples and $0.30$ for all positive examples. Model B predicts the base rate $0.50$ for every example on a balanced dataset. Which statement is true?</p>
-      <label class="mcq-option" data-explain="Model A separates positives (0.30) from negatives (0.20) with zero overlap, so its ROC-AUC is 1.0, not 0.5. However, among examples scored 0.30, 100% are positive, so it is poorly calibrated.">Model A is well calibrated but has a ROC-AUC of 0.50.</label>
-      <label class="mcq-option" data-explain="Correct. Model A ranks every positive above every negative (ROC-AUC = 1.0), even though 100% of the '0.30' group are actually positive. Model B is calibrated (50% of the '0.50' group are positive) but cannot separate the classes at all (ROC-AUC = 0.50).">Model A has a ROC-AUC of 1.00 but is miscalibrated; Model B is calibrated but has a ROC-AUC of 0.50.</label>
-      <label class="mcq-option" data-explain="ROC-AUC only checks whether positives outrank negatives. Model A's 0.30 > 0.20 gives perfect ranking.">Both models have a ROC-AUC of 0.50 because neither outputs probabilities near 0 and 1.</label>
+      <label class="mcq-option" data-explain="Model A separates positives ($0.30$) from negatives ($0.20$) with zero overlap, so its ROC-AUC is $1.00$, not $0.50$. However, among examples scored $0.30$, $100\%$ are positive, so it is poorly calibrated.">Model A is well calibrated but has a ROC-AUC of $0.50$.</label>
+      <label class="mcq-option" data-explain="Correct. Model A ranks every positive above every negative ($\text{ROC-AUC} = 1.00$), even though $100\%$ of the '$0.30$' group are actually positive. Model B is calibrated ($50\%$ of the '$0.50$' group are positive) but cannot separate the classes at all ($\text{ROC-AUC} = 0.50$).">Model A has a ROC-AUC of $1.00$ but is miscalibrated; Model B is calibrated but has a ROC-AUC of $0.50$.</label>
+      <label class="mcq-option" data-explain="ROC-AUC only checks whether positives outrank negatives. Model A's $0.30 &gt; 0.20$ gives perfect ranking.">Both models have a ROC-AUC of $0.50$ because neither outputs probabilities near $0$ and $1$.</label>
     </details>
 
     <!-- === SECTION 2 === -->
@@ -163,9 +163,9 @@
 
     <details class="mcq-box" data-correct="C" data-topic="ECE calculation">
       <p>A test set of $200$ items falls into two equal bins of $100$ items each. Bin 1 has mean confidence $0.20$ and actual positive rate $0.25$. Bin 2 has mean confidence $0.80$ and actual positive rate $0.65$. What is the Expected Calibration Error (ECE)?</p>
-      <label class="mcq-option" data-explain="Errors in opposite directions do not cancel out in ECE; each bin takes the absolute difference |acc - conf|.">0.050</label>
-      <label class="mcq-option" data-explain="0.200 is the sum of the two gaps (0.05 + 0.15). You still need to weight each gap by |B_m| / N = 100 / 200 = 0.5.">0.200</label>
-      <label class="mcq-option" data-explain="Correct. Bin 1 gap = |0.25 - 0.20| = 0.05. Bin 2 gap = |0.65 - 0.80| = 0.15. Weighted average = 0.5(0.05) + 0.5(0.15) = 0.100.">0.100</label>
+      <label class="mcq-option" data-explain="Errors in opposite directions do not cancel out in ECE; each bin takes the absolute difference $|\text{acc} - \text{conf}|$.">$0.050$</label>
+      <label class="mcq-option" data-explain="$0.200$ is the sum of the two gaps ($0.05 + 0.15$). You still need to weight each gap by $|B_m| / N = 100 / 200 = 0.5$.">$0.200$</label>
+      <label class="mcq-option" data-explain="Correct. Bin 1 gap $= |0.25 - 0.20| = 0.05$. Bin 2 gap $= |0.65 - 0.80| = 0.15$. Weighted average $= 0.5(0.05) + 0.5(0.15) = 0.100$.">$0.100$</label>
     </details>
 
     <!-- === SECTION 3 === -->
@@ -355,16 +355,16 @@ def fit_temperature(z_val, y_val):
     <!-- === COMPREHENSION CHECKS === -->
     <details class="mcq-box" data-correct="A" data-topic="Reading a Reliability Diagram">
       <p>On a reliability diagram, a model's curve sits at $y = 0.25$ when $x = 0.10$, passes through $(0.50, 0.50)$, and sits at $y = 0.75$ when $x = 0.90$. What is wrong with this model, and what temperature $T$ fixes it?</p>
-      <label class="mcq-option" data-explain="Correct. When it predicts 0.90, only 75% are positive; when it predicts 0.10, 25% are positive. Its predictions are pushed too far toward 0 and 1 (overconfident), so dividing logits by T > 1 softens them back toward 0.5.">The model is overconfident; apply temperature scaling with $T &gt; 1$.</label>
-      <label class="mcq-option" data-explain="An underconfident model would predict 0.75 when the true rate is 0.90 (sitting above the diagonal at x = 0.75). Here x = 0.90 has true rate y = 0.75, below the diagonal.">The model is underconfident; apply temperature scaling with $T &lt; 1$.</label>
-      <label class="mcq-option" data-explain="A pure prior shift bows the entire curve below (or above) the diagonal on both sides of 0.50, rather than crossing through (0.50, 0.50).">The model has a pure prior shift; temperature scaling with $T &gt; 1$ cannot help.</label>
+      <label class="mcq-option" data-explain="Correct. When it predicts $0.90$, only $75\%$ are positive; when it predicts $0.10$, $25\%$ are positive. Its predictions are pushed too far toward $0$ and $1$ (overconfident), so dividing logits by $T > 1$ softens them back toward $0.5$.">The model is overconfident; apply temperature scaling with $T &gt; 1$.</label>
+      <label class="mcq-option" data-explain="An underconfident model would predict $0.75$ when the true rate is $0.90$ (sitting above the diagonal at $x = 0.75$). Here $x = 0.90$ has true rate $y = 0.75$, below the diagonal.">The model is underconfident; apply temperature scaling with $T &lt; 1$.</label>
+      <label class="mcq-option" data-explain="A pure prior shift bows the entire curve below (or above) the diagonal on both sides of $0.50$, rather than crossing through $(0.50, 0.50)$.">The model has a pure prior shift; temperature scaling with $T &gt; 1$ cannot help.</label>
     </details>
 
     <details class="mcq-box" data-correct="C" data-topic="Choosing a Calibration Method">
       <p>You trained an XGBoost classifier with <code>scale_pos_weight=25</code> to handle a $4\%$ minority class. Your untouched validation set has $600$ rows total ($24$ positive cases). Which calibration approach should you pick?</p>
-      <label class="mcq-option" data-explain="Temperature scaling only scales logits by 1/T without an intercept term b, so it cannot undo the constant log-odds shift introduced by scale_pos_weight=25.">Temperature scaling ($T$ only) on the validation set.</label>
-      <label class="mcq-option" data-explain="With only 24 positive examples in the validation set, non-parametric isotonic regression will severely overfit into a coarse staircase.">Isotonic regression on the validation set.</label>
-      <label class="mcq-option" data-explain="Correct. Platt scaling fits just 2 parameters (slope a and intercept b), so it won't overfit on 24 positives, and its intercept b directly absorbs the log(25) prior shift.">Platt scaling ($\sigma(az + b)$) on the validation set.</label>
+      <label class="mcq-option" data-explain="Temperature scaling only scales logits by $1/T$ without an intercept term $b$, so it cannot undo the constant log-odds shift introduced by <code>scale_pos_weight=25</code>.">Temperature scaling ($T$ only) on the validation set.</label>
+      <label class="mcq-option" data-explain="With only $24$ positive examples in the validation set, non-parametric isotonic regression will severely overfit into a coarse staircase.">Isotonic regression on the validation set.</label>
+      <label class="mcq-option" data-explain="Correct. Platt scaling fits just $2$ parameters (slope $a$ and intercept $b$), so it won't overfit on $24$ positives, and its intercept $b$ directly absorbs the $\ln(25)$ prior shift.">Platt scaling ($\sigma(az + b)$) on the validation set.</label>
     </details>
 
     <div class="score-bar"></div>

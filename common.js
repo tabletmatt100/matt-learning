@@ -109,27 +109,27 @@ var SHARED_GLOSSARY = {
   },
   'confusion-matrix': {
     title: 'Confusion matrix',
-    body: 'A 2x2 table (for binary problems) counting true positives, false negatives, false positives and true negatives. Every threshold-based metric is some formula of these four numbers.'
+    body: 'A $2 \\times 2$ table (for binary problems) counting true positives ($TP$), false negatives ($FN$), false positives ($FP$) and true negatives ($TN$). Every threshold-based metric is some formula of these four numbers.'
   },
   'balanced-accuracy': {
     title: 'Balanced accuracy',
-    body: 'The average of per-class recall. For binary problems, $(\\text{TPR} + \\text{TNR})/2$. Random or constant predictions score 0.5 regardless of imbalance.'
+    body: 'The average of per-class recall. For binary problems, $(\\text{TPR} + \\text{TNR})/2$. Random or constant predictions score $0.5$ regardless of imbalance.'
   },
   'mcc': {
     title: 'Matthews correlation coefficient (MCC)',
-    body: 'The Pearson correlation between predicted and true binary labels. Ranges from -1 (always wrong) through 0 (chance) to 1 (perfect). It only gets high when all four confusion-matrix cells are good, which makes it hard to game with imbalance.'
+    body: 'The Pearson correlation between predicted and true binary labels. Ranges from $-1$ (always wrong) through $0$ (chance) to $+1$ (perfect). It only gets high when all four confusion-matrix cells are good, which makes it hard to game with imbalance.'
   },
   'roc-auc': {
     title: 'ROC-AUC',
-    body: 'Area under the curve of <span class="term" data-term="tpr">true positive rate</span> vs <span class="term" data-term="fpr">false positive rate</span> as the threshold sweeps. Equals the probability that a random positive gets a higher score than a random negative. Random = 0.5 at any imbalance, which makes it look flattering when negatives vastly outnumber positives.'
+    body: 'Area under the curve of <span class="term" data-term="tpr">true positive rate</span> vs <span class="term" data-term="fpr">false positive rate</span> as the threshold sweeps. Equals the probability that a random positive gets a higher score than a random negative. Random $= 0.5$ at any imbalance, which makes it look flattering when negatives vastly outnumber positives.'
   },
   'pr-auc': {
     title: 'PR-AUC (average precision)',
-    body: 'Area under the precision-recall curve. A random scorer gets PR-AUC equal to the positive rate (0.01 for 1% fraud), so always compare to that baseline. More sensitive than ROC-AUC to false positives on imbalanced data. In sklearn: <code>average_precision_score</code>.'
+    body: 'Area under the precision-recall curve. A random scorer gets PR-AUC equal to the positive rate ($0.01$ for $1\\%$ fraud), so always compare to that baseline. More sensitive than ROC-AUC to false positives on imbalanced data. In sklearn: <code>average_precision_score</code>.'
   },
   'base-rate': {
     title: 'Base rate (prevalence)',
-    body: 'The fraction of all cases that are positive, before looking at any features. In the running fraud example it is 100 / 10,000 = 1%. Also called the prior, written $\\pi$.'
+    body: 'The fraction of all cases that are positive, before looking at any features. In the running fraud example it is $100 / 10{,}000 = 1\\%$. Also called the prior, written $\\pi$.'
   },
   'stratified': {
     title: 'Stratified split',
@@ -141,7 +141,7 @@ var SHARED_GLOSSARY = {
   },
   'threshold': {
     title: 'Decision threshold',
-    body: 'The cutoff $t$ that turns a score into a label: predict positive when score $\\ge t$. The default 0.5 is only optimal when both kinds of mistake cost the same and the scores are calibrated.'
+    body: 'The cutoff $t$ that turns a score into a label: predict positive when score $\\ge t$. The default $0.5$ is only optimal when both kinds of mistake cost the same and the scores are calibrated.'
   },
   'class-weight': {
     title: 'Class weights',
@@ -153,15 +153,15 @@ var SHARED_GLOSSARY = {
   },
   'smote': {
     title: 'SMOTE',
-    body: 'Synthetic Minority Over-sampling Technique (Chawla et al., 2002). Creates new minority examples by interpolating between a minority point and one of its $k$ nearest minority neighbours: $x_i + \\lambda(x_{nn}-x_i)$, $\\lambda \\in [0,1]$.'
+    body: 'Synthetic Minority Over-sampling Technique (Chawla et al., 2002). Creates new minority examples by interpolating between a minority point and one of its $k$ nearest minority neighbours: $x_i + \\lambda(x_{\\text{nn}}-x_i)$, $\\lambda \\in [0,1]$.'
   },
   'calibration': {
     title: 'Calibration',
-    body: 'A model is calibrated if, among all cases it gives probability 0.2, about 20% are positive. Ranking metrics like AUC ignore calibration entirely. Resampling, class weights and focal loss all break it.'
+    body: 'A model is calibrated if, among all cases it gives probability $0.20$, about $20\\%$ are positive. Ranking metrics like AUC ignore calibration entirely. Resampling, class weights and focal loss all break it.'
   },
   'logit': {
     title: 'Logit (log-odds)',
-    body: '$\\text{logit}(p) = \\ln\\frac{p}{1-p}$. Maps probabilities in (0, 1) to the whole real line. $\\text{logit}(0.5) = 0$, $\\text{logit}(0.01) \\approx -4.595$. Its inverse is the sigmoid $\\sigma(z) = 1/(1+e^{-z})$.'
+    body: '$\\text{logit}(p) = \\ln\\frac{p}{1-p}$. Maps probabilities in $(0, 1)$ to the whole real line. $\\text{logit}(0.5) = 0$, $\\text{logit}(0.01) \\approx -4.595$. Its inverse is the sigmoid $\\sigma(z) = 1/(1+e^{-z})$.'
   }
 };
 
@@ -250,7 +250,10 @@ function showTerm(key, pushCurrent) {
     popHistory.push(popBox.getAttribute('data-key'));
   }
   popBox.setAttribute('data-key', key);
-  if (popTitle) { popTitle.textContent = g.title; }
+  if (popTitle) {
+    popTitle.innerHTML = g.title;
+    renderMathIn(popTitle);
+  }
   var html = '<p style="margin:0;">' + g.body + '</p>';
   if (g.more) {
     html += '<div><a class="more-link" href="' + g.more.href + '">More: ' + g.more.label + ' &rarr;</a></div>';

@@ -45,7 +45,7 @@
     </div>
 
     <p>
-      <em>Tip: Tap any highlighted concept or mathematical symbol (like <span class="term" data-term="state">$S_t$</span>, <span class="term" data-term="discount-factor">$\gamma$</span>, <span class="term" data-term="return">$G_t$</span>, or <span class="term" data-term="td-error">$\delta_t$</span>) anywhere on this page to open an explanation popover. Every calculation and question uses mental-math numbers—no calculator needed.</em>
+      <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="state">$S_t$</span>, <span class="term" data-term="discount-factor">$\gamma$</span>, <span class="term" data-term="return">$G_t$</span>, or <span class="term" data-term="td-error">$\delta_t$</span>) anywhere on this page to open an explanation popover. Every calculation and question uses mental-math numbers—no calculator needed.</em>
     </p>
 
     <div class="table-wrap">
@@ -410,9 +410,9 @@
     <details class="mcq-box" id="mcq-1" data-correct="C" data-topic="Reward Design: Reward Hacking">
       <summary class="mcq-title"></summary>
       <p>You program a cleaning robot to get <code>+5</code> points every time it sweeps up a pile of dust, with <code>0</code> penalty for dumping dust back out of its bin. What will an RL agent eventually learn to do?</p>
-      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="An RL agent does not know your unstated human intent; it only maximizes the numerical return G_t.">A) Clean the room once and turn itself off.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="An RL agent does not know your unstated human intent; it only maximizes the numerical return $G_t$.">A) Clean the room once and turn itself off.</label>
       <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="The learning algorithm works fine—it finds the exact behavior that scores the most points under your broken rule.">B) Freeze in place because the reward is too large.</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. This is reward hacking: dumping the same dust and sweeping it back up over and over yields infinite +5 rewards.">C) Dump the dust on the floor and sweep it up repeatedly forever (<span class="term" data-term="reward-hacking">reward hacking</span>).</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. This is reward hacking: dumping the same dust and sweeping it back up over and over yields infinite $+5$ rewards.">C) Dump the dust on the floor and sweep it up repeatedly forever (<span class="term" data-term="reward-hacking">reward hacking</span>).</label>
       <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -420,9 +420,9 @@
     <details class="mcq-box" id="mcq-2" data-correct="A" data-topic="Mental Math: Negative TD Error">
       <summary class="mcq-title"></summary>
       <p>A robot thinks Tile 1 is worth <span class="term" data-term="value-function">$V(S_1) = 12$</span>. It steps to Tile 2, gets <span class="term" data-term="reward">$R_2 = 0$</span>, and sees Tile 2 is worth <span class="term" data-term="value-function">$V(S_2) = 16$</span> (with <span class="term" data-term="discount-factor">$\gamma = 0.5$</span>). What is the one-step target, and does Tile 1's score go up or down?</p>
-      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Target is 0 + (0.5 * 16) = 8. Since 8 is less than the old expectation of 12, the TD error is 8 - 12 = -4, pulling Tile 1's score down.">A) Target is $8$; Tile 1's score goes <strong>down</strong> because <span class="term" data-term="td-error">$\delta_1 = 8 - 12 = -4$</span>.</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Tile 2's raw score is 16, but after discounting by gamma = 0.5, it is only worth 8 from Tile 1's perspective.">B) Target is $16$; Tile 1's score goes <strong>up</strong> because $16 &gt; 12$.</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Even when immediate reward R_2 is 0, the discounted neighbor value (8) differs from V(S_1) = 12, so V(S_1) still updates.">C) Tile 1 stays at $12$ because the immediate reward <span class="term" data-term="reward">$R_2$</span> was $0$.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Target is $0 + (0.5 \times 16) = 8$. Since $8$ is less than the old expectation of $12$, the TD error is $\delta_1 = 8 - 12 = -4$, pulling Tile 1's score down.">A) Target is $8$; Tile 1's score goes <strong>down</strong> because <span class="term" data-term="td-error">$\delta_1 = 8 - 12 = -4$</span>.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Tile 2's raw score is $16$, but after discounting by $\gamma = 0.5$, it is only worth $8$ from Tile 1's perspective.">B) Target is $16$; Tile 1's score goes <strong>up</strong> because $16 &gt; 12$.</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Even when immediate reward $R_2$ is $0$, the discounted neighbor value ($8$) differs from $V(S_1) = 12$, so $V(S_1)$ still updates.">C) Tile 1 stays at $12$ because the immediate reward <span class="term" data-term="reward">$R_2$</span> was $0$.</label>
       <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -430,9 +430,9 @@
     <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="Conceptual: V(s) vs Q(s,a)">
       <summary class="mcq-title"></summary>
       <p>Why do control algorithms like <span class="term" data-term="q-function">Q-Learning</span> learn <span class="term" data-term="q-function">$Q(s, a)$</span> instead of only learning state values <span class="term" data-term="value-function">$V(s)$</span>?</p>
-      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Q(s,a) actually has more entries than V(s) because it stores a score for every action in every state.">A) Because <span class="term" data-term="q-function">$Q(s, a)$</span> takes less memory to store than <span class="term" data-term="value-function">$V(s)$</span>.</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. V(s) only scores the tile; Q(s,a) scores each specific action at that tile so the agent can immediately pick the highest-scoring move.">B) Because <span class="term" data-term="q-function">$Q(s, a)$</span> scores each action directly, letting the agent pick the best move without needing a physics model of which tile each action leads to.</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Both V(s) and Q(s,a) use the exact same discount factor gamma.">C) Because <span class="term" data-term="value-function">$V(s)$</span> cannot use a discount factor <span class="term" data-term="discount-factor">$\gamma$</span>.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="$Q(s,a)$ actually has more entries than $V(s)$ because it stores a score for every action in every state.">A) Because <span class="term" data-term="q-function">$Q(s, a)$</span> takes less memory to store than <span class="term" data-term="value-function">$V(s)$</span>.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. $V(s)$ only scores the tile; $Q(s,a)$ scores each specific action at that tile so the agent can immediately pick the highest-scoring move.">B) Because <span class="term" data-term="q-function">$Q(s, a)$</span> scores each action directly, letting the agent pick the best move without needing a physics model of which tile each action leads to.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Both $V(s)$ and $Q(s,a)$ use the exact same discount factor $\gamma$.">C) Because <span class="term" data-term="value-function">$V(s)$</span> cannot use a discount factor <span class="term" data-term="discount-factor">$\gamma$</span>.</label>
       <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -474,19 +474,19 @@
       'credit-assignment': { title: 'Credit Assignment Problem', body: 'The core puzzle in <span class="term" data-term="rl">RL</span>: when a big <span class="term" data-term="reward">reward</span> arrives at the end of a long sequence of moves, figuring out which earlier <span class="term" data-term="action">actions</span> deserved the credit (or blame).' },
       'agent': { title: 'Agent', body: 'The learner and decision-maker (e.g., our warehouse robot or an LLM) that reads the current <span class="term" data-term="state">state $S_t$</span> and chooses an <span class="term" data-term="action">action $A_t$</span>.' },
       'environment': { title: 'Environment', body: 'The world outside the <span class="term" data-term="agent">agent</span> (e.g., the warehouse hallway or game rules). It takes the agent\'s <span class="term" data-term="action">action $A_t$</span> and emits the next <span class="term" data-term="state">state $S_{t+1}$</span> and <span class="term" data-term="reward">reward $R_{t+1}$</span>.' },
-      'time-step': { title: 'Time Step (t)', body: 'A discrete turn counter ($t = 0, 1, 2, \\dots$) tracking each decision in a sequence.' },
-      'state': { title: 'State (S_t)', body: 'The situation the <span class="term" data-term="agent">agent</span> is in at step <span class="term" data-term="time-step">$t$</span> (such as standing on Tile 1). In an <span class="term" data-term="mdp">MDP</span>, $S_t$ contains everything needed to predict what happens next.' },
-      'action': { title: 'Action (A_t)', body: 'The move selected by the <span class="term" data-term="agent">agent</span> at step <span class="term" data-term="time-step">$t$</span> (such as Move Left or Move Right), chosen according to its <span class="term" data-term="policy">policy $\\pi$</span>.' },
-      'reward': { title: 'Immediate Reward (R_{t+1})', body: 'A single score number handed to the <span class="term" data-term="agent">agent</span> right after taking <span class="term" data-term="action">action $A_t$</span>. Good long-term moves often pay $R_{t+1} = 0$ immediately and only pay off later.' },
-      'return': { title: 'Discounted Return (G_t)', body: 'The total future score starting from step <span class="term" data-term="time-step">$t$</span>, where each step of delay is multiplied by the <span class="term" data-term="discount-factor">discount factor $\\gamma$</span>: $G_t = R_{t+1} + \\gamma G_{t+1}$.' },
-      'discount-factor': { title: 'Discount Factor (gamma)', body: 'A number $\\gamma \\in [0, 1]$ controlling patience. At $\\gamma = 0.5$, every step of delay cuts a future <span class="term" data-term="reward">reward</span> in half. Closer to $1$ means more patient.' },
-      'learning-rate': { title: 'Learning Rate (alpha)', body: 'A fraction $\\alpha \\in (0, 1]$ controlling how strongly a single surprise (<span class="term" data-term="td-error">TD error $\\delta_t$</span>) updates the scorecard. At $\\alpha = 0.5$, we move halfway toward the new target.' },
+      'time-step': { title: 'Time Step ($t$)', body: 'A discrete turn counter ($t = 0, 1, 2, \\dots$) tracking each decision in a sequence.' },
+      'state': { title: 'State ($S_t$)', body: 'The situation the <span class="term" data-term="agent">agent</span> is in at step <span class="term" data-term="time-step">$t$</span> (such as standing on Tile 1). In an <span class="term" data-term="mdp">MDP</span>, $S_t$ contains everything needed to predict what happens next.' },
+      'action': { title: 'Action ($A_t$)', body: 'The move selected by the <span class="term" data-term="agent">agent</span> at step <span class="term" data-term="time-step">$t$</span> (such as Move Left or Move Right), chosen according to its <span class="term" data-term="policy">policy $\\pi$</span>.' },
+      'reward': { title: 'Immediate Reward ($R_{t+1}$)', body: 'A single score number handed to the <span class="term" data-term="agent">agent</span> right after taking <span class="term" data-term="action">action $A_t$</span>. Good long-term moves often pay $R_{t+1} = 0$ immediately and only pay off later.' },
+      'return': { title: 'Discounted Return ($G_t$)', body: 'The total future score starting from step <span class="term" data-term="time-step">$t$</span>, where each step of delay is multiplied by the <span class="term" data-term="discount-factor">discount factor $\\gamma$</span>: $G_t = R_{t+1} + \\gamma G_{t+1}$.' },
+      'discount-factor': { title: 'Discount Factor ($\\gamma$)', body: 'A number $\\gamma \\in [0, 1]$ controlling patience. At $\\gamma = 0.5$, every step of delay cuts a future <span class="term" data-term="reward">reward</span> in half. Closer to $1$ means more patient.' },
+      'learning-rate': { title: 'Learning Rate ($\\alpha$)', body: 'A fraction $\\alpha \\in (0, 1]$ controlling how strongly a single surprise (<span class="term" data-term="td-error">TD error $\\delta_t$</span>) updates the scorecard. At $\\alpha = 0.5$, we move halfway toward the new target.' },
       'mdp': { title: 'Markov Decision Process (MDP)', body: 'The standard blueprint for an <span class="term" data-term="rl">RL</span> problem: states $S$, actions $A$, rewards $R$, transition rules, and <span class="term" data-term="discount-factor">discount factor $\\gamma$</span>.' },
-      'policy': { title: 'Policy (pi)', body: 'The <span class="term" data-term="agent">agent</span>\'s strategy or rulebook: $\\pi(a \\mid s)$ gives the probability of picking <span class="term" data-term="action">action $a$</span> when in <span class="term" data-term="state">state $s$</span>.' },
-      'value-function': { title: 'State-Value Scorecard V(s)', body: 'The expected <span class="term" data-term="return">discounted return $G_t$</span> starting from <span class="term" data-term="state">state $s$</span> if the agent follows its <span class="term" data-term="policy">policy $\\pi$</span>.' },
-      'q-function': { title: 'Action-Value Scorecard Q(s, a)', body: 'The expected <span class="term" data-term="return">discounted return $G_t$</span> if you take specific <span class="term" data-term="action">action $a$</span> in <span class="term" data-term="state">state $s$</span>. Unlike <span class="term" data-term="value-function">$V(s)$</span>, $Q(s,a)$ lets you compare moves directly.' },
+      'policy': { title: 'Policy ($\\pi$)', body: 'The <span class="term" data-term="agent">agent</span>\'s strategy or rulebook: $\\pi(a \\mid s)$ gives the probability of picking <span class="term" data-term="action">action $a$</span> when in <span class="term" data-term="state">state $s$</span>.' },
+      'value-function': { title: 'State-Value Scorecard $V(s)$', body: 'The expected <span class="term" data-term="return">discounted return $G_t$</span> starting from <span class="term" data-term="state">state $s$</span> if the agent follows its <span class="term" data-term="policy">policy $\\pi$</span>.' },
+      'q-function': { title: 'Action-Value Scorecard $Q(s, a)$', body: 'The expected <span class="term" data-term="return">discounted return $G_t$</span> if you take specific <span class="term" data-term="action">action $a$</span> in <span class="term" data-term="state">state $s$</span>. Unlike <span class="term" data-term="value-function">$V(s)$</span>, $Q(s,a)$ lets you compare moves directly.' },
       'td-target': { title: 'One-Step TD Target', body: 'The one-step reality check $R_{t+1} + \\gamma V(S_{t+1})$: what you actually got on this step plus the discounted scorecard of the neighbor you landed on.' },
-      'td-error': { title: 'TD Error (delta_t)', body: 'The one-step prediction surprise: $\\delta_t = [R_{t+1} + \\gamma V(S_{t+1})] - V(S_t)$. Positive $\\delta_t$ means the move went better than expected; negative means worse.' },
+      'td-error': { title: 'TD Error ($\\delta_t$)', body: 'The one-step prediction surprise: $\\delta_t = [R_{t+1} + \\gamma V(S_{t+1})] - V(S_t)$. Positive $\\delta_t$ means the move went better than expected; negative means worse.' },
       'td-learning': { title: 'Temporal-Difference (TD) Learning', body: 'Updating a state\'s scorecard after just one step using <span class="term" data-term="bootstrapping">bootstrapping</span> ($R_{t+1} + \\gamma V(S_{t+1})$), rather than waiting for the episode to end.' },
       'bootstrapping': { title: 'Bootstrapping', body: 'Updating a scorecard estimate using another scorecard estimate (such as updating Tile 1 using Tile 2\'s current score $V(S_2)$) instead of waiting for the final end-of-episode total.' },
       'monte-carlo': { title: 'Monte Carlo (MC) Learning', body: 'Waiting until an episode completely finishes, computing the actual <span class="term" data-term="return">return $G_t$</span>, and updating each visited state toward $G_t$. No <span class="term" data-term="bootstrapping">bootstrapping</span>.' },
@@ -550,17 +550,17 @@
       {
         title: 'Run 1: Tile 2 Sees Dock',
         vals: [0, 40, 80],
-        note: 'All tiles start at 0. On Run 1, stepping Tile 1 -> Tile 2 sees 0, so Tile 1 stays at 0. Then stepping Tile 2 -> Dock (+80) has target = 80. With alpha = 0.5, Tile 2 jumps halfway from 0 to 80: V(Tile 2) = 40.'
+        note: 'All tiles start at $0$. On Run 1, stepping Tile 1 $\\to$ Tile 2 sees $0$, so Tile 1 stays at $0$. Then stepping Tile 2 $\\to$ Dock ($+80$) has target $= 80$. With $\\alpha = 0.5$, Tile 2 jumps halfway from $0$ to $80$: $V(\\text{Tile 2}) = 40$.'
       },
       {
         title: 'Run 2: Tile 1 Sees Tile 2',
         vals: [10, 60, 80],
-        note: 'On Run 2, Tile 1 steps onto Tile 2 (which is now worth 40!). With gamma = 0.5, the target for Tile 1 is 0 + 0.5 * 40 = 20. Moving halfway (alpha = 0.5) from 0 toward 20 gives V(Tile 1) = 10. Value has marched one tile backward!'
+        note: 'On Run 2, Tile 1 steps onto Tile 2 (now worth $40$). With $\\gamma = 0.5$, the target for Tile 1 is $0 + 0.5 \\times 40 = 20$. Moving halfway ($\\alpha = 0.5$) from $0$ toward $20$ gives $V(\\text{Tile 1}) = 10$. Value has marched one tile backward!'
       },
       {
         title: 'Converged Scorecard',
         vals: [40, 80, 80],
-        note: 'After several runs, every tile settles at its exact discounted value: Tile 2 is 1 step from +80 (worth 80), and Tile 1 is 1 step before Tile 2 (0.5 * 80 = 40).'
+        note: 'After several runs, every tile settles at its exact discounted value: Tile 2 is $1$ step from $+80$ ($V = 80$), and Tile 1 is $1$ step before Tile 2 ($0.5 \\times 80 = 40$).'
       }
     ];
 
@@ -570,7 +570,9 @@
         document.getElementById('step-btn-' + i).classList.toggle('active', i === idx);
       }
       renderSmallMultiples(idx);
-      document.getElementById('step-explain').textContent = TD_SNAPSHOTS[idx].note;
+      var exp = document.getElementById('step-explain');
+      exp.innerHTML = TD_SNAPSHOTS[idx].note;
+      renderMathIn(exp);
       if (Object.keys(stepsVisited).length === 3) { unlockSlider(); }
     }
 
@@ -642,10 +644,10 @@
 
     var SPACED_CARDS = [
       { q: 'What is the Credit Assignment Problem in RL?', a: 'When a reward arrives after a sequence of moves, figuring out which earlier actions actually caused that outcome.' },
-      { q: 'If a +80 reward is delayed by 2 steps and gamma = 0.5, what is it worth today?', a: '20 (step 1 cuts 80 in half to 40; step 2 cuts 40 in half to 20).' },
-      { q: 'What is the 1-step TD error (delta_t) in plain English?', a: 'The surprise between the 1-step target [R_{t+1} + gamma * V(S_{t+1})] and your old scorecard estimate V(S_t).' },
-      { q: 'What does bootstrapping mean in TD learning?', a: 'Updating a state\'s scorecard after one step using the neighboring state\'s current scorecard estimate V(S_{t+1}) instead of waiting for the episode to end.' },
-      { q: 'Why do we need Q(s, a) instead of just V(s) to pick actions?', a: 'V(s) only scores how good a tile is; Q(s, a) scores each specific move from that tile so you can pick the move with the highest score.' }
+      { q: 'If a $+80$ reward is delayed by $2$ steps and $\\gamma = 0.5$, what is it worth today?', a: '$20$ (step $1$ cuts $80$ in half to $40$; step $2$ cuts $40$ in half to $20$).' },
+      { q: 'What is the 1-step TD error ($\\delta_t$) in plain English?', a: 'The surprise between the 1-step target $R_{t+1} + \\gamma V(S_{t+1})$ and your old scorecard estimate $V(S_t)$.' },
+      { q: 'What does bootstrapping mean in TD learning?', a: 'Updating a state\'s scorecard after one step using the neighboring state\'s current scorecard estimate $V(S_{t+1})$ instead of waiting for the episode to end.' },
+      { q: 'Why do we need $Q(s, a)$ instead of just $V(s)$ to pick actions?', a: '$V(s)$ only scores how good a tile is; $Q(s, a)$ scores each specific move from that tile so you can pick the move with the highest score.' }
     ];
 
     document.addEventListener('DOMContentLoaded', function () {

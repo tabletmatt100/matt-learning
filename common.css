@@ -383,16 +383,17 @@ summary {
 /* ---------- Anchored Concept & Symbol Popovers ---------- */
 .term {
   border-bottom: 2px dotted var(--border);
-  background: var(--highlight-bg);
-  font-weight: 600;
+  background: transparent;
+  font-weight: inherit;
   cursor: pointer;
-  padding: 1px 4px;
-  border-radius: 2px;
-  display: inline-block;
+  padding: 0;
+  border-radius: 0;
+  display: inline;
+  text-decoration: none;
 }
 
 .term:focus { outline: 2px solid var(--border); }
-.term:active, .term.term-open { background: var(--active-bg); color: var(--active-text); }
+.term:active, .term.term-open { border-bottom: 2px solid var(--border); font-weight: bold; }
 
 #popover-backdrop {
   display: none !important;

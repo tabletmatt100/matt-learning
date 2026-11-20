@@ -44,7 +44,7 @@
     </div>
 
     <p>
-      <em>Tip: Tap any highlighted concept or mathematical symbol (like <span class="term" data-term="learning-rate">$\eta$</span>, <span class="term" data-term="gradient">$g_t$</span>, <span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span>, <span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span>, or <span class="term" data-term="weight-decay">$\lambda$</span>) to open an anchored explanation popover. Every question and worked example uses mental-math numbers—no calculator needed.</em>
+      <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="learning-rate">$\eta$</span>, <span class="term" data-term="gradient">$g_t$</span>, <span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span>, <span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span>, or <span class="term" data-term="weight-decay">$\lambda$</span>) to open an anchored explanation popover. Every question and worked example uses mental-math numbers—no calculator needed.</em>
     </p>
 
     <div class="table-wrap">
@@ -202,9 +202,9 @@
       <details class="mcq-box" id="mcq-lr" data-correct="C" data-topic="Mental Math: Learning Rate Overshoot">
         <summary class="mcq-title"></summary>
         <p>On the parabola <span class="term" data-term="loss-function">$\mathcal{L}(w) = w^2$</span> starting at <span class="term" data-term="weight">$w_0 = 5$</span> (where <span class="term" data-term="gradient">$g_0 = 2w_0 = 10$</span>), you set <span class="term" data-term="learning-rate">$\eta = 0.8$</span>. Where does $w_1 = w_0 - \eta g_0$ land, and why?</p>
-        <label class="mcq-option"><input type="radio" name="qlr" value="A" data-explain="w_1 = +1 would come from eta = 0.4 (5 - 0.4*10 = 1), which stays on the positive side without crossing zero.">A) $w_1 = +1$ (smooth decay without crossing $0$)</label>
-        <label class="mcq-option"><input type="radio" name="qlr" value="B" data-explain="To explode past -5, eta would need to exceed 1.0.">B) $w_1 = -10$ (diverging explosion)</label>
-        <label class="mcq-option"><input type="radio" name="qlr" value="C" data-explain="Correct. The step is 0.8 * 10 = 8, so w_1 = 5 - 8 = -3. Because 0.5 < eta < 1.0, it overshoots across the valley floor (0) to the opposite wall (-3), though it still shrinks closer to 0 than +5.">C) $w_1 = -3$ (overshoots across $0$ to the opposite wall, damped oscillation)</label>
+        <label class="mcq-option"><input type="radio" name="qlr" value="A" data-explain="$w_1 = +1$ would come from $\eta = 0.4$ ($5 - 0.4 \times 10 = 1$), which stays on the positive side without crossing zero.">A) $w_1 = +1$ (smooth decay without crossing $0$)</label>
+        <label class="mcq-option"><input type="radio" name="qlr" value="B" data-explain="To explode past $-5$, $\eta$ would need to exceed $1.0$.">B) $w_1 = -10$ (diverging explosion)</label>
+        <label class="mcq-option"><input type="radio" name="qlr" value="C" data-explain="Correct. The step is $0.8 \times 10 = 8$, so $w_1 = 5 - 8 = -3$. Because $0.5 < \eta < 1.0$, it overshoots across the valley floor ($0$) to the opposite wall ($-3$), though it still shrinks closer to $0$ than $+5$.">C) $w_1 = -3$ (overshoots across $0$ to the opposite wall, damped oscillation)</label>
         <button class="btn" onclick="checkMCQ('mcq-lr')">Check answer</button>
         <div class="mcq-feedback"></div>
       </details>
@@ -553,9 +553,9 @@
     <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="Interleaved: Gradient Accumulation & Memory">
       <summary class="mcq-title"></summary>
       <p>Your GPU runs out of memory at batch size $32$, and the largest micro-batch that fits in VRAM is <span class="term" data-term="micro-batch">$B_{\text{micro}} = 4$</span>. How many <span class="term" data-term="gradient-accumulation">gradient accumulation steps $K$</span> do you need to match an <span class="term" data-term="effective-batch-size">effective batch size of $B_{\text{eff}} = 32$</span>?</p>
-      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="K = 4 would give B_eff = 4 * 4 = 16.">A) $K = 4$ steps</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Correct. Since B_eff = B_micro * K, setting K = 32 / 4 = 8 accumulates 8 micro-batches of 4 examples before each weight update.">B) $K = 8$ steps (since $4 \times 8 = 32$)</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="K = 32 would give an effective batch size of 4 * 32 = 128.">C) $K = 32$ steps</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="$K = 4$ would give $B_{\text{eff}} = 4 \times 4 = 16$.">A) $K = 4$ steps</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="Correct. Since $B_{\text{eff}} = B_{\text{micro}} \times K$, setting $K = 32 / 4 = 8$ accumulates $8$ micro-batches of $4$ examples before each weight update.">B) $K = 8$ steps (since $4 \times 8 = 32$)</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="$K = 32$ would give an effective batch size of $4 \times 32 = 128$.">C) $K = 32$ steps</label>
       <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -563,9 +563,9 @@
     <details class="mcq-box" id="mcq-2" data-correct="A" data-topic="Interleaved: Mental Math on Gradient Clipping">
       <summary class="mcq-title"></summary>
       <p>A two-parameter layer receives a spike gradient <span class="term" data-term="gradient">$g = [3, 4]$</span> (so its L2 norm is <span class="term" data-term="grad-norm">$\lVert g \rVert_2 = \sqrt{3^2 + 4^2} = 5$</span>). If your <span class="term" data-term="gradient-clipping">gradient clipping</span> threshold is <span class="term" data-term="clip-threshold">$c = 10$</span>, what is the clipped gradient <span class="term" data-term="clipped-grad">$\tilde{g}$</span>?</p>
-      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because the gradient norm (5) is already below the threshold (c = 10), min(1, 10/5) = 1, leaving [3, 4] untouched.">A) $[3, 4]$ (untouched because $\lVert g \rVert_2 = 5 \le 10$)</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Gradient clipping never amplifies gradients that are below the threshold c; it takes min(1, c / ||g||).">B) $[6, 8]$ (scaled up to match length $10$)</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Dividing by 2 happens only when ||g|| is twice as large as c (e.g. ||g|| = 10 and c = 5).">C) $[1.5, 2.0]$ (halved)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because the gradient norm ($5$) is already below the threshold ($c = 10$), $\min(1, 10/5) = 1$, leaving $[3, 4]$ untouched.">A) $[3, 4]$ (untouched because $\lVert g \rVert_2 = 5 \le 10$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="Gradient clipping never amplifies gradients that are below the threshold $c$; it takes $\min(1, c / \lVert g \rVert_2)$.">B) $[6, 8]$ (scaled up to match length $10$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="Dividing by $2$ happens only when $\lVert g \rVert_2$ is twice as large as $c$ (e.g. $\lVert g \rVert_2 = 10$ and $c = 5$).">C) $[1.5, 2.0]$ (halved)</label>
       <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -573,9 +573,9 @@
     <details class="mcq-box" id="mcq-3" data-correct="C" data-topic="Interleaved: Why AdamW Beats L2 in Adaptive Optimizers">
       <summary class="mcq-title"></summary>
       <p>Why does <span class="term" data-term="adamw">AdamW</span> decouple <span class="term" data-term="weight-decay">weight decay ($\lambda$)</span> from the gradient step instead of adding $\frac{\lambda}{2}w^2$ (<span class="term" data-term="l2-regularization">L2 penalty</span>) to the loss function?</p>
-      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Computing lambda * w takes the exact same arithmetic either way; the difference is mathematical, not speed.">A) Because computing $\lambda w^2$ inside the loss is too slow on GPUs.</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="AdamW still uses both m_t (first moment) and v_t (second moment) for the gradient step.">B) Because AdamW removes the second-moment variance tracker <span class="term" data-term="second-moment">$v_t$</span>.</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Correct. In Adam, anything added to the gradient gets divided by sqrt(v_t), so weights with large historical gradients get less weight decay. Decoupling shrinks every weight by the uniform fraction eta * lambda.">C) Because L2 regularization gets divided by <span class="term" data-term="second-moment">$\sqrt{\hat{v}_t}$</span>, which unfairly weakens weight decay on weights with large historical gradients.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Computing $\lambda w$ takes the exact same arithmetic either way; the difference is mathematical, not speed.">A) Because computing $\lambda w^2$ inside the loss is too slow on GPUs.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="AdamW still uses both $m_t$ (first moment) and $v_t$ (second moment) for the gradient step.">B) Because AdamW removes the second-moment variance tracker <span class="term" data-term="second-moment">$v_t$</span>.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Correct. In Adam, anything added to the gradient gets divided by $\sqrt{\hat{v}_t}$, so weights with large historical gradients get less weight decay. Decoupling shrinks every weight by the uniform fraction $\eta \lambda$.">C) Because L2 regularization gets divided by <span class="term" data-term="second-moment">$\sqrt{\hat{v}_t}$</span>, which unfairly weakens weight decay on weights with large historical gradients.</label>
       <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -584,7 +584,7 @@
       <summary class="mcq-title"></summary>
       <p>You launch a Transformer run with <span class="term" data-term="adamw">AdamW</span> at peak learning rate <span class="term" data-term="learning-rate">$\eta = 3 \times 10^{-4}$</span> and <strong>zero warmup steps ($W = 0$)</strong>. On step 15, the training loss spikes from $9.2$ to $48.0$ and never recovers. What is the primary mechanism behind that early crash?</p>
       <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Overfitting happens late in training when training loss is low and validation loss rises, not on step 15.">A) The model memorized the training set on step 15 (<span class="term" data-term="overfitting">overfitting</span>).</label>
-      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="Correct. In the first few steps, AdamW's second-moment estimate v_t is computed from only a handful of noisy batches, producing erratic adaptive step sizes if hit with the full peak learning rate.">B) <span class="term" data-term="adamw">AdamW</span>'s variance estimate <span class="term" data-term="second-moment">$v_t$</span> is unreliable in the first few steps, so taking full $\eta_{\max}$ steps without <span class="term" data-term="warmup">warmup</span> destabilizes the weights.</label>
+      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="Correct. In the first few steps, AdamW's second-moment estimate $v_t$ is computed from only a handful of noisy batches, producing erratic adaptive step sizes if hit with the full peak learning rate $\eta_{\max}$.">B) <span class="term" data-term="adamw">AdamW</span>'s variance estimate <span class="term" data-term="second-moment">$v_t$</span> is unreliable in the first few steps, so taking full $\eta_{\max}$ steps without <span class="term" data-term="warmup">warmup</span> destabilizes the weights.</label>
       <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="Cosine decay only lowers the learning rate late in training; it does not prevent step-15 cold-start spikes unless paired with warmup.">C) You forgot to turn on cosine decay at the end of training.</label>
       <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
       <div class="mcq-feedback"></div>
@@ -615,55 +615,55 @@
   <script>
     var GLOSSARY = {
       'learning-rate': {
-        title: 'Learning Rate (eta or LR)',
+        title: 'Learning Rate ($\\eta$ or LR)',
         body: 'The step-size multiplier $\\eta$ applied to the <span class="term" data-term="gradient">gradient $g_t$</span> during each parameter update ($w_{t+1} = w_t - \\eta g_t$). Too small stalls training; above $2/\\text{curvature}$ causes diverging oscillation.'
       },
       'peak-lr': {
-        title: 'Peak Learning Rate (eta_max)',
+        title: 'Peak Learning Rate ($\\eta_{\\max}$)',
         body: 'The maximum <span class="term" data-term="learning-rate">learning rate $\\eta_{\\max}$</span> reached at the end of <span class="term" data-term="warmup">warmup</span> step $W$ before <span class="term" data-term="cosine-schedule">cosine decay</span> begins.'
       },
       'min-lr': {
-        title: 'Minimum Learning Rate Floor (eta_min)',
+        title: 'Minimum Learning Rate Floor ($\\eta_{\\min}$)',
         body: 'The final floor learning rate at the end of a <span class="term" data-term="cosine-schedule">cosine schedule</span>, typically set to $10\\%$ of <span class="term" data-term="peak-lr">$\\eta_{\\max}$</span>.'
       },
       'weight': {
-        title: 'Model Weight / Parameter (w or w_t)',
+        title: 'Model Weight / Parameter ($w$ or $w_t$)',
         body: 'A trainable number inside the neural network at step $t$, adjusted by the optimizer to minimize the <span class="term" data-term="loss-function">loss $\\mathcal{L}(w)$</span>.'
       },
       'loss-function': {
-        title: 'Loss Function L(w)',
+        title: 'Loss Function $\\mathcal{L}(w)$',
         body: 'Measures how wrong the model\'s predictions are at weight setting <span class="term" data-term="weight">$w$</span>. Training seeks the valley floor where $\\mathcal{L}(w)$ is minimized.'
       },
       'gradient': {
-        title: 'Gradient (g_t = nabla L(w_t))',
+        title: 'Gradient ($g_t = \\nabla \\mathcal{L}(w_t)$)',
         body: 'The slope of the <span class="term" data-term="loss-function">loss function</span> with respect to the <span class="term" data-term="weight">weights $w_t$</span>. Because the gradient points uphill, gradient descent steps in the opposite direction ($-g_t$).'
       },
       'curvature': {
-        title: 'Curvature / Sharpness (H)',
+        title: 'Curvature / Sharpness ($H$)',
         body: 'The second derivative $\\frac{d^2 \\mathcal{L}}{dw^2}$ measuring how steep and narrow the loss valley is. The maximum stable <span class="term" data-term="learning-rate">learning rate</span> before divergence is $\\eta_{\\text{crit}} = 2 / H$.'
       },
       'batch-size': {
-        title: 'Mini-Batch Size (B)',
+        title: 'Mini-Batch Size ($B$)',
         body: 'The number of training examples averaged together to compute one <span class="term" data-term="batch-gradient">gradient step $\\bar{g}_B$</span>. Larger $B$ cuts <span class="term" data-term="gradient-noise">gradient noise</span> variance by $1/B$.'
       },
       'micro-batch': {
-        title: 'Micro-Batch Size (B_micro)',
+        title: 'Micro-Batch Size ($B_{\\text{micro}}$)',
         body: 'The number of examples processed in a single GPU forward/backward pass before <span class="term" data-term="gradient-accumulation">accumulating</span> across $K$ passes.'
       },
       'gradient-accumulation': {
-        title: 'Gradient Accumulation Steps (K)',
+        title: 'Gradient Accumulation Steps ($K$)',
         body: 'Running $K$ sequential forward/backward passes on small <span class="term" data-term="micro-batch">micro-batches $B_{\\text{micro}}$</span> and averaging their gradients before taking one optimizer step, giving <span class="term" data-term="effective-batch-size">$B_{\\text{eff}} = B_{\\text{micro}} \\times K$</span>.'
       },
       'effective-batch-size': {
-        title: 'Effective Batch Size (B_eff)',
+        title: 'Effective Batch Size ($B_{\\text{eff}}$)',
         body: 'Total examples contributing to a single weight update: $B_{\\text{eff}} = B_{\\text{micro}} \\times K \\times N_{\\text{GPU}}$.'
       },
       'sample-gradient': {
-        title: 'Per-Sample Gradient g^(i)',
+        title: 'Per-Sample Gradient $g^{(i)}$',
         body: 'The gradient computed on a single training example $i$. Averaging $B$ of these gives the <span class="term" data-term="batch-gradient">mini-batch gradient $\\bar{g}_B$</span>.'
       },
       'batch-gradient': {
-        title: 'Mini-Batch Gradient (g-bar)',
+        title: 'Mini-Batch Gradient ($\\bar{g}_B$)',
         body: 'The average gradient $\\bar{g}_B = \\frac{1}{B}\\sum_{i=1}^B g^{(i)}$ over a batch of $B$ examples.'
       },
       'gradient-noise': {
@@ -683,7 +683,7 @@
         body: 'Ramping the <span class="term" data-term="learning-rate">learning rate $\\eta_t$</span> linearly from $0$ up to <span class="term" data-term="peak-lr">$\\eta_{\\max}$</span> over the first <span class="term" data-term="warmup-steps">$W$ steps</span> so <span class="term" data-term="adamw">AdamW</span>\'s variance estimate <span class="term" data-term="second-moment">$v_t$</span> stabilizes before full-size steps are taken.'
       },
       'warmup-steps': {
-        title: 'Warmup Duration (W steps)',
+        title: 'Warmup Duration ($W$ steps)',
         body: 'Number of initial optimizer steps over which <span class="term" data-term="learning-rate">$\\eta_t = \\eta_{\\max} \\cdot (t/W)$</span> ramps up to peak.'
       },
       'cosine-schedule': {
@@ -695,15 +695,15 @@
         body: 'Rescales the entire gradient vector $g$ whenever its length <span class="term" data-term="grad-norm">$\\lVert g \\rVert_2$</span> exceeds threshold <span class="term" data-term="clip-threshold">$c$</span>: $\\tilde{g} = g \\cdot \\min(1, c/\\lVert g \\rVert_2)$. Preserves direction while preventing spike crashes.'
       },
       'clip-threshold': {
-        title: 'Clipping Threshold (c)',
+        title: 'Clipping Threshold ($c$)',
         body: 'Maximum allowed L2 norm <span class="term" data-term="grad-norm">$\\lVert g \\rVert_2$</span> for a gradient vector before <span class="term" data-term="gradient-clipping">clipping</span> kicks in (typically $c = 1.0$).'
       },
       'grad-norm': {
-        title: 'Global Gradient L2 Norm ||g||_2',
+        title: 'Global Gradient L2 Norm $\\lVert g \\rVert_2$',
         body: 'The Euclidean length of the gradient vector across all parameters: $\\lVert g \\rVert_2 = \\sqrt{\\sum_j g_j^2}$.'
       },
       'clipped-grad': {
-        title: 'Clipped Gradient (g-tilde)',
+        title: 'Clipped Gradient ($\\tilde{g}$)',
         body: 'The gradient vector after applying <span class="term" data-term="gradient-clipping">norm clipping</span> so its length is at most <span class="term" data-term="clip-threshold">$c$</span>.'
       },
       'adamw': {
@@ -711,27 +711,27 @@
         body: 'Combines per-weight <span class="term" data-term="first-moment">momentum $m_t$</span> and adaptive <span class="term" data-term="second-moment">variance scaling $1/\\sqrt{v_t}$</span> with <strong>decoupled</strong> <span class="term" data-term="weight-decay">weight decay $\\lambda$</span>.'
       },
       'first-moment': {
-        title: 'First Moment / Momentum (m_t and m-hat_t)',
+        title: 'First Moment / Momentum ($m_t$ and $\\hat{m}_t$)',
         body: 'Exponential moving average of gradients: $m_t = \\beta_1 m_{t-1} + (1 - \\beta_1) g_t$. Smooths out zig-zag oscillations and builds speed along consistent slopes.'
       },
       'second-moment': {
-        title: 'Second Moment / Uncentered Variance (v_t and v-hat_t)',
+        title: 'Second Moment / Uncentered Variance ($v_t$ and $\\hat{v}_t$)',
         body: 'Exponential moving average of squared gradients: $v_t = \\beta_2 v_{t-1} + (1 - \\beta_2) g_t^2$. Dividing by $\\sqrt{\\hat{v}_t}$ normalizes each weight\'s step size by its typical gradient magnitude.'
       },
       'beta1': {
-        title: 'Momentum Decay Factor (beta_1)',
+        title: 'Momentum Decay Factor ($\\beta_1$)',
         body: 'Controls how much history <span class="term" data-term="first-moment">$m_t$</span> remembers (typically $\\beta_1 = 0.9$, averaging roughly the last $1/(1-\\beta_1) = 10$ steps).'
       },
       'beta2': {
-        title: 'Variance Decay Factor (beta_2)',
+        title: 'Variance Decay Factor ($\\beta_2$)',
         body: 'Controls how much squared-gradient history <span class="term" data-term="second-moment">$v_t$</span> remembers (typically $\\beta_2 = 0.999$ or $0.95$ in LLMs).'
       },
       'adam-eps': {
-        title: 'Numerical Stability Epsilon (epsilon)',
+        title: 'Numerical Stability Epsilon ($\\epsilon$)',
         body: 'Tiny constant ($\\epsilon \\approx 10^{-8}$) added to $\\sqrt{\\hat{v}_t} + \\epsilon$ in <span class="term" data-term="adamw">AdamW</span> so the denominator never divides by zero.'
       },
       'weight-decay': {
-        title: 'Decoupled Weight Decay (lambda)',
+        title: 'Decoupled Weight Decay ($\\lambda$)',
         body: 'Shrinks every weight directly toward zero by fraction $\\eta \\lambda$ on each step ($w \\leftarrow w - \\eta \\lambda w$), preventing weights from growing huge and <span class="term" data-term="overfitting">overfitting</span>.'
       },
       'l2-regularization': {
@@ -800,25 +800,25 @@
 
     var LR_REGIMES = [
       {
-        title: 'Regime 1: Steady (eta = 0.25)',
+        title: 'Regime 1: Steady (η = 0.25)',
         eta: 0.25,
         w: [4, 2, 1],
         losses: [16, 4, 1],
-        note: 'At eta = 0.25 (below the 0.5 optimum), the weight moves halfway to 0 on every step: 4 -> 2 -> 1. Loss drops monotonically (16 -> 4 -> 1) with zero oscillation.'
+        note: 'At $\\eta = 0.25$ (below the $0.5$ optimum), the weight moves halfway to $0$ on every step: $4 \\to 2 \\to 1$. Loss drops monotonically ($16 \\to 4 \\to 1$) with zero oscillation.'
       },
       {
-        title: 'Regime 2: Wall-to-Wall (eta = 1.0)',
+        title: 'Regime 2: Wall-to-Wall (η = 1.0)',
         eta: 1.0,
         w: [4, -4, 4],
         losses: [16, 16, 16],
-        note: 'At the critical ceiling eta = 2/H = 1.0, the weight bounces perpetually between +4 and -4. Loss stays stuck at 16 forever.'
+        note: 'At the critical ceiling $\\eta = 2/H = 1.0$, the weight bounces perpetually between $+4$ and $-4$. Loss stays stuck at $16$ forever.'
       },
       {
-        title: 'Regime 3: Explosion (eta = 1.5)',
+        title: 'Regime 3: Explosion (η = 1.5)',
         eta: 1.5,
         w: [4, -8, 16],
         losses: [16, 64, 256],
-        note: 'At eta = 1.5 (above the 1.0 cliff), each step overshoots and doubles in distance: +4 -> -8 -> +16. Loss quadruples every step (16 -> 64 -> 256 -> NaN).'
+        note: 'At $\\eta = 1.5$ (above the $1.0$ cliff), each step overshoots and doubles in distance: $+4 \\to -8 \\to +16$. Loss quadruples every step ($16 \\to 64 \\to 256 \\to \\text{NaN}$).'
       }
     ];
 
@@ -841,7 +841,9 @@
         document.getElementById('lr-step-' + i).classList.toggle('active', i === idx);
       }
       renderLRSmallMultiples(idx);
-      document.getElementById('lr-step-explain').textContent = LR_REGIMES[idx].note;
+      var exp = document.getElementById('lr-step-explain');
+      exp.innerHTML = LR_REGIMES[idx].note;
+      renderMathIn(exp);
     }
 
     document.getElementById('lr-slider').addEventListener('input', function (e) {
@@ -871,21 +873,21 @@
         steps: '32 steps',
         noise: '0.71x',
         lr: '1x base',
-        note: 'Config 1 (Micro-batch 2, K=1): Updates weights 32 times per 64-example epoch, but each step averages only 2 examples, leaving high gradient noise.'
+        note: 'Config 1 ($B_{\\text{micro}}=2, K=1$): Updates weights $32$ times per $64$-example epoch, but each step averages only $2$ examples, leaving high gradient noise.'
       },
       {
         eff: '8 (2 x 4)',
         steps: '8 steps',
         noise: '0.35x (2x cleaner)',
         lr: '2x to 4x base',
-        note: 'Config 2 (Gradient Accumulation, B_micro=2, K=4): Uses the EXACT same tiny GPU memory as Config 1, but averages 4 micro-batches before stepping (B_eff = 8), cutting noise in half.'
+        note: 'Config 2 (Gradient Accumulation, $B_{\\text{micro}}=2, K=4$): Uses the exact same tiny GPU memory as Config 1, but averages $4$ micro-batches before stepping ($B_{\\text{eff}} = 8$), cutting noise in half.'
       },
       {
         eff: '32 (8 x 4)',
         steps: '2 steps',
         noise: '0.18x (4x cleaner)',
         lr: '4x to 16x base',
-        note: 'Config 3 (Large Effective Batch 32): Only 2 updates per 64-example epoch. Very clean gradient direction, so you must scale up the learning rate eta (or run more epochs) to make enough progress.'
+        note: 'Config 3 (Large Effective Batch $32$): Only $2$ updates per $64$-example epoch. Very clean gradient direction, so you must scale up the learning rate $\\eta$ (or run more epochs) to make enough progress.'
       }
     ];
 
@@ -898,7 +900,9 @@
       document.getElementById('b-stat-steps').textContent = c.steps;
       document.getElementById('b-stat-noise').textContent = c.noise;
       document.getElementById('b-stat-lr').textContent = c.lr;
-      document.getElementById('batch-explain').textContent = c.note;
+      var exp = document.getElementById('batch-explain');
+      exp.innerHTML = c.note;
+      renderMathIn(exp);
     }
 
     function checkBatchFaded() {
@@ -915,10 +919,10 @@
 
     /* ---------- Chapter 3: Schedule & Clipping Inspector ---------- */
     var SCHED_POINTS = [
-      { t: 1, eta: 5, label: 'Warmup (t=1): eta_1 = 10 * (1/2) = 5. Gentle half-sized step while AdamW calibrates v_t.' },
-      { t: 2, eta: 10, label: 'Peak + Spike (t=2): Reaches eta_max = 10. A bad batch spikes ||g||_2 to 10; clipping at c=5 scales g by 5/10 = 0.5 before stepping.' },
-      { t: 6, eta: 6, label: 'Cosine Midpoint (t=6): Halfway through decay (steps 2->10), cosine smoothly lowers eta to the midpoint (10 + 2)/2 = 6.' },
-      { t: 10, eta: 2, label: 'Final Floor (t=10): Cosine reaches eta_min = 2 (20% of peak), letting weights settle softly into the minimum without bouncing.' }
+      { t: 1, eta: 5, label: 'Warmup ($t=1$): $\\eta_1 = 10 \\times (1/2) = 5$. Gentle half-sized step while AdamW calibrates $v_t$.' },
+      { t: 2, eta: 10, label: 'Peak + Spike ($t=2$): Reaches $\\eta_{\\max} = 10$. A bad batch spikes $\\lVert g \\rVert_2$ to $10$; clipping at $c=5$ scales $g$ by $5/10 = 0.5$ before stepping.' },
+      { t: 6, eta: 6, label: 'Cosine Midpoint ($t=6$): Halfway through decay (steps $2 \\to 10$), cosine smoothly lowers $\\eta$ to the midpoint $(10 + 2)/2 = 6$.' },
+      { t: 10, eta: 2, label: 'Final Floor ($t=10$): Cosine reaches $\\eta_{\\min} = 2$ ($20\\%$ of peak), letting weights settle softly into the minimum without bouncing.' }
     ];
 
     function setSchedPhase(idx) {
@@ -951,10 +955,12 @@
       var activeT = SCHED_POINTS[idx].t;
       var activeEta = SCHED_POINTS[idx].eta;
       html += '<circle cx="' + tx(activeT) + '" cy="' + ty(activeEta) + '" r="7" fill="#000" stroke="#fff" stroke-width="2"/>';
-      html += '<text x="' + clamp(tx(activeT), 95, 385) + '" y="' + (ty(activeEta) - 12) + '" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">t=' + activeT + ', eta=' + activeEta + '</text>';
+      html += '<text x="' + clamp(tx(activeT), 95, 385) + '" y="' + (ty(activeEta) - 12) + '" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">t=' + activeT + ', \u03B7=' + activeEta + '</text>';
       html += '<text x="245" y="146" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">Training Step t (0 to 10)</text>';
       svg.innerHTML = html;
-      document.getElementById('sched-explain').textContent = SCHED_POINTS[idx].label;
+      var exp = document.getElementById('sched-explain');
+      exp.innerHTML = SCHED_POINTS[idx].label;
+      renderMathIn(exp);
     }
 
     function revealSchedRecall() {
@@ -985,12 +991,12 @@
     }
 
     var SPACED_CARDS = [
-      { q: '[1d] Above what threshold does gradient descent diverge on a valley with curvature H?', a: 'When learning rate eta > 2 / H. Each step jumps past the minimum and lands higher up the opposite wall.' },
-      { q: '[4d] How does Gradient Accumulation (K steps) achieve a large effective batch size B_eff on a small GPU?', a: 'It runs K forward/backward passes of micro-batch B_micro and averages their gradients before updating weights once, giving B_eff = B_micro * K without storing all B_eff activations at once.' },
-      { q: '[4d] If you quadruple effective batch size B_eff for a fixed number of epochs, why must you adjust the learning rate eta?', a: 'Because 4x larger batches take 4x fewer optimizer steps per epoch (and have 2x lower gradient noise std), so eta must be scaled up (linearly for SGD, or by sqrt(4) = 2x for AdamW) to cover the same progress.' },
-      { q: '[14d] Why does AdamW need linear warmup during the first W steps of Transformer training?', a: 'Because at step 0 the second-moment variance estimate v_t has almost no sample history, so taking full peak-LR steps immediately produces erratic adaptive jumps.' },
-      { q: '[14d] How does Gradient Norm Clipping at threshold c protect training without distorting the update direction?', a: 'Whenever ||g||_2 > c, it multiplies the entire gradient vector by the scalar c / ||g||_2, shrinking its length to c while preserving the exact ratio between all coordinates.' },
-      { q: '[30d] What is the mathematical difference between AdamW and Adam + L2 regularization?', a: 'Adam + L2 adds lambda*w into the gradient, where it gets divided by sqrt(v_t) (weakening decay on high-gradient weights). AdamW decouples weight decay outside the adaptive term: w <- w - eta*lambda*w.' }
+      { q: '[1d] Above what threshold does gradient descent diverge on a valley with curvature $H$?', a: 'When learning rate $\\eta > 2 / H$. Each step jumps past the minimum and lands higher up the opposite wall.' },
+      { q: '[4d] How does Gradient Accumulation ($K$ steps) achieve a large effective batch size $B_{\\text{eff}}$ on a small GPU?', a: 'It runs $K$ forward/backward passes of micro-batch $B_{\\text{micro}}$ and averages their gradients before updating weights once, giving $B_{\\text{eff}} = B_{\\text{micro}} \\times K$ without storing all $B_{\\text{eff}}$ activations at once.' },
+      { q: '[4d] If you quadruple effective batch size $B_{\\text{eff}}$ for a fixed number of epochs, why must you adjust the learning rate $\\eta$?', a: 'Because $4\\times$ larger batches take $4\\times$ fewer optimizer steps per epoch (and have $2\\times$ lower gradient noise std), so $\\eta$ must be scaled up (linearly for SGD, or by $\\sqrt{4} = 2\\times$ for AdamW) to cover the same progress.' },
+      { q: '[14d] Why does AdamW need linear warmup during the first $W$ steps of Transformer training?', a: 'Because at step $0$ the second-moment variance estimate $v_t$ has almost no sample history, so taking full peak-LR steps immediately produces erratic adaptive jumps.' },
+      { q: '[14d] How does Gradient Norm Clipping at threshold $c$ protect training without distorting the update direction?', a: 'Whenever $\\lVert g \\rVert_2 > c$, it multiplies the entire gradient vector by the scalar $c / \\lVert g \\rVert_2$, shrinking its length to $c$ while preserving the exact ratio between all coordinates.' },
+      { q: '[30d] What is the mathematical difference between AdamW and Adam + L2 regularization?', a: 'Adam + L2 adds $\\lambda w$ into the gradient, where it gets divided by $\\sqrt{\\hat{v}_t}$ (weakening decay on high-gradient weights). AdamW decouples weight decay outside the adaptive term: $w \\leftarrow w - \\eta \\lambda w$.' }
     ];
 
     document.addEventListener('DOMContentLoaded', function () {

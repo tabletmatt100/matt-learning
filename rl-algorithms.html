@@ -45,7 +45,7 @@
     </div>
 
     <p>
-      <em>Tip: Tap any highlighted concept or mathematical symbol (like <span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="advantage">$A_t$</span>, <span class="term" data-term="prob-ratio">$r_t$</span>, <span class="term" data-term="clip-eps">$\epsilon$</span>, or <span class="term" data-term="group-mean">$\mu$</span>) to open an explanation popover. All examples and checks use simple mental math—no calculator required.</em>
+      <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="advantage">$A_t$</span>, <span class="term" data-term="prob-ratio">$r_t$</span>, <span class="term" data-term="clip-eps">$\epsilon$</span>, or <span class="term" data-term="group-mean">$\mu$</span>) to open an explanation popover. All examples and checks use simple mental math—no calculator required.</em>
     </p>
 
     <div class="table-wrap">
@@ -154,9 +154,9 @@
     <details class="mcq-box" id="mcq-qstar" data-correct="B" data-topic="Mental Math: Computing Q*(s, a)">
       <summary class="mcq-title"></summary>
       <p>Taking Action X in State 1 pays an immediate reward of <span class="term" data-term="reward">$R = 3$</span> and lands in State 2. State 2 has three possible moves with <span class="term" data-term="q-star">$Q^*$</span> values of $4$, $8$, and $14$. If <span class="term" data-term="discount-factor">$\gamma = 0.5$</span>, what is <span class="term" data-term="q-star">$Q^*(\text{State 1}, \text{Action X})$</span>?</p>
-      <label class="mcq-option"><input type="radio" name="qq" value="A" data-explain="That uses the lowest move (4) in State 2: 3 + 0.5*4 = 5. Q* always picks the maximum move in the next state.">A) $5$</label>
-      <label class="mcq-option"><input type="radio" name="qq" value="B" data-explain="Correct. The best move in State 2 is 14. Half of 14 is 7, plus the immediate reward of 3 gives 3 + 7 = 10.">B) $10$</label>
-      <label class="mcq-option"><input type="radio" name="qq" value="C" data-explain="17 forgets to multiply the next state's max value (14) by the discount factor gamma = 0.5.">C) $17$</label>
+      <label class="mcq-option"><input type="radio" name="qq" value="A" data-explain="That uses the lowest move ($4$) in State 2: $3 + 0.5 \times 4 = 5$. $Q^*$ always picks the maximum move in the next state.">A) $5$</label>
+      <label class="mcq-option"><input type="radio" name="qq" value="B" data-explain="Correct. The best move in State 2 is $14$. Half of $14$ is $7$, plus the immediate reward of $3$ gives $3 + 7 = 10$.">B) $10$</label>
+      <label class="mcq-option"><input type="radio" name="qq" value="C" data-explain="$17$ forgets to multiply the next state's max value ($14$) by the discount factor $\gamma = 0.5$.">C) $17$</label>
       <button class="btn" onclick="checkMCQ('mcq-qstar')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -433,9 +433,9 @@
     <details class="mcq-box" id="mcq-1" data-correct="C" data-topic="PPO vs GRPO: Memory & Architecture">
       <summary class="mcq-title"></summary>
       <p>Why does <span class="term" data-term="grpo">GRPO</span> use roughly half as much trainable GPU memory as <span class="term" data-term="ppo">PPO</span> when fine-tuning a 70B-parameter LLM?</p>
-      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Both PPO and GRPO use the exact same clipping ratio r_t and KL penalty.">A) Because GRPO removes the probability ratio <span class="term" data-term="prob-ratio">$r_t$</span> clipping step.</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="GRPO actually generates multiple responses (a group of G answers) per prompt during online training.">B) Because GRPO never generates new answers during training.</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. PPO trains both a 70B Actor and a 70B Critic value network; GRPO drops the 70B Critic and uses the average score of G sampled responses instead.">C) Because GRPO eliminates the 70B <span class="term" data-term="critic">Critic</span> value network and computes the baseline from a group of <span class="term" data-term="group-size">$G$</span> sampled answers.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Both PPO and GRPO use the exact same clipping ratio $r_t$ and KL penalty.">A) Because GRPO removes the probability ratio <span class="term" data-term="prob-ratio">$r_t$</span> clipping step.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="GRPO actually generates multiple responses (a group of $G$ answers) per prompt during online training.">B) Because GRPO never generates new answers during training.</label>
+      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. PPO trains both a 70B Actor and a 70B Critic value network; GRPO drops the 70B Critic and uses the average score $\mu$ of $G$ sampled responses instead.">C) Because GRPO eliminates the 70B <span class="term" data-term="critic">Critic</span> value network and computes the baseline from a group of <span class="term" data-term="group-size">$G$</span> sampled answers.</label>
       <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -443,9 +443,9 @@
     <details class="mcq-box" id="mcq-2" data-correct="A" data-topic="Mental Math: PPO Clipping">
       <summary class="mcq-title"></summary>
       <p>In <span class="term" data-term="ppo">PPO</span> with clip range <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span> (so the safe window is $[0.8, 1.2]$), an action has a positive advantage <span class="term" data-term="advantage">$A_t = +5$</span>. The policy update pushes its probability from $10\%$ to $20\%$, giving a raw ratio <span class="term" data-term="prob-ratio">$r_t = 20 / 10 = 2.0$</span>. What clipped ratio does PPO use?</p>
-      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because 2.0 exceeds the upper speed limit 1 + 0.2 = 1.2, PPO caps the effective ratio at 1.2 (giving a capped objective of 1.2 * 5 = 6.0 instead of 10.0).">A) $1.2$ (capped at the upper boundary $1 + \epsilon$)</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="0.8 is the lower boundary (1 - epsilon), used when a ratio drops below 0.8.">B) $0.8$ (the lower boundary $1 - \epsilon$)</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="PPO never lets a positive-advantage update benefit from a ratio above 1 + epsilon.">C) $2.0$ (unclipped)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because $2.0$ exceeds the upper speed limit $1 + 0.2 = 1.2$, PPO caps the effective ratio at $1.2$ (giving a capped objective of $1.2 \times 5 = 6.0$ instead of $10.0$).">A) $1.2$ (capped at the upper boundary $1 + \epsilon$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="$0.8$ is the lower boundary ($1 - \epsilon$), used when a ratio drops below $0.8$.">B) $0.8$ (the lower boundary $1 - \epsilon$)</label>
+      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="PPO never lets a positive-advantage update benefit from a ratio above $1 + \epsilon$.">C) $2.0$ (unclipped)</label>
       <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -453,9 +453,9 @@
     <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="Mental Math: GRPO Group Advantage Sign">
       <summary class="mcq-title"></summary>
       <p>For an easy trivia prompt, <span class="term" data-term="grpo">GRPO</span> samples <span class="term" data-term="group-size">$G = 4$</span> answers that receive scores of <code>[6, 8, 10, 12]</code> (so the group average is <span class="term" data-term="group-mean">$\mu = 9$</span>). What happens to the answer that scored <code>+8</code>?</p>
-      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Even though +8 is positive, it is below the group average of 9 (8 - 9 = -1).">A) Its probability is increased because $+8$ is a positive score.</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. Its raw difference from the group mean is 8 - 9 = -1 < 0, so it gets a negative advantage and is suppressed in favor of the +10 and +12 answers.">B) Its probability is decreased because $8$ is below the group average of $9$ (<span class="term" data-term="advantage">$A_i &lt; 0$</span>).</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Only an answer scoring exactly the group mean (9) gets zero advantage.">C) Its advantage is $0$ because $8$ is close to $9$.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Even though $+8$ is positive, it is below the group average of $9$ ($8 - 9 = -1$).">A) Its probability is increased because $+8$ is a positive score.</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. Its raw difference from the group mean is $8 - 9 = -1 < 0$, so it gets a negative advantage and is suppressed in favor of the $+10$ and $+12$ answers.">B) Its probability is decreased because $8$ is below the group average of $9$ (<span class="term" data-term="advantage">$A_i &lt; 0$</span>).</label>
+      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Only an answer scoring exactly the group mean ($9$) gets zero advantage.">C) Its advantage is $0$ because $8$ is close to $9$.</label>
       <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
       <div class="mcq-feedback"></div>
     </details>
@@ -495,34 +495,34 @@
 
   <script>
     var GLOSSARY = {
-      'q-star': { title: 'Optimal Action-Value Q*(s, a) ("Q-Star")', body: 'The maximum expected discounted return achievable if you take <span class="term" data-term="action">action $a$</span> in <span class="term" data-term="state">state $s$</span> and play 100% optimally on every step after that: $Q^*(s,a) = R_{t+1} + \\gamma \\max_{a\'} Q^*(S_{t+1}, a\')$.' },
-      'q-function': { title: 'Action-Value Scorecard Q(s, a)', body: 'Expected discounted return from taking move <span class="term" data-term="action">$a$</span> in <span class="term" data-term="state">state $s$</span> under the current policy.' },
+      'q-star': { title: 'Optimal Action-Value $Q^*(s, a)$ ("Q-Star")', body: 'The maximum expected discounted return achievable if you take <span class="term" data-term="action">action $a$</span> in <span class="term" data-term="state">state $s$</span> and play $100\\%$ optimally on every step after that: $Q^*(s,a) = R_{t+1} + \\gamma \\max_{a\'} Q^*(S_{t+1}, a\')$.' },
+      'q-function': { title: 'Action-Value Scorecard $Q(s, a)$', body: 'Expected discounted return from taking move <span class="term" data-term="action">$a$</span> in <span class="term" data-term="state">state $s$</span> under the current policy.' },
       'q-learning': { title: 'Q-Learning', body: 'An off-policy algorithm that learns <span class="term" data-term="q-star">$Q^*(s, a)$</span> in a table by always bootstrapping off the best possible move in the next state ($\\max_{a\'} Q(S_{t+1}, a\')$).' },
       'dqn': { title: 'DQN (Deep Q-Network)', body: 'DeepMind\'s algorithm that replaces Q-Learning\'s lookup table with a deep neural network so <span class="term" data-term="q-star">$Q^*(s, a)$</span> works on high-dimensional inputs like video game pixels.' },
-      'a-star': { title: 'A* Search', body: 'A classic pathfinding algorithm that explores the most promising branch first by adding the cost so far to an estimated future score (heuristic). In reasoning LLMs, a learned <span class="term" data-term="q-star">$Q^*$</span> verifier can guide tree search over reasoning steps.' },
-      'argmax': { title: 'argmax_a Q*(s, a)', body: 'Math shorthand for "pick whichever action $a$ has the highest <span class="term" data-term="q-star">$Q^*$</span> score."' },
-      'max-op': { title: 'max_{a\'} Q*(S_{t+1}, a\')', body: 'The score of the single highest-rated move $a\'$ available at the next state $S_{t+1}$.' },
-      'state': { title: 'State (s or S_t)', body: 'The current situation or prompt context (e.g., the room a robot is in, or the prompt + tokens generated so far by an LLM).' },
-      'action': { title: 'Action (a)', body: 'A single decision made by the agent (e.g., pressing a button, or choosing the next token in an LLM response).' },
-      'reward': { title: 'Reward (R or R_{t+1})', body: 'The score assigned to an action or completed response (e.g., $+10$ for a correct math solution).' },
-      'discount-factor': { title: 'Discount Factor (gamma)', body: 'Multiplier $\\gamma \\in [0, 1]$ applied to each step of delay. At $\\gamma = 0.5$, waiting one step cuts a future value in half.' },
-      'value-function': { title: 'State Baseline Scorecard V(s)', body: 'The average score we expect from state/prompt $s$. Subtracting $V(s)$ from the actual reward gives the <span class="term" data-term="advantage">Advantage $A_t$</span>.' },
+      'a-star': { title: '$A^*$ Search', body: 'A classic pathfinding algorithm that explores the most promising branch first by adding the cost so far to an estimated future score (heuristic). In reasoning LLMs, a learned <span class="term" data-term="q-star">$Q^*$</span> verifier can guide tree search over reasoning steps.' },
+      'argmax': { title: '$\\arg\\max_a Q^*(s, a)$', body: 'Math shorthand for "pick whichever action $a$ has the highest <span class="term" data-term="q-star">$Q^*$</span> score."' },
+      'max-op': { title: '$\\max_{a\'} Q^*(S_{t+1}, a\')$', body: 'The score of the single highest-rated move $a\'$ available at the next state $S_{t+1}$.' },
+      'state': { title: 'State ($s$ or $S_t$)', body: 'The current situation or prompt context (e.g., the room a robot is in, or the prompt + tokens generated so far by an LLM).' },
+      'action': { title: 'Action ($a$)', body: 'A single decision made by the agent (e.g., pressing a button, or choosing the next token in an LLM response).' },
+      'reward': { title: 'Reward ($R$ or $R_{t+1}$)', body: 'The score assigned to an action or completed response (e.g., $+10$ for a correct math solution).' },
+      'discount-factor': { title: 'Discount Factor ($\\gamma$)', body: 'Multiplier $\\gamma \\in [0, 1]$ applied to each step of delay. At $\\gamma = 0.5$, waiting one step cuts a future value in half.' },
+      'value-function': { title: 'State Baseline Scorecard $V(s)$', body: 'The average score we expect from state/prompt $s$. Subtracting $V(s)$ from the actual reward gives the <span class="term" data-term="advantage">Advantage $A_t$</span>.' },
       'policy-gradient': { title: 'Policy Gradient (REINFORCE)', body: 'Instead of learning a <span class="term" data-term="q-function">$Q(s,a)$</span> table, policy gradient algorithms directly tune the neural network weights <span class="term" data-term="theta">$\\theta$</span> of the <span class="term" data-term="actor">Actor $\\pi_\\theta(a \\mid s)$</span> to make high-scoring actions more likely.' },
-      'policy-theta': { title: 'Parameterized Policy pi_theta(a | s)', body: 'The <span class="term" data-term="actor">Actor</span> neural network (with trainable weights <span class="term" data-term="theta">$\\theta$</span>) that outputs the probability of choosing action $a$ in state $s$.' },
-      'policy-old': { title: 'Old Policy pi_old(a | s)', body: 'A frozen snapshot of the <span class="term" data-term="actor">Actor</span>\'s probabilities from right before the current training update, used as the denominator in <span class="term" data-term="prob-ratio">$r_t = \\pi_{\\text{new}} / \\pi_{\\text{old}}$</span>.' },
-      'theta': { title: 'Parameters (theta)', body: 'The trainable weights $\\theta$ inside the <span class="term" data-term="actor">Actor</span> neural network.' },
-      'actor': { title: 'Actor Network (pi_theta)', body: 'The policy neural network that actually generates actions or text tokens.' },
-      'critic': { title: 'Critic Network (V_phi)', body: 'A second neural network used in <span class="term" data-term="actor-critic">Actor-Critic</span> and <span class="term" data-term="ppo">PPO</span> to predict the expected baseline score <span class="term" data-term="value-function">$V(s)$</span>. Eliminated in <span class="term" data-term="grpo">GRPO</span>.' },
+      'policy-theta': { title: 'Parameterized Policy $\\pi_\\theta(a \\mid s)$', body: 'The <span class="term" data-term="actor">Actor</span> neural network (with trainable weights <span class="term" data-term="theta">$\\theta$</span>) that outputs the probability of choosing action $a$ in state $s$.' },
+      'policy-old': { title: 'Old Policy $\\pi_{\\text{old}}(a \\mid s)$', body: 'A frozen snapshot of the <span class="term" data-term="actor">Actor</span>\'s probabilities from right before the current training update, used as the denominator in <span class="term" data-term="prob-ratio">$r_t = \\pi_{\\text{new}} / \\pi_{\\text{old}}$</span>.' },
+      'theta': { title: 'Parameters ($\\theta$)', body: 'The trainable weights $\\theta$ inside the <span class="term" data-term="actor">Actor</span> neural network.' },
+      'actor': { title: 'Actor Network ($\\pi_\\theta$)', body: 'The policy neural network that actually generates actions or text tokens.' },
+      'critic': { title: 'Critic Network ($V_\\phi$)', body: 'A second neural network used in <span class="term" data-term="actor-critic">Actor-Critic</span> and <span class="term" data-term="ppo">PPO</span> to predict the expected baseline score <span class="term" data-term="value-function">$V(s)$</span>. Eliminated in <span class="term" data-term="grpo">GRPO</span>.' },
       'actor-critic': { title: 'Actor-Critic Architecture', body: 'An RL setup pairing an <span class="term" data-term="actor">Actor</span> (which picks actions) with a <span class="term" data-term="critic">Critic</span> (which predicts the baseline score <span class="term" data-term="value-function">$V(s)$</span> so the Actor can learn from <span class="term" data-term="advantage">Advantage $A_t$</span>).' },
-      'advantage': { title: 'Advantage (A_t or A_i)', body: 'How much better (or worse) an action scored compared to the baseline expectation for that state/prompt: $A_t = R - V(s)$ in PPO, or $A_i = (R_i - \\mu)/\\sigma$ in <span class="term" data-term="grpo">GRPO</span>.' },
+      'advantage': { title: 'Advantage ($A_t$ or $A_i$)', body: 'How much better (or worse) an action scored compared to the baseline expectation for that state/prompt: $A_t = R - V(s)$ in PPO, or $A_i = (R_i - \\mu)/\\sigma$ in <span class="term" data-term="grpo">GRPO</span>.' },
       'ppo': { title: 'PPO (Proximal Policy Optimization)', body: 'An <span class="term" data-term="actor-critic">Actor-Critic</span> algorithm that prevents destructive policy updates by clipping the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> inside $[1 - \\epsilon, 1 + \\epsilon]$ (typically $[0.8, 1.2]$).' },
-      'prob-ratio': { title: 'Probability Ratio (r_t)', body: 'The ratio $r_t = \\frac{\\pi_{\\text{new}}(a \\mid s)}{\\pi_{\\text{old}}(a \\mid s)}$. If $r_t = 1.5$, the action is now $1.5\\times$ ($50\\%$) more likely than before the update.' },
-      'clip-eps': { title: 'Clipping Epsilon (epsilon)', body: 'The speed-limit margin in <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span>, usually $\\epsilon = 0.2$, which fences the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> between $1 - 0.2 = 0.8$ and $1 + 0.2 = 1.2$.' },
+      'prob-ratio': { title: 'Probability Ratio ($r_t$)', body: 'The ratio $r_t = \\frac{\\pi_{\\text{new}}(a \\mid s)}{\\pi_{\\text{old}}(a \\mid s)}$. If $r_t = 1.5$, the action is now $1.5\\times$ ($50\\%$) more likely than before the update.' },
+      'clip-eps': { title: 'Clipping Epsilon ($\\epsilon$)', body: 'The speed-limit margin in <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span>, usually $\\epsilon = 0.2$, which fences the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> between $1 - 0.2 = 0.8$ and $1 + 0.2 = 1.2$.' },
       'rlhf': { title: 'RLHF (Reinforcement Learning from Human Feedback)', body: 'Training a reward model on human rankings of answers, then using <span class="term" data-term="ppo">PPO</span> (or <span class="term" data-term="grpo">GRPO</span>) to tune an LLM to maximize that reward.' },
       'grpo': { title: 'GRPO (Group Relative Policy Optimization)', body: 'Introduced in DeepSeekMath and used in DeepSeek-R1: drops PPO\'s expensive <span class="term" data-term="critic">Critic</span> network by sampling a group of <span class="term" data-term="group-size">$G$</span> responses to the same prompt and using their group mean <span class="term" data-term="group-mean">$\\mu$</span> as the baseline.' },
-      'group-size': { title: 'Group Size (G)', body: 'The number of candidate responses sampled from the LLM for the exact same prompt in <span class="term" data-term="grpo">GRPO</span> (e.g., $G = 4$ or $G = 8$ responses compared side by side).' },
-      'group-mean': { title: 'Group Mean Score (mu)', body: 'The average reward $\\mu = \\frac{1}{G}\\sum_{i=1}^G R_i$ across the <span class="term" data-term="group-size">$G$</span> candidate responses for one prompt in <span class="term" data-term="grpo">GRPO</span>. Serves as the Critic-free baseline.' },
-      'group-std': { title: 'Group Spread / Standard Deviation (sigma)', body: 'Measures how spread out the <span class="term" data-term="group-size">$G$</span> scores are around the <span class="term" data-term="group-mean">group mean $\\mu$</span>. Dividing $(R_i - \\mu)$ by $\\sigma$ keeps <span class="term" data-term="grpo">GRPO</span> advantages on a consistent scale.' },
+      'group-size': { title: 'Group Size ($G$)', body: 'The number of candidate responses sampled from the LLM for the exact same prompt in <span class="term" data-term="grpo">GRPO</span> (e.g., $G = 4$ or $G = 8$ responses compared side by side).' },
+      'group-mean': { title: 'Group Mean Score ($\\mu$)', body: 'The average reward $\\mu = \\frac{1}{G}\\sum_{i=1}^G R_i$ across the <span class="term" data-term="group-size">$G$</span> candidate responses for one prompt in <span class="term" data-term="grpo">GRPO</span>. Serves as the Critic-free baseline.' },
+      'group-std': { title: 'Group Spread / Standard Deviation ($\\sigma$)', body: 'Measures how spread out the <span class="term" data-term="group-size">$G$</span> scores are around the <span class="term" data-term="group-mean">group mean $\\mu$</span>. Dividing $(R_i - \\mu)$ by $\\sigma$ keeps <span class="term" data-term="grpo">GRPO</span> advantages on a consistent scale.' },
       'dpo': { title: 'DPO (Direct Preference Optimization)', body: 'An offline alternative to <span class="term" data-term="rlhf">RLHF</span> that skips live RL generation and trains the LLM directly on pre-collected <code>(chosen, rejected)</code> answer pairs.' }
     };
 
@@ -543,21 +543,21 @@
         clipR: '1.1 (inside [0.8, 1.2])',
         unclipObj: '4.4',
         finalObj: '4.4',
-        note: 'Case 1 (Gentle update): New probability is only 10% higher than old (r_t = 1.1). Since 1.1 is inside the [0.8, 1.2] speed limit, PPO does not clip it: 1.1 * 4 = 4.4.'
+        note: 'Case 1 (Gentle update): New probability is only $10\\%$ higher than old ($r_t = 1.1$). Since $1.1$ is inside the $[0.8, 1.2]$ speed limit, PPO does not clip it: $1.1 \\times 4 = 4.4$.'
       },
       {
         r: '1.5',
         clipR: '1.2 (capped at 1 + 0.2)',
         unclipObj: '6.0',
         finalObj: '4.8',
-        note: 'Case 2 (Aggressive jump): The update tries to boost probability by +50% (r_t = 1.5) on a good action (A_t = +4). PPO clips 1.5 down to 1.2 so the score caps at 1.2 * 4 = 4.8 instead of 6.0, removing any incentive to overshoot.'
+        note: 'Case 2 (Aggressive jump): The update tries to boost probability by $+50\\%$ ($r_t = 1.5$) on a good action ($A_t = +4$). PPO clips $1.5$ down to $1.2$ so the score caps at $1.2 \\times 4 = 4.8$ instead of $6.0$, removing any incentive to overshoot.'
       },
       {
         r: '0.5',
         clipR: '0.8 (floored at 1 - 0.2)',
         unclipObj: '-2.0',
         finalObj: '-3.2',
-        note: 'Case 3 (Aggressive drop): On a bad action (A_t = -4), the update tries to slash the probability in half (r_t = 0.5). PPO clips 0.5 at the lower limit 0.8 so the model does not over-correct in a single step.'
+        note: 'Case 3 (Aggressive drop): On a bad action ($A_t = -4$), the update tries to slash the probability in half ($r_t = 0.5$). PPO clips $0.5$ at the lower limit $0.8$ so the model does not over-correct in a single step.'
       }
     ];
 
@@ -570,7 +570,9 @@
       document.getElementById('ppo-clip-r').textContent = c.clipR;
       document.getElementById('ppo-unclip-obj').textContent = c.unclipObj;
       document.getElementById('ppo-final-obj').textContent = c.finalObj;
-      document.getElementById('ppo-explain').textContent = c.note;
+      var exp = document.getElementById('ppo-explain');
+      exp.innerHTML = c.note;
+      renderMathIn(exp);
     }
 
     /* ---------- Chapter 4: GRPO Group Simulator ---------- */
@@ -579,19 +581,19 @@
         scores: [2, 4, 6, 12],
         mean: 6,
         diffs: ['-4 (Suppress)', '-2 (Suppress)', '0 (Neutral)', '+6 (Reinforce!)'],
-        note: 'Scenario 1: The 4 answers score [2, 4, 6, 12]. Sum = 24, so Group Mean mu = 24 / 4 = 6. Answers 1 and 2 fall below 6 (negative advantage); Answer 3 equals the mean (0 advantage); Answer 4 beats the mean by +6 and gets reinforced.'
+        note: 'Scenario 1: The $4$ answers score $[2, 4, 6, 12]$. Sum $= 24$, so Group Mean $\\mu = 24 / 4 = 6$. Answers 1 and 2 fall below $6$ ($A_i < 0$); Answer 3 equals the mean ($A_3 = 0$); Answer 4 beats the mean by $+6$ ($A_4 > 0$) and gets reinforced.'
       },
       {
         scores: [7, 8, 9, 12],
         mean: 9,
         diffs: ['-2 (Suppress)', '-1 (Suppress)', '0 (Neutral)', '+3 (Reinforce!)'],
-        note: 'Scenario 2 (Easy prompt): Even though all 4 answers got positive raw scores [7, 8, 9, 12], their Group Mean is mu = 36 / 4 = 9. GRPO automatically suppresses the mediocre 7 and 8 answers (-2 and -1) and only reinforces the 12 answer (+3)!'
+        note: 'Scenario 2 (Easy prompt): Even though all $4$ answers got positive raw scores $[7, 8, 9, 12]$, their Group Mean is $\\mu = 36 / 4 = 9$. GRPO automatically suppresses the mediocre $7$ and $8$ answers ($-2$ and $-1$) and only reinforces the $12$ answer ($+3$)!'
       },
       {
         scores: [0, 0, 0, 4],
         mean: 1,
         diffs: ['-1 (Suppress)', '-1 (Suppress)', '-1 (Suppress)', '+3 (Reinforce!)'],
-        note: 'Scenario 3 (Hard math prompt with a right/wrong verifier): 3 answers fail (0) and 1 answer solves the puzzle (+4). Group Mean is mu = 4 / 4 = 1. The single right answer gets +3 above mean while the 3 wrong attempts get -1.'
+        note: 'Scenario 3 (Hard math prompt with a right/wrong verifier): $3$ answers fail ($0$) and $1$ answer solves the puzzle ($+4$). Group Mean is $\\mu = 4 / 4 = 1$. The single right answer gets $+3$ above mean while the $3$ wrong attempts get $-1$.'
       }
     ];
 
@@ -602,7 +604,7 @@
       var c = GRPO_CASES[idx];
       var svg = document.getElementById('grpo-svg');
       var html = '';
-      html += '<text x="10" y="20" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Group Mean Base (mu) = ' + c.mean + ' (dashed vertical line)</text>';
+      html += '<text x="10" y="20" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Group Mean Base (\u03BC) = ' + c.mean + ' (dashed vertical line)</text>';
       var scale = 18; // max score 12 * 18 = 216px
       var baseX = 125;
       var meanX = baseX + c.mean * scale;
@@ -614,11 +616,13 @@
         var isPos = s > c.mean;
         html += '<text x="10" y="' + (y + 15) + '" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Answer ' + (k + 1) + ' (R=' + s + ')</text>';
         html += '<rect x="' + baseX + '" y="' + y + '" width="' + w + '" height="20" fill="' + (isPos ? '#000' : '#e8e8e8') + '" stroke="#000" stroke-width="1.5"/>';
-        html += '<text x="' + (baseX + w + 10) + '" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">R - mu = ' + c.diffs[k] + '</text>';
+        html += '<text x="' + (baseX + w + 10) + '" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">R - \u03BC = ' + c.diffs[k] + '</text>';
       }
       html += '<line x1="' + meanX + '" y1="26" x2="' + meanX + '" y2="144" stroke="#000" stroke-width="2" stroke-dasharray="4,3"/>';
       svg.innerHTML = html;
-      document.getElementById('grpo-explain').textContent = c.note;
+      var exp = document.getElementById('grpo-explain');
+      exp.innerHTML = c.note;
+      renderMathIn(exp);
     }
 
     /* ---------- Chapter 4: Faded Step & Recall ---------- */
@@ -641,10 +645,10 @@
     }
 
     var SPACED_CARDS = [
-      { q: 'What does Q*(s, a) ("Q-star") mean in plain English?', a: 'The expected discounted return of taking action a in state s, assuming you play 100% optimally on every step after that.' },
-      { q: 'Why do Actor-Critic algorithms use Advantage (A_t = R - V(s)) instead of raw reward R?', a: 'So they only reinforce actions that scored better than the expected baseline V(s) for that state/prompt, rather than rewarding below-average answers on easy prompts.' },
-      { q: 'What problem does PPO\'s clipping range [1 - epsilon, 1 + epsilon] solve?', a: 'It puts a speed limit (e.g. +/- 20%) on how far the new policy probabilities can move from the old policy in a single update, preventing policy collapse.' },
-      { q: 'How does GRPO compute Advantage without a Critic neural network?', a: 'It samples a group of G answers for the same prompt, computes their average reward mu, and scores each answer relative to that group average: A_i = (R_i - mu) / sigma.' },
+      { q: 'What does $Q^*(s, a)$ ("Q-star") mean in plain English?', a: 'The expected discounted return of taking action $a$ in state $s$, assuming you play $100\\%$ optimally on every step after that.' },
+      { q: 'Why do Actor-Critic algorithms use Advantage ($A_t = R - V(s)$) instead of raw reward $R$?', a: 'So they only reinforce actions that scored better than the expected baseline $V(s)$ for that state/prompt, rather than rewarding below-average answers on easy prompts.' },
+      { q: 'What problem does PPO\'s clipping range $[1 - \\epsilon, 1 + \\epsilon]$ solve?', a: 'It puts a speed limit (e.g. $\\pm 20\\%$) on how far the new policy probabilities can move from the old policy in a single update, preventing policy collapse.' },
+      { q: 'How does GRPO compute Advantage without a Critic neural network?', a: 'It samples a group of $G$ answers for the same prompt, computes their average reward $\\mu$, and scores each answer relative to that group average: $A_i = (R_i - \\mu) / \\sigma$.' },
       { q: 'When should you pick DPO vs. GRPO for an LLM?', a: 'Use DPO for fast offline tuning on fixed (chosen, rejected) preference pairs; use GRPO when the model needs online practice and verification (like solving math or code problems).' }
     ];
 

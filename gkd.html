@@ -30,33 +30,26 @@
   <main>
     <h1>Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</h1>
 
-    <p>
-      As frontier language models grow to hundreds of billions of parameters, compressing them into fast, edge-friendly student models (e.g., 2B to 8B models) is essential. The canonical approach has long been <strong>Knowledge Distillation (KD)</strong>.
-    </p>
-    <p>
-      However, applying classical knowledge distillation directly to autoregressive text generation introduces a severe, debilitating failure mode: <span class="term" data-term="exposure-bias">Exposure Bias</span>.
-    </p>
-    <p>
-      Introduced by Agarwal et al. (DeepMind, 2023), <strong>Generalized Knowledge Distillation (GKD)</strong> solves this crisis by re-architecting distillation along two foundational dimensions: <em>data distribution sampling</em> and <em>generalized divergence metrics</em>.
-    </p>
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>The <span class="term" data-term="exposure-bias">exposure bias</span> trap:</strong> Classical <span class="term" data-term="kd">knowledge distillation</span> uses <span class="term" data-term="teacher-forcing">teacher forcing</span> (<span class="term" data-term="off-policy">off-policy</span> prefixes $y_{<t}$), so the student never learns how to recover once it makes its own mistake at inference time.</li>
+        <li><strong>Two GKD levers (Agarwal et al., 2023):</strong> Sample a fraction $\lambda \in [0, 1]$ of sequences <span class="term" data-term="on-policy">on-policy</span> from the student itself ($\hat{y} \sim P_{\text{student}}$) and have the teacher score those exact prefixes using a generalized divergence $\mathbb{D}(P_T \,\|\, P_S)$.</li>
+        <li><strong>Why <span class="term" data-term="reverse-kl">Reverse KL</span> beats <span class="term" data-term="mode-covering">Forward KL</span>:</strong> Forward KL forces the small student to cover every tail token of the teacher (producing blurry hallucinations), whereas Reverse KL is <span class="term" data-term="mode-seeking">mode-seeking</span> and severely penalizes any token where the teacher assigns near-zero probability.</li>
+      </ul>
+    </div>
 
     <!-- SECTION 1 -->
-    <h2>1. The Fatal Flaw of Supervised Distillation: Exposure Bias</h2>
+    <h2>1. Why Supervised Distillation Breaks: Exposure Bias</h2>
     <p>
-      In classical supervised knowledge distillation (Hinton et al., 2015), the student model is trained on a static offline dataset $\mathcal{D}$:
+      In classical <span class="term" data-term="kd">knowledge distillation</span> (Hinton et al., 2015), a small student model $\theta$ matches a large teacher's token distributions on a fixed <span class="term" data-term="off-policy">off-policy</span> dataset $\mathcal{D}$:
     </p>
     <div class="math-block">
       $$\mathcal{L}_{\text{KD}}(\theta) = \mathbb{E}_{(x, y) \sim \mathcal{D}} \left[ \sum_{t=1}^T \mathbb{D}_{\text{KL}}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]$$
     </div>
 
     <p>
-      Notice the prefix: $y_{<t}$ comes from the <strong>ground-truth teacher dataset</strong> (known as <em>teacher forcing</em>).
-    </p>
-    <p>
-      At training time, the student is gently led down the golden teacher path. But at inference time, there is no teacher! The student generates its own prefixes autoregressively: $\hat{y}_t \sim P_{\text{student}}(\cdot \mid x, \hat{y}_{<t})$.
-    </p>
-    <p>
-      <strong>The compounding error:</strong> If the student makes an unfamiliar prediction at token 4, it enters a state space it was <em>never trained on</em>. The student panics, hallucinates, or loops repetitively.
+      During training, the prefix $y_{<t}$ always comes from the clean dataset (<span class="term" data-term="teacher-forcing">teacher forcing</span>). At test time, the student must condition on its <em>own</em> sampled tokens $\hat{y}_{<t} \sim P_{\text{student}}$. One slightly off token at step $4$ pushes the prefix into a region the student never saw during training, causing errors to snowball (<span class="term" data-term="exposure-bias">exposure bias</span>).
     </p>
 
     <!-- DIAGRAM -->
@@ -92,42 +85,32 @@
     </svg>
 
     <!-- CHECKPOINT 1 -->
-    <div class="mcq-box" id="mcq-1">
-      <div class="mcq-title">Checkpoint 1: The Root of Exposure Bias</div>
-      <p>Why does standard supervised distillation fail to train robust autoregressive models?</p>
-      <label class="mcq-option">
-        <input type="radio" name="q1" value="A"> A) The teacher model runs out of GPU memory during token generation.
-      </label>
-      <label class="mcq-option">
-        <input type="radio" name="q1" value="B"> B) The student only trains on golden teacher prefixes, so it never learns how to recover when it makes its own mistakes during free generation.
-      </label>
-      <label class="mcq-option">
-        <input type="radio" name="q1" value="C"> C) Softmax cannot be calculated over large vocabularies.
-      </label>
-      <button class="btn" onclick="checkMCQ('mcq-1', 'B', 'Spot on! Under standard teacher-forcing, the student is always conditioned on clean prefixes. When generating autonomously, errors compound because the student has never seen its own flawed prefixes.')">Check Answer</button>
-      <div class="mcq-feedback"></div>
-    </div>
+    <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="The Root of Exposure Bias">
+      <p>Why does standard supervised distillation struggle on long autoregressive generations?</p>
+      <label class="mcq-option" data-explain="Teacher forward passes use the same memory whether prefixes come from data or the student.">The teacher model runs out of GPU memory during token generation.</label>
+      <label class="mcq-option" data-explain="Correct. Under teacher forcing, the student is only conditioned on gold prefixes $y_{<t}$, so it never learns how to recover from its own imperfect prefixes $\hat{y}_{<t}$ during free generation.">The student only trains on gold teacher prefixes $y_{<t}$, so it never sees or corrects its own imperfect prefixes $\hat{y}_{<t}$.</label>
+      <label class="mcq-option" data-explain="Softmax runs over large vocabularies in both standard KD and GKD.">Softmax cannot be calculated over large vocabularies.</label>
+    </details>
 
     <!-- SECTION 2 -->
     <h2>2. The GKD Framework: Two Levers of Generalization</h2>
     <p>
-      GKD formalizes knowledge distillation under a generalized loss objective:
+      GKD generalizes distillation along two axes:
     </p>
     <div class="math-block">
       $$\mathcal{L}_{\text{GKD}}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, \, y \sim \mu(\cdot \mid x)} \left[ \sum_{t=1}^{|y|} \mathbb{D}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]$$
     </div>
 
-    <p>Notice the two decisive levers:</p>
     <ol>
-      <li><strong>Generation Distribution $\mu(\cdot \mid x)$</strong>:
-        We interpolate between off-policy dataset/teacher samples and <strong>on-policy student rollouts</strong> using mixture parameter $\lambda \in [0, 1]$:
+      <li><strong>Sequence Distribution $\mu(\cdot \mid x)$:</strong>
+        Mixes static <span class="term" data-term="off-policy">off-policy</span> data with <span class="term" data-term="on-policy">on-policy</span> student rollouts using fraction $\lambda \in [0, 1]$:
         <div class="math-block">
           $$\mu(y \mid x) = \lambda P_{\text{student}}(y \mid x) + (1 - \lambda) P_{\text{data}}(y \mid x)$$
         </div>
-        When $\lambda > 0$, the student generates its own candidate trajectories, and the teacher evaluates the student's *actual* generated outputs!
+        When $\lambda > 0$, the student generates its own trajectory $\hat{y}$, and the teacher gives token-level distribution feedback on the exact states the student visited.
       </li>
-      <li><strong>Divergence Metric $\mathbb{D}(P_T \,\|\, P_S)$</strong>:
-        Instead of being locked into forward KL, GKD explores generalized divergences, crucially including <span class="term" data-term="reverse-kl">Reverse KL Divergence</span> and Jensen-Shannon Divergence.
+      <li><strong>Divergence $\mathbb{D}(P_T \,\|\, P_S)$:</strong>
+        Replaces fixed forward KL with <span class="term" data-term="reverse-kl">Reverse KL</span> or <span class="term" data-term="jsd">Jensen-Shannon Divergence (JSD)</span> so a smaller student is not forced to spread probability mass over every noisy tail token.
       </li>
     </ol>
 
@@ -245,21 +228,12 @@
     </p>
 
     <!-- CHECKPOINT 2 -->
-    <div class="mcq-box" id="mcq-2">
-      <div class="mcq-title">Checkpoint 2: The Mathematical Asymmetry</div>
-      <p>If teacher probability $P_T(k) \to 0$ for a token, but student assigns $P_S(k) = 0.2$, what happens to Reverse KL?</p>
-      <label class="mcq-option">
-        <input type="radio" name="q2" value="A"> A) It approaches zero because $P_T$ cancels out.
-      </label>
-      <label class="mcq-option">
-        <input type="radio" name="q2" value="B"> B) The term $0.2 \times \ln(0.2 / P_T(k))$ blows up to $+\infty$, forcing the student to set $P_S(k) \to 0$.
-      </label>
-      <label class="mcq-option">
-        <input type="radio" name="q2" value="C"> C) It turns negative and rewards the student.
-      </label>
-      <button class="btn" onclick="checkMCQ('mcq-2', 'B', 'Exact! In Reverse KL, dividing by $P_T(k)$ inside the logarithm causes the loss to explode to $+\\infty$ if the student puts mass where the teacher has zero mass. This is the definition of zero-forcing/mode-seeking!')">Check Answer</button>
-      <div class="mcq-feedback"></div>
-    </div>
+    <details class="mcq-box" id="mcq-2" data-correct="B" data-topic="Forward vs. Reverse KL Asymmetry">
+      <p>If teacher probability $P_T(k) \to 0$ for an unlikely token, but the student assigns $P_S(k) = 0.20$, what happens to <span class="term" data-term="reverse-kl">Reverse KL</span> $\sum_k P_S(k)\ln\frac{P_S(k)}{P_T(k)}$?</p>
+      <label class="mcq-option" data-explain="That happens in Forward KL ($P_T \ln(P_T/P_S)$), where $P_T \to 0$ zeroes out the term.">It approaches $0$ because $P_T(k)$ multiplies the log term.</label>
+      <label class="mcq-option" data-explain="Correct. In Reverse KL, $P_T(k)$ sits in the denominator inside the log while the weight outside is $P_S(k) = 0.20$, driving the penalty to $+\infty$ until the student sets $P_S(k) \to 0$.">The term $0.20 \ln(0.20 / P_T(k))$ blows up toward $+\infty$, forcing $P_S(k) \to 0$.</label>
+      <label class="mcq-option" data-explain="KL divergence is always non-negative ($\mathbb{D}_{\text{KL}} \ge 0$).">It becomes negative and rewards the student.</label>
+    </details>
 
     <!-- SECTION 5: ON-POLICY TRAINING -->
     <h2>5. The GKD Training Algorithm: On-Policy Rollouts</h2>
@@ -317,58 +291,51 @@
           <th>Method</th>
           <th>Data Distribution</th>
           <th>Requires Reward Model?</th>
-          <th>Suffers from Exposure Bias?</th>
+          <th>Suffers from <span class="term" data-term="exposure-bias">Exposure Bias</span>?</th>
           <th>Compute Cost</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td><strong>Supervised Fine-Tuning (SFT)</strong></td>
-          <td>Off-policy ($\mathcal{D}$)</td>
+          <td><strong><span class="term" data-term="sft">Supervised Fine-Tuning (SFT)</span></strong></td>
+          <td><span class="term" data-term="off-policy">Off-policy</span> ($\mathcal{D}$)</td>
           <td>No</td>
           <td>Yes (severe)</td>
           <td>Low</td>
         </tr>
         <tr>
-          <td><strong>Standard Distillation (KD)</strong></td>
-          <td>Off-policy ($\mathcal{D}$)</td>
+          <td><strong><span class="term" data-term="kd">Standard Distillation (KD)</span></strong></td>
+          <td><span class="term" data-term="off-policy">Off-policy</span> ($\mathcal{D}$)</td>
           <td>No</td>
           <td>Yes (severe)</td>
           <td>Low / Medium</td>
         </tr>
         <tr>
           <td><strong>RLHF (PPO)</strong></td>
-          <td>On-policy rollouts</td>
-          <td>Yes (Reward Model)</td>
+          <td><span class="term" data-term="on-policy">On-policy</span> rollouts</td>
+          <td>Yes (Scalar Reward Model)</td>
           <td>No</td>
-          <td>High (unstable)</td>
+          <td>High</td>
         </tr>
         <tr>
           <td><strong>GKD</strong></td>
           <td>Mixed On/Off-Policy ($\lambda$)</td>
-          <td>No (Teacher is the reward)</td>
-          <td><strong>No (Solved)</strong></td>
+          <td>No (Teacher logits at every token)</td>
+          <td><strong>No</strong></td>
           <td>Medium</td>
         </tr>
       </tbody>
     </table></div>
 
     <!-- CHECKPOINT 3 -->
-    <div class="mcq-box" id="mcq-3">
-      <div class="mcq-title">Final Checkpoint: GKD vs RLHF</div>
-      <p>Why is GKD often more stable and sample-efficient than standard RLHF with a separate Reward Model (RM)?</p>
-      <label class="mcq-option">
-        <input type="radio" name="q3" value="A"> A) GKD does not need to learn any neural network weights.
-      </label>
-      <label class="mcq-option">
-        <input type="radio" name="q3" value="B"> B) Instead of a scalar reward at the very end of the sequence, the teacher provides dense, token-by-token distribution guidance across the entire vocabulary at every step.
-      </label>
-      <label class="mcq-option">
-        <input type="radio" name="q3" value="C"> C) GKD uses only forward KL divergence on static offline data.
-      </label>
-      <button class="btn" onclick="checkMCQ('mcq-3', 'B', 'Correct! Standard RLHF only receives a single scalar reward at the end of a long generation. GKD gives dense, step-by-step token distribution feedback from the teacher, providing vastly lower gradient variance and faster convergence.')">Check Answer</button>
-      <div class="mcq-feedback"></div>
-    </div>
+    <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="GKD vs. Scalar-Reward RLHF">
+      <p>Why does GKD converge with lower gradient variance than standard RLHF with a sequence-level Reward Model?</p>
+      <label class="mcq-option" data-explain="GKD still updates all trainable student weights $\theta$ via backpropagation.">GKD does not update any neural network weights.</label>
+      <label class="mcq-option" data-explain="Correct. Instead of a single scalar score at the very end of a 500-token response, the teacher provides a full probability distribution over the vocabulary at every token position $t$.">Instead of one scalar reward at the end of the sequence, the teacher gives dense, token-by-token distribution feedback across the vocabulary at every step $t$.</label>
+      <label class="mcq-option" data-explain="GKD specifically uses on-policy rollouts ($\lambda > 0$) and generalized divergences like Reverse KL or JSD.">GKD uses only forward KL divergence on static offline data.</label>
+    </details>
+
+    <div class="score-bar"></div>
 
     <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
       <p style="font-weight: bold;">Return or Review:</p>
@@ -379,21 +346,45 @@
 
   <script>
     const glossary = {
+      "kd": {
+        title: "Knowledge Distillation (KD)",
+        body: "Training a smaller student model to match the full output probability distribution $P_{\\text{teacher}}(\\cdot \\mid x, y_{<t})$ of a larger teacher model rather than just hard one-hot labels."
+      },
+      "sft": {
+        title: "Supervised Fine-Tuning (SFT)",
+        body: "Training a model via cross-entropy on fixed ground-truth demonstration sequences $(x, y) \\sim \\mathcal{D}$ using <span class=\"term\" data-term=\"teacher-forcing\">teacher forcing</span>."
+      },
+      "teacher-forcing": {
+        title: "Teacher Forcing",
+        body: "Feeding the ground-truth prefix $y_{<t}$ into the model at every step during training, rather than the model's own previously predicted tokens $\\hat{y}_{<t}$."
+      },
       "exposure-bias": {
         title: "Exposure Bias",
-        body: "The discrepancy that arises when an autoregressive model is conditioned on ground-truth tokens during training (teacher forcing), but must condition on its own previously generated tokens at test time."
+        body: "Train-test mismatch where an autoregressive model is only trained on clean ground-truth prefixes (<span class=\"term\" data-term=\"teacher-forcing\">teacher forcing</span>), so at inference time its own errors push it into unfamiliar states and compound."
+      },
+      "on-policy": {
+        title: "On-Policy Rollouts",
+        body: "Training sequences $\\hat{y} \\sim P_{\\text{student}}(\\cdot \\mid x)$ sampled directly from the student's current policy during training."
+      },
+      "off-policy": {
+        title: "Off-Policy Data",
+        body: "Static training sequences drawn from an external dataset $\\mathcal{D}$ or pre-generated by the teacher, independent of the student's current parameters."
+      },
+      "jsd": {
+        title: "Generalized Jensen-Shannon Divergence (JSD)",
+        body: "A bounded, smooth interpolation between <span class=\"term\" data-term=\"mode-covering\">Forward KL</span> and <span class=\"term\" data-term=\"reverse-kl\">Reverse KL</span> against a mixture distribution $M = \\beta P_T + (1-\\beta) P_S$."
       },
       "reverse-kl": {
         title: "Reverse KL Divergence",
-        body: "$\\mathbb{D}_{\\text{KL}}(P_{\\text{student}} \\parallel P_{\\text{teacher}})$. Also known as the zero-forcing or mode-seeking divergence. Extensively penalizes the student if it generates tokens that the teacher assigns near-zero probability to."
+        body: "$\\mathbb{D}_{\\text{KL}}(P_{\\text{student}} \\,\\|\\, P_{\\text{teacher}}) = \\sum_k P_S(k)\\ln\\frac{P_S(k)}{P_T(k)}$. Zero-forcing / <span class=\"term\" data-term=\"mode-seeking\">mode-seeking</span>: heavily penalizes the student whenever it puts probability on tokens where $P_T(k) \\approx 0$."
       },
       "mode-covering": {
         title: "Mode-Covering (Forward KL)",
-        body: "The behavior of $\\mathbb{D}_{\\text{KL}}(P_{\\text{target}} \\parallel P_{\\text{approx}})$. To prevent loss from blowing up, the approximating model must stretch its probability distribution to cover all modes of the target, leading to diffuse, blurry outputs."
+        body: "$\\mathbb{D}_{\\text{KL}}(P_{\\text{teacher}} \\,\\|\\, P_{\\text{student}}) = \\sum_k P_T(k)\\ln\\frac{P_T(k)}{P_S(k)}$. Forces $P_S(k) > 0$ everywhere $P_T(k) > 0$, causing small-capacity students to spread mass too thinly."
       },
       "mode-seeking": {
         title: "Mode-Seeking (Reverse KL)",
-        body: "The behavior of $\\mathbb{D}_{\\text{KL}}(P_{\\text{approx}} \\parallel P_{\\text{target}})$. The approximating model focuses entirely on fitting one or more high-confidence modes, choosing precision over broad coverage. Ideal for text generation."
+        body: "Behavior of <span class=\"term\" data-term=\"reverse-kl\">Reverse KL</span>: the student concentrates its probability mass on the teacher's high-confidence modes and zeroes out low-probability tails."
       }
     };
 
@@ -471,16 +462,18 @@
     function updateLambdaMix() {
       const lam = parseFloat(document.getElementById('mix-lambda').value);
       document.getElementById('lambda-val').innerText = lam.toFixed(1);
+      const box = document.getElementById('lambda-description');
       
       let desc = "";
       if (lam === 0.0) {
-        desc = "<strong>λ = 0.0 (Standard Supervised KD):</strong> 100% of training data sequences are drawn from static offline datasets or teacher rollouts. High risk of exposure bias at inference time.";
+        desc = "<strong>$\\lambda = 0.0$ (Standard Supervised KD):</strong> $100\\%$ of training sequences come from static offline data $\\mathcal{D}$. Fast, but suffers from exposure bias at inference time.";
       } else if (lam === 1.0) {
-        desc = "<strong>λ = 1.0 (Fully On-Policy GKD):</strong> 100% of training tokens are generated freely by the student model. The teacher acts as an online supervisor evaluating student-generated mistakes. Maximally eliminates exposure bias!";
+        desc = "<strong>$\\lambda = 1.0$ (Fully On-Policy GKD):</strong> $100\\%$ of sequences are sampled from the student $P_{\\text{student}}(\\cdot \\mid x)$, and the teacher scores every student prefix directly.";
       } else {
-        desc = `<strong>λ = ${lam.toFixed(1)} (Balanced GKD Mixture):</strong> ${(lam * 100).toFixed(0)}% of rollouts are generated on-policy by the student, and ${((1-lam)*100).toFixed(0)}% come from teacher data. Provides stable gradient convergence while actively training student error recovery.`;
+        desc = `<strong>$\\lambda = ${lam.toFixed(1)}$ (Mixed GKD):</strong> $${(lam * 100).toFixed(0)}\\%$ of rollouts are generated on-policy by the student, and $${((1-lam)*100).toFixed(0)}\\%$ come from reference data $\\mathcal{D}$.`;
       }
-      document.getElementById('lambda-description').innerHTML = desc;
+      box.innerHTML = desc;
+      renderMathIn(box);
     }
 
     // Initialize

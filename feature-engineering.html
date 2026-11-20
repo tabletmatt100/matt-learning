@@ -83,8 +83,8 @@
       </p>
       <div class="control-row">
         <button class="btn btn-small" onclick="runPOE('A')">A) Both help equally</button>
-        <button class="btn btn-small" onclick="runPOE('B')">B) Only log(Income) helps</button>
-        <button class="btn btn-small" onclick="runPOE('C')">C) Only the ratio x1 / x2 helps (log does nothing to a tree)</button>
+        <button class="btn btn-small" onclick="runPOE('B')">B) Only $\ln(x_2)$ helps</button>
+        <button class="btn btn-small" onclick="runPOE('C')">C) Only the ratio $x_1 / x_2$ helps ($\ln$ does nothing to a tree)</button>
         <button class="btn btn-small" onclick="runPOE('skip')">Show me why</button>
       </div>
       <div id="poe-reveal" class="refutation" style="display:none;"></div>
@@ -111,8 +111,8 @@
         Toggle between raw features $(x_1, x_2)$ and the engineered ratio $r = x_1 / x_2$ to see how feature representation changes the decision boundary.
       </p>
       <div class="control-row">
-        <button class="btn btn-small active" id="view-raw" onclick="setSplitView('raw')">1. Raw Features (x1, x2): 7-Split Staircase</button>
-        <button class="btn btn-small" id="view-ratio" onclick="setSplitView('ratio')">2. Engineered Ratio (r = x1/x2): 1 Clean Split</button>
+        <button class="btn btn-small active" id="view-raw" onclick="setSplitView('raw')">1. Raw Features $(x_1, x_2)$: 7-Split Staircase</button>
+        <button class="btn btn-small" id="view-ratio" onclick="setSplitView('ratio')">2. Engineered Ratio ($r = x_1/x_2$): 1 Clean Split</button>
       </div>
       <div class="figure-box">
         <svg id="split-svg" viewBox="0 0 460 220" width="460" height="220" role="img" aria-label="Decision tree staircase vs engineered ratio split"></svg>
@@ -172,9 +172,9 @@
         Inspect a rare category with <strong>$n_c = 2$ training rows</strong> (Row 1 defaulted $y_1 = 1$; Row 2 paid back $y_2 = 0$; global base rate $\bar{y}_{\text{global}} = 0.20$). Step across the three encoding modes below:
       </p>
       <div class="control-row">
-        <button class="btn btn-small active" id="te-btn-0" onclick="setTEMode(0)">1. Naive In-Fold (Leaks y_i!)</button>
-        <button class="btn btn-small" id="te-btn-1" onclick="setTEMode(1)">2. Leave-One-Out (Un-smoothed m=0)</button>
-        <button class="btn btn-small" id="te-btn-2" onclick="setTEMode(2)">3. Out-of-Fold + Smoothed (m=4)</button>
+        <button class="btn btn-small active" id="te-btn-0" onclick="setTEMode(0)">1. Naive In-Fold (Leaks $y_i$!)</button>
+        <button class="btn btn-small" id="te-btn-1" onclick="setTEMode(1)">2. Leave-One-Out (Un-smoothed $m=0$)</button>
+        <button class="btn btn-small" id="te-btn-2" onclick="setTEMode(2)">3. Out-of-Fold + Smoothed ($m=4$)</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -247,22 +247,22 @@
 
     <details class="mcq-box" data-correct="C" data-topic="Tree Invariance vs. Interactions">
       <p>You are training an <span class="term" data-term="gbdt">XGBoost</span> tree model on house data with <code>total_price</code> ($x_1$) and <code>square_feet</code> ($x_2$). Which engineered feature actually gives the tree new splitting power?</p>
-      <label class="mcq-option" data-explain="Z-score scaling is a strictly increasing linear transform; every tree split on z_1 is identical to a split on x_1.">Standardizing <code>total_price</code> with <span class="term" data-term="z-score">$z = (x_1 - \mu)/\sigma$</span>.</label>
-      <label class="mcq-option" data-explain="Log1p is a strictly increasing monotonic transform on positive numbers, so the sorted order of rows (and every tree threshold) stays 100% identical.">Taking the <span class="term" data-term="log-transform">log transform</span> $\ln(1 + x_2)$ of <code>square_feet</code>.</label>
-      <label class="mcq-option" data-explain="Correct. Dividing two features (price per square foot = x_1 / x_2) creates a diagonal interaction that changes row ordering and lets a single tree node split on value density.">Computing the <span class="term" data-term="interaction-feature">ratio</span> <code>price_per_sqft</code> $= x_1 / x_2$.</label>
+      <label class="mcq-option" data-explain="Z-score scaling is a strictly increasing linear transform; every tree split on $z_1$ is identical to a split on $x_1$.">Standardizing <code>total_price</code> with <span class="term" data-term="z-score">$z = (x_1 - \mu)/\sigma$</span>.</label>
+      <label class="mcq-option" data-explain="Log1p is a strictly increasing monotonic transform on positive numbers, so the sorted order of rows (and every tree threshold) stays $100\%$ identical.">Taking the <span class="term" data-term="log-transform">log transform</span> $\ln(1 + x_2)$ of <code>square_feet</code>.</label>
+      <label class="mcq-option" data-explain="Correct. Dividing two features ($\text{price per square foot} = x_1 / x_2$) creates a diagonal interaction that changes row ordering and lets a single tree node split on value density.">Computing the <span class="term" data-term="interaction-feature">ratio</span> <code>price_per_sqft</code> $= x_1 / x_2$.</label>
     </details>
 
     <details class="mcq-box" data-correct="B" data-topic="Mental Math: Smoothed Target Encoding">
       <p>The global fraud <span class="term" data-term="base-rate">base rate</span> is $\bar{y}_{\text{global}} = 0.10$ ($10\%$) and you use smoothing weight <span class="term" data-term="smoothing-m">$m = 10$</span>. A new merchant has <span class="term" data-term="n-c">$n_c = 10$</span> past transactions, and $3$ of them were fraud ($\bar{y}_c = 0.30$). What is its <span class="term" data-term="target-encoding">smoothed target encoding</span> <span class="term" data-term="te-symbol">$\hat{y}_c$</span>?</p>
-      <label class="mcq-option" data-explain="0.30 is the un-smoothed raw rate (3 / 10), ignoring the m = 10 prior weight.">$\hat{y}_c = 0.30$</label>
-      <label class="mcq-option" data-explain="Correct. With n_c = 10 and m = 10, the numerator is 3 + 10(0.10) = 4, and the denominator is 10 + 10 = 20, giving 4 / 20 = 0.20 (halfway between 0.30 and 0.10).">$\hat{y}_c = 0.20$</label>
-      <label class="mcq-option" data-explain="0.10 is the global prior alone, which only happens when n_c = 0.">$\hat{y}_c = 0.10$</label>
+      <label class="mcq-option" data-explain="$0.30$ is the un-smoothed raw rate ($3 / 10$), ignoring the $m = 10$ prior weight.">$\hat{y}_c = 0.30$</label>
+      <label class="mcq-option" data-explain="Correct. With $n_c = 10$ and $m = 10$, the numerator is $3 + 10(0.10) = 4$, and the denominator is $10 + 10 = 20$, giving $4 / 20 = 0.20$ (halfway between $0.30$ and $0.10$).">$\hat{y}_c = 0.20$</label>
+      <label class="mcq-option" data-explain="$0.10$ is the global prior alone, which only happens when $n_c = 0$.">$\hat{y}_c = 0.10$</label>
     </details>
 
     <details class="mcq-box" data-correct="A" data-topic="Cyclical Encoding">
       <p>Why do we encode hour-of-day $h \in [0, 23]$ using <strong>both</strong> $\sin(2\pi h / 24)$ and $\cos(2\pi h / 24)$ instead of only $\sin(2\pi h / 24)$?</p>
-      <label class="mcq-option" data-explain="Correct. Sine alone is non-unique on a full circle—for example, sin(0) = 0 at midnight and sin(pi) = 0 at noon. Pairing sine and cosine gives every hour a unique (x, y) point on the unit circle.">Because $\sin$ alone assigns identical values to two different hours (e.g., $0:00$ and $12:00$ both have $\sin = 0$).</label>
-      <label class="mcq-option" data-explain="Decision trees and linear models handle negative numbers between -1 and +1 without any issue.">Because machine learning models crash when features take negative values.</label>
+      <label class="mcq-option" data-explain="Correct. Sine alone is non-unique on a full circle—for example, $\sin(0) = 0$ at midnight and $\sin(\pi) = 0$ at noon. Pairing sine and cosine gives every hour a unique $(x, y)$ point on the unit circle.">Because $\sin$ alone assigns identical values to two different hours (e.g., $0:00$ and $12:00$ both have $\sin = 0$).</label>
+      <label class="mcq-option" data-explain="Decision trees and linear models handle negative numbers between $-1$ and $+1$ without any issue.">Because machine learning models crash when features take negative values.</label>
       <label class="mcq-option" data-explain="Both sine and cosine have the exact same 24-hour period.">Because $\sin$ only covers 12 hours while $\cos$ covers the other 12 hours.</label>
     </details>
 
@@ -304,19 +304,19 @@
         body: '$z = (x - \\mu_{\\text{train}}) / \\sigma_{\\text{train}}$. Centers a feature at $0$ and scales its standard deviation to $1$. Always apply $\\mu_{\\text{train}}$ and $\\sigma_{\\text{train}}$ to validation/test rows without re-fitting.'
       },
       'mu': {
-        title: 'Training Mean (\\mu)',
+        title: 'Training Mean ($\\mu_{\\text{train}}$)',
         body: 'Average of a feature computed strictly on the training fold: $\\mu_{\\text{train}} = \\frac{1}{N_{\\text{train}}}\\sum_{i \\in \\text{train}} x_i$.'
       },
       'sigma': {
-        title: 'Training Standard Deviation (\\sigma)',
+        title: 'Training Standard Deviation ($\\sigma_{\\text{train}}$)',
         body: 'Spread of a feature computed strictly on the training fold: $\\sigma_{\\text{train}} = \\sqrt{\\frac{1}{N_{\\text{train}}}\\sum (x_i - \\mu_{\\text{train}})^2}$.'
       },
       'log-transform': {
-        title: 'Log1p Transform: ln(1 + x)',
+        title: 'Log1p Transform: $\\ln(1 + x)$',
         body: 'Applies $\\ln(1 + x)$ to non-negative right-skewed quantities (dollars, clicks, population). Adding $1$ safely maps $x = 0$ to $\\ln(1) = 0$ while pulling huge outliers back into a compact range.'
       },
       'cyclical-encoding': {
-        title: 'Cyclical Encoding (sin / cos)',
+        title: 'Cyclical Encoding ($\\sin / \\cos$)',
         body: 'Maps a periodic number $t \\in [0, P)$ onto a 2D unit circle via $(\\sin(2\\pi t/P), \\cos(2\\pi t/P))$ so the wrap-around boundary ($t = P - 1$ to $t = 0$) is contiguous.'
       },
       'one-hot': {
@@ -332,27 +332,27 @@
         body: 'Splits the training set into $K$ folds; for rows in Fold 1, category target averages are computed using only Folds $2\\text{--}K$. Prevents a row\'s own label $y_i$ from leaking into its feature value.'
       },
       'te-symbol': {
-        title: 'Smoothed Target Encoding Value (\\hat{y}_c)',
+        title: 'Smoothed Target Encoding Value ($\\hat{y}_c$)',
         body: 'The numeric feature value assigned to category $c$: a weighted average between the category mean $\\bar{y}_c$ and the global prior $\\bar{y}_{\\text{global}}$.'
       },
       'n-c': {
-        title: 'Category Sample Size (n_c)',
+        title: 'Category Sample Size ($n_c$)',
         body: 'Number of training rows belonging to category $c$ (excluding the current row/fold during out-of-fold encoding).'
       },
       'y-bar-c': {
-        title: 'Category Target Mean (\\bar{y}_c)',
+        title: 'Category Target Mean ($\\bar{y}_c$)',
         body: 'Average of the target $y$ inside category $c$: $\\text{positives}_c / n_c$.'
       },
       'smoothing-m': {
-        title: 'Smoothing Weight / Pseudo-Count (m)',
+        title: 'Smoothing Weight / Pseudo-Count ($m$)',
         body: 'Hyperparameter controlling how many "virtual rows" at the global base rate $\\bar{y}_{\\text{global}}$ are blended into every category. When $n_c = m$, the category mean and global prior get equal $50/50$ weight.'
       },
       'target-y': {
-        title: 'Target Variable (y)',
+        title: 'Target Variable ($y$)',
         body: 'The ground-truth label the model is trying to predict (e.g., $y = 1$ for default, $y = 0$ for paid).'
       },
       'feature-x': {
-        title: 'Input Feature (x_j)',
+        title: 'Input Feature ($x_j$)',
         body: 'A predictor column fed into the model.'
       },
       'l2-reg': {

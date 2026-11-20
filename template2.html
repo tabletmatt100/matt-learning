@@ -445,11 +445,11 @@
     }
 
     var SPACED_CARDS = [
-      { q: 'At what exponent x does exp(x) overflow float32?', a: 'x > 88.72 (max float32 is ~3.4e38).' },
-      { q: 'Why does subtracting max(z) leave softmax unchanged?', a: 'exp(z_i - m) / sum(exp(z_j - m)) cancels e^(-m) in numerator and denominator.' },
-      { q: 'What happens to entropy as T -> 0?', a: 'Entropy collapses toward 0 nats (approaching greedy argmax).' },
-      { q: 'What happens to probabilities as T -> infinity?', a: 'All probabilities flatten toward the uniform distribution 1/K.' },
-      { q: 'Why use T > 1 in knowledge distillation?', a: 'Higher T lifts runner-up probabilities so the student learns relative rankings.' }
+      { q: 'At what exponent $x$ does $\\exp(x)$ overflow <code>float32</code>?', a: '$x > 88.72$ (max <code>float32</code> is $\\approx 3.4 \\times 10^{38}$).' },
+      { q: 'Why does subtracting $m = \\max(z)$ leave softmax unchanged?', a: '$\\frac{\\exp(z_i - m)}{\\sum_j \\exp(z_j - m)}$ cancels $e^{-m}$ in numerator and denominator.' },
+      { q: 'What happens to entropy as $T \\to 0$?', a: 'Entropy collapses toward $0\\text{ nats}$ (approaching greedy $\\arg\\max$).' },
+      { q: 'What happens to probabilities as $T \\to \\infty$?', a: 'All probabilities flatten toward the uniform distribution $1/K$.' },
+      { q: 'Why use $T > 1$ in knowledge distillation?', a: 'Higher $T$ lifts runner-up probabilities so the student learns relative rankings.' }
     ];
 
     document.addEventListener('DOMContentLoaded', function () {

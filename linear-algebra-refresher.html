@@ -154,9 +154,9 @@
       </p>
 
       <div class="control-row">
-        <button class="btn btn-small active" id="mm-mode-0" onclick="setMMMode(0)">Forward: Y = X W (2&times;3)&middot;(3&times;2) &rarr; (2&times;2)</button>
-        <button class="btn btn-small" id="mm-mode-1" onclick="setMMMode(1)">Input Grad: dX = dY W&#7488; (2&times;2)&middot;(2&times;3) &rarr; (2&times;3)</button>
-        <button class="btn btn-small" id="mm-mode-2" onclick="setMMMode(2)">Weight Grad: dW = X&#7488; dY (3&times;2)&middot;(2&times;2) &rarr; (3&times;2)</button>
+        <button class="btn btn-small active" id="mm-mode-0" onclick="setMMMode(0)">Forward: $Y = X W$ $(2\times 3)\cdot(3\times 2) \to (2\times 2)$</button>
+        <button class="btn btn-small" id="mm-mode-1" onclick="setMMMode(1)">Input Grad: $dX = dY\,W^\top$ $(2\times 2)\cdot(2\times 3) \to (2\times 3)$</button>
+        <button class="btn btn-small" id="mm-mode-2" onclick="setMMMode(2)">Weight Grad: $dW = X^\top dY$ $(3\times 2)\cdot(2\times 2) \to (3\times 2)$</button>
       </div>
 
       <div class="control-row" id="mm-cell-buttons"></div>
@@ -307,30 +307,30 @@
 
     <details class="mcq-box" data-correct="B" data-topic="Dot Product vs. Cosine Similarity">
       <p>Two embedding vectors have <span class="term" data-term="cosine-similarity">cosine similarity</span> $\cos\theta = 0.80$, with lengths $\|a\|_2 = 2$ and $\|b\|_2 = 5$. If you scale vector $b$ by $3\times$ (so $\|b'\|_2 = 15$), what happens to their <span class="term" data-term="dot-product">dot product</span> and <span class="term" data-term="cosine-similarity">cosine similarity</span>?</p>
-      <label class="mcq-option" data-explain="Cosine similarity divides by ||b||_2, so multiplying b by 3 cancels out in the denominator.">Both the dot product and cosine similarity triple.</label>
-      <label class="mcq-option" data-explain="Correct. Initially a · b = 2 * 5 * 0.8 = 8. Scaling b by 3x triples the dot product to 24, while cosine similarity stays 0.80 because direction did not change.">The dot product triples from $8$ to $24$, while cosine similarity stays $0.80$.</label>
-      <label class="mcq-option" data-explain="The dot product a · b = ||a|| ||b|| cos(theta) scales linearly with ||b||.">Both stay unchanged at $8$ and $0.80$.</label>
+      <label class="mcq-option" data-explain="Cosine similarity divides by $\|b\|_2$, so multiplying $b$ by $3$ cancels out in the denominator.">Both the dot product and cosine similarity triple.</label>
+      <label class="mcq-option" data-explain="Correct. Initially $a \cdot b = 2 \times 5 \times 0.80 = 8$. Scaling $b$ by $3\times$ triples the dot product to $24$, while cosine similarity stays $0.80$ because direction did not change.">The dot product triples from $8$ to $24$, while cosine similarity stays $0.80$.</label>
+      <label class="mcq-option" data-explain="The dot product $a \cdot b = \|a\|_2 \|b\|_2 \cos\theta$ scales linearly with $\|b\|_2$.">Both stay unchanged at $8$ and $0.80$.</label>
     </details>
 
     <details class="mcq-box" data-correct="A" data-topic="Backprop Shape Matching">
       <p>In a linear layer $Y = XW$, input $X$ has shape $(32, 768)$ and weight matrix $W$ has shape $(768, 3072)$, producing $Y$ of shape $(32, 3072)$. Given upstream gradient $dY$ of shape $(32, 3072)$, which expression has the valid shape to compute the weight gradient $dW$ of shape $(768, 3072)$?</p>
-      <label class="mcq-option" data-explain="Correct. X^T has shape (768, 32) and dY has shape (32, 3072). The batch dimension 32 cancels, yielding (768, 3072).">$X^\top dY$ &mdash; shape $(768, 32) \times (32, 3072) \to (768, 3072)$.</label>
-      <label class="mcq-option" data-explain="(32, 768) times (32, 3072) crashes with a dimension mismatch because 768 != 32.">$X \, dY$ &mdash; shape $(32, 768) \times (32, 3072)$.</label>
-      <label class="mcq-option" data-explain="dY W^T has shape (32, 3072) x (3072, 768) -> (32, 768), which is the input gradient dX, not dW.">$dY \, W^\top$ &mdash; shape $(32, 3072) \times (3072, 768) \to (32, 768)$.</label>
+      <label class="mcq-option" data-explain="Correct. $X^\top$ has shape $(768, 32)$ and $dY$ has shape $(32, 3072)$. The batch dimension $32$ cancels, yielding $(768, 3072)$.">$X^\top dY$ &mdash; shape $(768, 32) \times (32, 3072) \to (768, 3072)$.</label>
+      <label class="mcq-option" data-explain="$(32, 768)$ times $(32, 3072)$ crashes with a dimension mismatch because $768 \ne 32$.">$X \, dY$ &mdash; shape $(32, 768) \times (32, 3072)$.</label>
+      <label class="mcq-option" data-explain="$dY\,W^\top$ has shape $(32, 3072) \times (3072, 768) \to (32, 768)$, which is the input gradient $dX$, not $dW$.">$dY \, W^\top$ &mdash; shape $(32, 3072) \times (3072, 768) \to (32, 768)$.</label>
     </details>
 
     <details class="mcq-box" data-correct="C" data-topic="Low-Rank Matrix Factorization (LoRA)">
       <p>You replace a $(2000 \times 2000)$ weight update matrix $\Delta W$ ($4{,}000{,}000$ parameters) with a <span class="term" data-term="lora">LoRA</span> product $\Delta W = B A$, where $B$ has shape $(2000, 10)$ and $A$ has shape $(10, 2000)$. How many trainable parameters does $BA$ have, and what is the maximum <span class="term" data-term="rank">rank</span> of $\Delta W$?</p>
-      <label class="mcq-option" data-explain="2000*10 + 10*2000 = 40,000 parameters, not 20,000, and rank is bounded by the bottleneck 10.">20,000 parameters; maximum rank 2000.</label>
-      <label class="mcq-option" data-explain="Even though BA has outer shape (2000, 2000), every column is a linear combination of the 10 columns of B, so its rank cannot exceed 10.">40,000 parameters; maximum rank 2000.</label>
-      <label class="mcq-option" data-explain="Correct. B has 20,000 parameters and A has 20,000 parameters (40,000 total, a 100x reduction), and passing through a 10-D bottleneck limits rank(BA) <= 10.">40,000 parameters ($100\times$ fewer); maximum rank $10$.</label>
+      <label class="mcq-option" data-explain="$2000\times 10 + 10\times 2000 = 40{,}000$ parameters, not $20{,}000$, and rank is bounded by the bottleneck $10$.">$20{,}000$ parameters; maximum rank $2000$.</label>
+      <label class="mcq-option" data-explain="Even though $BA$ has outer shape $(2000, 2000)$, every column is a linear combination of the $10$ columns of $B$, so its rank cannot exceed $10$.">$40{,}000$ parameters; maximum rank $2000$.</label>
+      <label class="mcq-option" data-explain="Correct. $B$ has $20{,}000$ parameters and $A$ has $20{,}000$ parameters ($40{,}000$ total, a $100\times$ reduction), and passing through a 10-D bottleneck limits $\text{rank}(BA) \le 10$.">$40{,}000$ parameters ($100\times$ fewer); maximum rank $10$.</label>
     </details>
 
     <details class="mcq-box" data-correct="B" data-topic="Eigenvectors &amp; Zero Eigenvalues">
       <p>Suppose a square matrix $A$ has an <span class="term" data-term="eigenvector">eigenvector</span> $v$ with <span class="term" data-term="eigenvalue">eigenvalue</span> $\lambda = 0$ (so $Av = 0$). What does that tell you about $A$?</p>
-      <label class="mcq-option" data-explain="Only the zero matrix collapses all directions to 0; a single zero eigenvalue just means one axis collapses.">Every entry of $A$ must be zero.</label>
-      <label class="mcq-option" data-explain="Correct. Av = 0 means A squashes the v direction completely flat, so A is rank-deficient (not full rank) and cannot be inverted.">$A$ squashes the direction $v$ to zero, meaning $A$ has lost a dimension (not full <span class="term" data-term="rank">rank</span>) and is non-invertible.</label>
-      <label class="mcq-option" data-explain="Orthogonality depends on whether A is symmetric, not whether an eigenvalue is zero.">$A$ rotates $v$ by $90^\circ$.</label>
+      <label class="mcq-option" data-explain="Only the zero matrix collapses all directions to $0$; a single zero eigenvalue just means one axis collapses.">Every entry of $A$ must be zero.</label>
+      <label class="mcq-option" data-explain="Correct. $Av = 0$ means $A$ squashes the $v$ direction completely flat, so $A$ is rank-deficient (not full rank) and cannot be inverted.">$A$ squashes the direction $v$ to zero, meaning $A$ has lost a dimension (not full <span class="term" data-term="rank">rank</span>) and is non-invertible.</label>
+      <label class="mcq-option" data-explain="Orthogonality depends on whether $A$ is symmetric, not whether an eigenvalue is zero.">$A$ rotates $v$ by $90^\circ$.</label>
     </details>
 
     <div class="score-bar"></div>
@@ -341,23 +341,23 @@
   <script>
     var GLOSSARY = {
       'dot-product': {
-        title: 'Dot Product (Inner Product, a · b)',
+        title: 'Dot Product (Inner Product, $a \\cdot b$)',
         body: 'Multiply matching coordinates and add them up: $a \\cdot b = \\sum_{i=1}^d a_i b_i$. Geometrically, $a \\cdot b = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$. Positive when vectors point roughly together, $0$ when <span class="term" data-term="orthogonal">orthogonal</span> ($90^\\circ$), and negative when pointing opposite.'
       },
       'cosine-similarity': {
-        title: 'Cosine Similarity (cos θ)',
+        title: 'Cosine Similarity ($\\cos\\theta$)',
         body: 'The <span class="term" data-term="dot-product">dot product</span> of two vectors after dividing each by its <span class="term" data-term="l2-norm">$L_2$ norm</span>: $\\cos\\theta = \\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2} \\in [-1, 1]$. Unlike raw dot product, scaling a vector by $10\\times$ leaves cosine similarity completely unchanged.'
       },
       'l2-norm': {
-        title: 'L₂ Norm (Euclidean Length, ||x||₂)',
+        title: '$L_2$ Norm (Euclidean Length, $\\|x\\|_2$)',
         body: '$\\|x\\|_2 = \\sqrt{\\sum_{i=1}^d x_i^2} = \\sqrt{x^\\top x}$. Straight-line distance from the origin. Used in cosine similarity, gradient norm clipping, and $L_2$ weight decay.'
       },
       'l1-norm': {
-        title: 'L₁ Norm (Manhattan Norm, ||x||₁)',
+        title: '$L_1$ Norm (Manhattan Norm, $\\|x\\|_1$)',
         body: '$\\|x\\|_1 = \\sum_{i=1}^d |x_i|$. Sum of absolute values. Used in Lasso ($L_1$) regularization because its constant $\\pm 1$ slope pushes small weights all the way to exact zero.'
       },
       'orthogonal': {
-        title: 'Orthogonal Vectors (90° Perpendicular)',
+        title: 'Orthogonal Vectors ($90^\\circ$ Perpendicular)',
         body: 'Two non-zero vectors $a, b$ with <span class="term" data-term="dot-product">dot product</span> $a \\cdot b = 0$ ($\\cos 90^\\circ = 0$). Moving along $a$ changes nothing along $b$—they carry completely non-overlapping directional signal.'
       },
       'embedding': {
@@ -365,15 +365,15 @@
         body: 'A learned dense vector $x \\in \\mathbb{R}^d$ (such as $d = 768$ or $4096$) representing a token, sentence, or image so that semantic similarity corresponds to <span class="term" data-term="dot-product">dot product</span> or <span class="term" data-term="cosine-similarity">cosine similarity</span>.'
       },
       'attention-score': {
-        title: 'Attention Scores (Q Kᵀ)',
+        title: 'Attention Scores ($Q K^\\top$)',
         body: 'In Transformers, multiplying query matrix $Q$ by transposed key matrix $K^\\top$ computes the <span class="term" data-term="dot-product">dot product</span> between every query token and every key token in parallel.'
       },
       'matmul': {
-        title: 'Matrix Multiplication (C = A B)',
+        title: 'Matrix Multiplication ($C = A B$)',
         body: 'For $A \\in \\mathbb{R}^{m \\times k}$ and $B \\in \\mathbb{R}^{k \\times n}$, entry $C_{i,j}$ is the <span class="term" data-term="dot-product">dot product</span> of row $i$ of $A$ with column $j$ of $B$. Requires the inner dimensions ($k$) to match.'
       },
       'transpose': {
-        title: 'Transpose (Aᵀ)',
+        title: 'Transpose ($A^\\top$)',
         body: 'Flips a matrix across its main diagonal so rows become columns: $(A^\\top)_{i,j} = A_{j,i}$, turning shape $(m, n)$ into $(n, m)$. Key rule: $(AB)^\\top = B^\\top A^\\top$.'
       },
       'rank': {
@@ -385,7 +385,7 @@
         body: 'A matrix whose <span class="term" data-term="rank">rank</span> $r$ is much smaller than its height or width ($r \\ll \\min(m, n)$). Any rank-$r$ matrix of size $(m \\times n)$ can be factored into $B_{m \\times r} A_{r \\times n}$, storing $r(m+n)$ numbers instead of $mn$.'
       },
       'outer-product': {
-        title: 'Outer Product (u vᵀ)',
+        title: 'Outer Product ($u v^\\top$)',
         body: 'Multiplying a column vector $u \\in \\mathbb{R}^{m \\times 1}$ by a row vector $v^\\top \\in \\mathbb{R}^{1 \\times n}$ produces a full $(m \\times n)$ matrix where every column is just a scalar multiple of $u$ (<span class="term" data-term="rank">rank</span> $= 1$).'
       },
       'lora': {
@@ -393,15 +393,15 @@
         body: 'Freezes a pretrained weight matrix $W_0 \\in \\mathbb{R}^{d \\times d}$ and learns a <span class="term" data-term="low-rank">low-rank</span> update $\\Delta W = B A$ with $B \\in \\mathbb{R}^{d \\times r}$ and $A \\in \\mathbb{R}^{r \\times d}$ ($r \\ll d$, e.g. $r=8$), cutting trainable parameters by $100\\times$–$500\\times$.'
       },
       'eigenvector': {
-        title: 'Eigenvector (v)',
+        title: 'Eigenvector ($v$)',
         body: 'A non-zero vector $v$ whose direction is unchanged when multiplied by a square matrix $A$: $Av = \\lambda v$. It only gets stretched or flipped by its <span class="term" data-term="eigenvalue">eigenvalue $\\lambda$</span>.'
       },
       'eigenvalue': {
-        title: 'Eigenvalue (λ)',
+        title: 'Eigenvalue ($\\lambda$)',
         body: 'The scalar stretch factor $\\lambda$ in $Av = \\lambda v$. If $\\lambda > 1$, $A$ stretches along $v$; if $0 < \\lambda < 1$, $A$ shrinks along $v$; if $\\lambda = 0$, $A$ collapses $v$ flat to zero.'
       },
       'svd': {
-        title: 'SVD (Singular Value Decomposition, X = U Σ Vᵀ)',
+        title: 'SVD (Singular Value Decomposition, $X = U \\Sigma V^\\top$)',
         body: 'Factors any rectangular matrix $X \\in \\mathbb{R}^{n \\times d}$ into orthogonal rotation $V^\\top$, diagonal non-negative stretch factors $\\Sigma = \\text{diag}(\\sigma_1 \\ge \\sigma_2 \\ge \\dots \\ge 0)$ (singular values), and orthogonal rotation $U$.'
       },
       'pca': {
@@ -409,11 +409,11 @@
         body: 'Projects centered data $X$ onto the top $k$ <span class="term" data-term="eigenvector">eigenvectors</span> of the <span class="term" data-term="covariance">covariance matrix</span> $\\frac{1}{n}X^\\top X$ (or equivalently the top $k$ right singular vectors $V$ of $X$) to keep maximum variance in $k$ dimensions.'
       },
       'covariance': {
-        title: 'Covariance Matrix (Σ = Xᵀ X / n)',
+        title: 'Covariance Matrix ($\\Sigma = X^\\top X / n$)',
         body: 'For centered data $X \\in \\mathbb{R}^{n \\times d}$, the $(d \\times d)$ symmetric matrix whose $(i,j)$ entry is the covariance between feature $i$ and feature $j$. Always <span class="term" data-term="PSD">Positive Semi-Definite</span>.'
       },
       'hessian': {
-        title: 'Hessian Matrix (H)',
+        title: 'Hessian Matrix ($H$)',
         body: 'The $(d \\times d)$ symmetric matrix of second derivatives $\\frac{\\partial^2 L}{\\partial w_i \\partial w_j}$ of the loss. Its <span class="term" data-term="eigenvector">eigenvectors</span> are the principal axes of the loss bowl, and its <span class="term" data-term="eigenvalue">eigenvalues</span> measure curvature along each axis.'
       },
       'PSD': {
@@ -423,11 +423,11 @@
     };
 
     var SPACED_CARDS = [
-      { q: 'What is the geometric formula connecting the dot product a · b to cosine similarity?', a: 'a · b = ||a||_2 ||b||_2 cos(theta), so cosine similarity is (a · b) / (||a||_2 ||b||_2), which removes vector lengths and compares direction only.' },
-      { q: 'Why does L1 regularization produce sparse (exact-zero) weights while L2 weight decay does not?', a: 'The derivative of w^2 is 2w (which vanishes near 0), whereas the derivative of |w| is +/-1 all the way to 0, pushing small weights to exact zero.' },
-      { q: 'If Y = XW with X of shape (B, d_in) and W of shape (d_in, d_out), what are the backprop shapes for dX and dW?', a: 'dX = dY W^T has shape (B, d_out) x (d_out, d_in) -> (B, d_in), and dW = X^T dY has shape (d_in, B) x (B, d_out) -> (d_in, d_out).' },
-      { q: 'How many parameters and what maximum rank does a LoRA update Delta_W = B A have when B is (d, r) and A is (r, d)?', a: 'It has 2*d*r parameters (instead of d^2) and rank at most r, because every input passes through an r-dimensional bottleneck.' },
-      { q: 'What is an eigenvector v and eigenvalue lambda of a square matrix A in plain geometry?', a: 'A direction v that does not rotate when multiplied by A (Av = lambda * v); A simply stretches or shrinks v by the factor lambda.' }
+      { q: 'What is the geometric formula connecting the dot product $a \\cdot b$ to cosine similarity?', a: '$a \\cdot b = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$, so cosine similarity is $\\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2}$, which removes vector lengths and compares direction only.' },
+      { q: 'Why does $L_1$ regularization produce sparse (exact-zero) weights while $L_2$ weight decay does not?', a: 'The derivative of $w^2$ is $2w$ (which vanishes near $0$), whereas the derivative of $|w|$ is $\\pm 1$ all the way to $0$, pushing small weights to exact zero.' },
+      { q: 'If $Y = XW$ with $X$ of shape $(B, d_{\\text{in}})$ and $W$ of shape $(d_{\\text{in}}, d_{\\text{out}})$, what are the backprop shapes for $dX$ and $dW$?', a: '$dX = dY\\,W^\\top$ has shape $(B, d_{\\text{out}}) \\times (d_{\\text{out}}, d_{\\text{in}}) \\to (B, d_{\\text{in}})$, and $dW = X^\\top dY$ has shape $(d_{\\text{in}}, B) \\times (B, d_{\\text{out}}) \\to (d_{\\text{in}}, d_{\\text{out}})$.' },
+      { q: 'How many parameters and what maximum rank does a LoRA update $\\Delta W = B A$ have when $B$ is $(d, r)$ and $A$ is $(r, d)$?', a: 'It has $2dr$ parameters (instead of $d^2$) and rank at most $r$, because every input passes through an $r$-dimensional bottleneck.' },
+      { q: 'What is an eigenvector $v$ and eigenvalue $\\lambda$ of a square matrix $A$ in plain geometry?', a: 'A direction $v$ that does not rotate when multiplied by $A$ ($Av = \\lambda v$); $A$ simply stretches or shrinks $v$ by the factor $\\lambda$.' }
     ];
 
     /* ---------- Widget 1: Vector Dot Product & Cosine Explorer ---------- */

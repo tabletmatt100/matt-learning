@@ -233,30 +233,30 @@
 
     <details class="mcq-box" data-correct="C" data-topic="Partial Derivatives &amp; Gradient Descent">
       <p>For $L(w_1, w_2) = 2w_1^2 + w_1 w_2$ at $(w_1, w_2) = (1, 3)$, what is the <span class="term" data-term="gradient">gradient</span> $\nabla_w L = \left[\frac{\partial L}{\partial w_1}, \frac{\partial L}{\partial w_2}\right]^\top$, and which way does gradient descent move?</p>
-      <label class="mcq-option" data-explain="dL/dw_1 is 4w_1 + w_2 = 4(1) + 3 = 7, and dL/dw_2 is w_1 = 1.">$\nabla_w L = [4, 3]^\top$; gradient descent adds $[4, 3]^\top$.</label>
-      <label class="mcq-option" data-explain="The gradient is [7, 1]^T, which points uphill; to minimize loss we subtract eta * [7, 1]^T.">$\nabla_w L = [7, 1]^\top$; gradient descent steps in the $+[7, 1]^\top$ direction.</label>
-      <label class="mcq-option" data-explain="Correct. dL/dw_1 = 4w_1 + w_2 = 7 and dL/dw_2 = w_1 = 1. Since the gradient points steepest uphill, gradient descent steps in the negative direction -[7, 1]^T.">$\nabla_w L = [7, 1]^\top$; gradient descent steps in the $-[7, 1]^\top$ direction.</label>
+      <label class="mcq-option" data-explain="$\frac{\partial L}{\partial w_1} = 4w_1 + w_2 = 4(1) + 3 = 7$, and $\frac{\partial L}{\partial w_2} = w_1 = 1$.">$\nabla_w L = [4, 3]^\top$; gradient descent adds $[4, 3]^\top$.</label>
+      <label class="mcq-option" data-explain="The gradient is $[7, 1]^\top$, which points uphill; to minimize loss we subtract $\eta [7, 1]^\top$.">$\nabla_w L = [7, 1]^\top$; gradient descent steps in the $+[7, 1]^\top$ direction.</label>
+      <label class="mcq-option" data-explain="Correct. $\frac{\partial L}{\partial w_1} = 4w_1 + w_2 = 7$ and $\frac{\partial L}{\partial w_2} = w_1 = 1$. Since the gradient points steepest uphill, gradient descent steps in the negative direction $-[7, 1]^\top$.">$\nabla_w L = [7, 1]^\top$; gradient descent steps in the $-[7, 1]^\top$ direction.</label>
     </details>
 
     <details class="mcq-box" data-correct="B" data-topic="Chain Rule &amp; Vanishing Gradients">
       <p>Why does a 20-layer network using <span class="term" data-term="sigmoid">sigmoid</span> activations suffer from <span class="term" data-term="vanishing-grad">vanishing gradients</span> in its early layers, while <span class="term" data-term="relu">ReLU</span> avoids this for active neurons ($z > 0$)?</p>
-      <label class="mcq-option" data-explain="Sigmoid outputs are always positive in (0, 1); the problem is the magnitude of its derivative.">Sigmoid outputs negative numbers that cancel out across layers.</label>
-      <label class="mcq-option" data-explain="Correct. By the chain rule, backpropagation multiplies activation derivatives across every layer. Since sigma'(z) <= 0.25, multiplying 20 of them shrinks the gradient by at least 0.25^20, whereas ReLU'(z) = 1 for z > 0.">Backprop multiplies local derivatives $\sigma'(z) = \sigma(z)(1-\sigma(z)) \le 0.25$ at every layer, whereas $\text{ReLU}'(z) = 1$ for $z > 0$.</label>
-      <label class="mcq-option" data-explain="Sigmoid is smooth and differentiable everywhere; ReLU is the one with a kink at z = 0.">Sigmoid has no derivative at $z = 0$.</label>
+      <label class="mcq-option" data-explain="Sigmoid outputs are always positive in $(0, 1)$; the problem is the magnitude of its derivative.">Sigmoid outputs negative numbers that cancel out across layers.</label>
+      <label class="mcq-option" data-explain="Correct. By the chain rule, backpropagation multiplies activation derivatives across every layer. Since $\sigma'(z) \le 0.25$, multiplying $20$ of them shrinks the gradient by at least $0.25^{20}$, whereas $\text{ReLU}'(z) = 1$ for $z > 0$.">Backprop multiplies local derivatives $\sigma'(z) = \sigma(z)(1-\sigma(z)) \le 0.25$ at every layer, whereas $\text{ReLU}'(z) = 1$ for $z > 0$.</label>
+      <label class="mcq-option" data-explain="Sigmoid is smooth and differentiable everywhere; ReLU is the one with a kink at $z = 0$.">Sigmoid has no derivative at $z = 0$.</label>
     </details>
 
     <details class="mcq-box" data-correct="A" data-topic="Cross-Entropy + Sigmoid Derivative">
       <p>A binary classifier uses <span class="term" data-term="sigmoid">sigmoid</span> $\hat{p} = \sigma(z)$ and binary <span class="term" data-term="cross-entropy">cross-entropy</span> loss $L$. On a positive example ($y = 1$), the model outputs logit $z = 0$, so $\hat{p} = 0.50$. What is the exact gradient $\frac{\partial L}{\partial z}$?</p>
-      <label class="mcq-option" data-explain="Correct. For cross-entropy + sigmoid, dL/dz simplifies to p_hat - y = 0.50 - 1.0 = -0.50 (telling us to increase z).">$\hat{p} - y = 0.50 - 1.00 = -0.50$.</label>
-      <label class="mcq-option" data-explain="The p_hat(1 - p_hat) = 0.25 factor from the sigmoid derivative cancels against the denominator of the cross-entropy derivative.">$(0.50 - 1.00) \times 0.25 = -0.125$.</label>
-      <label class="mcq-option" data-explain="Since p_hat = 0.50 is below the target y = 1, increasing z lowers the loss, so dL/dz is negative (-0.50).">$y - \hat{p} = +0.50$.</label>
+      <label class="mcq-option" data-explain="Correct. For cross-entropy + sigmoid, $\frac{\partial L}{\partial z}$ simplifies to $\hat{p} - y = 0.50 - 1.00 = -0.50$ (telling us to increase $z$).">$\hat{p} - y = 0.50 - 1.00 = -0.50$.</label>
+      <label class="mcq-option" data-explain="The $\hat{p}(1 - \hat{p}) = 0.25$ factor from the sigmoid derivative cancels against the denominator of the cross-entropy derivative.">$(0.50 - 1.00) \times 0.25 = -0.125$.</label>
+      <label class="mcq-option" data-explain="Since $\hat{p} = 0.50$ is below the target $y = 1$, increasing $z$ lowers the loss, so $\frac{\partial L}{\partial z}$ is negative ($-0.50$).">$y - \hat{p} = +0.50$.</label>
     </details>
 
     <details class="mcq-box" data-correct="C" data-topic="Second Derivative &amp; Maximum Learning Rate">
       <p>Along a steep canyon wall of the loss surface, the second derivative (<span class="term" data-term="hessian">Hessian</span> curvature) is $h = L''(w) = 10$. What happens if you run gradient descent with <span class="term" data-term="learning-rate">learning rate</span> $\eta = 0.25$?</p>
-      <label class="mcq-option" data-explain="At h = 10, the exact Newton step to the minimum is eta = 1/h = 0.10, not 0.25.">It lands directly on the minimum in one step.</label>
-      <label class="mcq-option" data-explain="1 - eta*h = 1 - 2.5 = -1.5, which has magnitude > 1, so each step lands 1.5x farther away on the opposite wall.">It converges slowly without overshooting.</label>
-      <label class="mcq-option" data-explain="Correct. The maximum stable learning rate is 2/h = 2/10 = 0.20. At eta = 0.25 > 0.20, each step multiplies distance to the minimum by (1 - eta*h) = -1.5, bouncing across the canyon and exploding.">It overshoots the opposite canyon wall and diverges because $\eta = 0.25 > \frac{2}{h} = 0.20$.</label>
+      <label class="mcq-option" data-explain="At $h = 10$, the exact Newton step to the minimum is $\eta = 1/h = 0.10$, not $0.25$.">It lands directly on the minimum in one step.</label>
+      <label class="mcq-option" data-explain="$1 - \eta h = 1 - 2.5 = -1.5$, which has magnitude $> 1$, so each step lands $1.5\times$ farther away on the opposite wall.">It converges slowly without overshooting.</label>
+      <label class="mcq-option" data-explain="Correct. The maximum stable learning rate is $2/h = 2/10 = 0.20$. At $\eta = 0.25 > 0.20$, each step multiplies distance to the minimum by $(1 - \eta h) = -1.5$, bouncing across the canyon and exploding.">It overshoots the opposite canyon wall and diverges because $\eta = 0.25 > \frac{2}{h} = 0.20$.</label>
     </details>
 
     <div class="score-bar"></div>
@@ -267,19 +267,19 @@
   <script>
     var GLOSSARY = {
       'derivative': {
-        title: 'Derivative f\'(w) = df/dw',
+        title: 'Derivative $f\'(w) = \\frac{df}{dw}$',
         body: 'The instantaneous slope of $f(w)$: if you nudge $w$ by a tiny $\\Delta w$, the output changes by $\\Delta f \\approx f\'(w)\\,\\Delta w$. When $f\'(w) = 0$, you are at a flat spot (minimum, maximum, or saddle point).'
       },
       'partial': {
-        title: 'Partial Derivative (∂L / ∂wᵢ)',
+        title: 'Partial Derivative ($\\frac{\\partial L}{\\partial w_i}$)',
         body: 'The ordinary Calc 1 <span class="term" data-term="derivative">derivative</span> of a multivariable function $L(w_1, \\dots, w_d)$ with respect to a single variable $w_i$, treating all other variables $w_{j \\ne i}$ as constants.'
       },
       'gradient': {
-        title: 'Gradient Vector (∇w L)',
-        body: 'The column vector of all <span class="term" data-term="partial">partial derivatives</span> $\\nabla_w L = [\\frac{\\partial L}{\\partial w_1}, \\dots, \\frac{\\partial L}{\\partial w_d}]^\\top$. Always points in the direction of <strong>steepest ascent</strong> (fastest loss increase), so $-\nabla_w L$ points steepest downhill.'
+        title: 'Gradient Vector ($\\nabla_w L$)',
+        body: 'The column vector of all <span class="term" data-term="partial">partial derivatives</span> $\\nabla_w L = [\\frac{\\partial L}{\\partial w_1}, \\dots, \\frac{\\partial L}{\\partial w_d}]^\\top$. Always points in the direction of <strong>steepest ascent</strong> (fastest loss increase), so $-\\nabla_w L$ points steepest downhill.'
       },
       'directional-deriv': {
-        title: 'Directional Derivative (∇L · u)',
+        title: 'Directional Derivative ($\\nabla L \\cdot u$)',
         body: 'The slope of $L(w)$ when stepping in unit direction $u$: $D_u L = \\nabla L \\cdot u = \\|\\nabla L\\|_2 \\cos\\theta$. Maximized when $u$ aligns with $\\nabla L$ ($\\theta = 0^\\circ$) and minimized when $u$ points opposite ($\\theta = 180^\\circ$).'
       },
       'chain-rule': {
@@ -291,7 +291,7 @@
         body: 'Applying the <span class="term" data-term="chain-rule">chain rule</span> from the scalar loss $L$ backward to every layer\'s weights by caching activations during the forward pass and multiplying local derivatives backward.'
       },
       'learning-rate': {
-        title: 'Learning Rate (η)',
+        title: 'Learning Rate ($\\eta$)',
         body: 'The step-size multiplier $\\eta > 0$ in $w \\leftarrow w - \\eta \\nabla_w L$. Too small stalls training; larger than $2/\\lambda_{\\max}$ (where $\\lambda_{\\max}$ is the steepest <span class="term" data-term="hessian">Hessian</span> curvature) causes steps to overshoot and diverge.'
       },
       'relu': {
@@ -299,7 +299,7 @@
         body: '$\\text{ReLU}(z) = \\max(0, z)$. Its derivative is $1$ for $z > 0$ and $0$ for $z < 0$. Because multiplying by $1$ does not shrink gradients, active ReLU units avoid the <span class="term" data-term="vanishing-grad">vanishing gradient</span> problem.'
       },
       'sigmoid': {
-        title: 'Sigmoid Activation σ(z)',
+        title: 'Sigmoid Activation $\\sigma(z)$',
         body: '$\\sigma(z) = \\frac{1}{1 + e^{-z}} \\in (0, 1)$. Squashes real logits into probabilities. Its derivative is $\\sigma\'(z) = \\sigma(z)(1 - \\sigma(z))$, which peaks at $0.25$ (at $z=0$) and approaches $0$ when $|z|$ is large.'
       },
       'softmax': {
@@ -315,11 +315,11 @@
         body: 'When local derivatives $< 1$ (such as <span class="term" data-term="sigmoid">sigmoid</span>\'s $\\le 0.25$) are multiplied across many layers by the <span class="term" data-term="chain-rule">chain rule</span>, the gradient reaching early layers shrinks exponentially toward zero.'
       },
       'second-deriv': {
-        title: 'Second Derivative L\'\'(w)',
+        title: 'Second Derivative $L\'\'(w)$',
         body: 'The derivative of the derivative: $\\frac{d^2 L}{dw^2}$. Measures curvature (how rapidly the slope changes). Positive in a valley bowl ($L\'\' > 0$), negative on a hilltop ($L\'\' < 0$).'
       },
       'hessian': {
-        title: 'Hessian Matrix (H)',
+        title: 'Hessian Matrix ($H$)',
         body: 'The $(d \\times d)$ symmetric matrix of all second partial derivatives $H_{i,j} = \\frac{\\partial^2 L}{\\partial w_i \\partial w_j}$. Its largest eigenvalue $\\lambda_{\\max}$ is the steepest curvature and sets the stability limit $\\eta < 2/\\lambda_{\\max}$.'
       },
       'taylor': {
@@ -329,11 +329,11 @@
     };
 
     var SPACED_CARDS = [
-      { q: 'Why does Gradient Descent subtract the gradient (w <- w - eta * grad_L)?', a: 'Because the directional derivative grad_L · u = ||grad_L|| cos(theta) is maximized at theta = 0° (steepest uphill) and most negative at theta = 180° (-grad_L, steepest downhill).' },
-      { q: 'In the multivariable chain rule, when do you multiply local derivatives vs. add them?', a: 'You multiply local derivatives along a sequential chain (w -> z -> y_hat -> L), and you add derivatives whenever a variable branches to feed multiple downstream paths.' },
-      { q: 'What is the derivative of sigmoid(z), and why does it cause vanishing gradients in deep networks?', a: 'sigma\'(z) = sigma(z)(1 - sigma(z)), which is at most 0.25 (at z = 0) and near 0 for large |z|. Multiplying numbers <= 0.25 across many layers shrinks gradients exponentially.' },
-      { q: 'What is the gradient dL/dz of Cross-Entropy loss combined with Sigmoid or Softmax logits z?', a: 'dL/dz = p_hat - y (predicted probability minus true label), because the 1/p_hat derivative of -ln(p_hat) cancels the p_hat(1 - p_hat) factor from sigmoid/softmax.' },
-      { q: 'If a loss valley has second-derivative curvature h = L\'\'(w) > 0, what is the optimal 1-step learning rate and the maximum stable learning rate?', a: 'Optimal 1-step Newton learning rate is eta = 1/h; maximum stable learning rate before steps overshoot and diverge is eta_max = 2/h.' }
+      { q: 'Why does Gradient Descent subtract the gradient ($w \\leftarrow w - \\eta \\nabla_w L$)?', a: 'Because the directional derivative $\\nabla L \\cdot u = \\|\\nabla L\\|_2 \\cos\\theta$ is maximized at $\\theta = 0^\\circ$ (steepest uphill) and most negative at $\\theta = 180^\\circ$ ($-\\nabla L$, steepest downhill).' },
+      { q: 'In the multivariable chain rule, when do you multiply local derivatives vs. add them?', a: 'You multiply local derivatives along a sequential chain ($w \\to z \\to \\hat{y} \\to L$), and you add derivatives whenever a variable branches to feed multiple downstream paths.' },
+      { q: 'What is the derivative of $\\sigma(z)$, and why does it cause vanishing gradients in deep networks?', a: '$\\sigma\'(z) = \\sigma(z)(1 - \\sigma(z))$, which is at most $0.25$ (at $z = 0$) and near $0$ for large $|z|$. Multiplying numbers $\\le 0.25$ across many layers shrinks gradients exponentially.' },
+      { q: 'What is the gradient $\\frac{\\partial L}{\\partial z}$ of Cross-Entropy loss combined with Sigmoid or Softmax logits $z$?', a: '$\\frac{\\partial L}{\\partial z} = \\hat{p} - y$ (predicted probability minus true label), because the $1/\\hat{p}$ derivative of $-\\ln \\hat{p}$ cancels the $\\hat{p}(1 - \\hat{p})$ factor from sigmoid/softmax.' },
+      { q: 'If a loss valley has second-derivative curvature $h = L\'\'(w) > 0$, what is the optimal 1-step learning rate and the maximum stable learning rate?', a: 'Optimal 1-step Newton learning rate is $\\eta = 1/h$; maximum stable learning rate before steps overshoot and diverge is $\\eta_{\\max} = 2/h$.' }
     ];
 
     /* ---------- Widget 1: Chain Rule & Vanishing Gradient Inspector ---------- */

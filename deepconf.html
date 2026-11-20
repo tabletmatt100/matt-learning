@@ -33,22 +33,22 @@
     <div class="tldr">
       <div class="tldr-title">TL;DR</div>
       <ul>
-        <li>Majority voting over hundreds of sampled reasoning traces works, but it is expensive and counts a rambling, lost trace the same as a clean one.</li>
-        <li>DeepConf scores each trace using the model's own token probabilities. The useful score is local: the average confidence over a sliding window of tokens, and especially the worst window in the trace.</li>
-        <li>Offline, it keeps only the most confident traces (top 10% or top 90%) and runs a confidence-weighted vote over them.</li>
-        <li>Online, it generates 16 warmup traces, sets a cutoff from their scores, and kills any new trace the moment its windowed confidence falls below that cutoff. It also stops sampling once the vote is lopsided enough.</li>
-        <li>Reported headline: GPT-OSS-120B on AIME 2025 goes from 97.0% (cons@512) to 99.9%, and online mode cuts generated tokens by up to 84.7%. No training, no per-task tuning, a small patch to vLLM.</li>
-        <li>The weak spot is obvious once you see it: a trace that is wrong but confident sails through the filter.</li>
+        <li>Majority voting (<span class="term" data-term="self-consistency">$\text{cons@}N$</span>) over hundreds of sampled reasoning traces works, but it is expensive and counts a rambling, confused trace the same as a clean one.</li>
+        <li>DeepConf scores each trace using the model's own <span class="term" data-term="top-k">top-$k$</span> token <span class="term" data-term="logprob">log-probabilities</span>. The key score is local: the average <span class="term" data-term="token-conf">token confidence $C_i$</span> over a sliding window of tokens (<span class="term" data-term="group-conf">group confidence $C_{G_i}$</span>), and especially the worst window in the trace.</li>
+        <li>Offline, it keeps only the top $\eta\%$ most confident traces ($\eta = 10\%$ or $90\%$) and runs a confidence-weighted vote over them.</li>
+        <li>Online, it generates $N_{\text{init}} = 16$ warmup traces, sets a cutoff <span class="term" data-term="threshold-s">$s$</span> from their <span class="term" data-term="percentile">percentiles</span>, and kills any new trace the moment its windowed confidence falls below $s$. It also stops sampling once leading vote share <span class="term" data-term="consensus-beta">$\beta \ge \tau$</span>.</li>
+        <li>Reported headline: GPT-OSS-120B on <span class="term" data-term="aime">AIME</span> 2025 goes from $97.0\%$ ($\text{cons@}512$) to $99.9\%$, and online mode cuts generated tokens by up to $84.7\%$ with a small patch to <span class="term" data-term="vllm">vLLM</span>.</li>
+        <li>The weak spot: a trace that is wrong but confident sails right through the filter.</li>
       </ul>
     </div>
 
     <!-- SECTION 1 -->
     <h2>1. The problem with voting over 512 traces</h2>
     <p>
-      The cheapest reliable trick for squeezing more accuracy out of a reasoning model is <span class="term" data-term="self-consistency">self-consistency</span>. Sample the same math problem many times, read off the final answer of each trace, and return whichever answer shows up most. Papers write this as cons@N, where N is the number of traces. People also call it <span class="term" data-term="parallel-thinking">parallel thinking</span>, since the traces are independent and can run side by side.
+      The cheapest reliable trick for squeezing more accuracy out of a reasoning model is <span class="term" data-term="self-consistency">self-consistency</span>. Sample the same math problem many times, read off the final answer of each trace, and return whichever answer shows up most. Papers write this as $\text{cons@}N$, where $N$ is the number of traces. People also call it <span class="term" data-term="parallel-thinking">parallel thinking</span>, since the traces are independent and can run side by side.
     </p>
     <p>
-      It works well enough that it became the default baseline. It also has two ugly properties. First, the cost is linear in N and the accuracy curve flattens quickly, so going from 64 to 512 traces buys you 8x the tokens for a point or two. On reasoning models a single trace can be 10,000+ tokens, so cons@512 on one AIME problem can mean millions of generated tokens. Second, every trace gets one vote. A trace that wandered off, second-guessed itself twenty times and landed on a guess counts exactly as much as one that solved the problem in a straight line.
+      It works well enough that it became the default baseline. It also has two ugly properties. First, the cost is linear in $N$ and the accuracy curve flattens quickly, so going from $64$ to $512$ traces buys you $8\times$ the tokens for a point or two. On reasoning models a single trace can be $10{,}000+$ tokens, so $\text{cons@}512$ on one <span class="term" data-term="aime">AIME</span> problem can mean millions of generated tokens. Second, every trace gets one vote. A trace that wandered off, second-guessed itself twenty times and landed on a guess counts exactly as much as one that solved the problem in a straight line.
     </p>
     <p>
       DeepConf goes after the second problem, and solving it turns out to help with the first. If you can tell which traces are bad, you can drop them from the vote. If you can tell early, you can stop generating them and save the tokens.
@@ -67,17 +67,17 @@
     </p>
     <div class="math-block">$$H_i = -\sum_{j} P_i(j)\,\log P_i(j)$$</div>
     <p>
-      And the paper's <em>token confidence</em>, which only uses the <span class="term" data-term="top-k">top-k</span> tokens:
+      And the paper's <span class="term" data-term="token-conf">token confidence $C_i$</span>, which only uses the <span class="term" data-term="top-k">top-$k$</span> tokens:
     </p>
     <div class="math-block">$$C_i = -\frac{1}{k}\sum_{j=1}^{k} \log P_i(j)$$</div>
     <p>
-      Low entropy means confident. High $C_i$ means confident. That second one feels backwards at first, so it's worth working through. When the model is sure, the top token gets nearly all the mass and the other $k-1$ tokens get tiny probabilities. Tiny probabilities have large negative logs, and after the minus sign they become large positive numbers. So $C_i$ is big. When the model is torn, the top-k probabilities are all middling and their negative logs are all moderate, so $C_i$ is small.
+      Low entropy means confident. High $C_i$ means confident. That second one feels backwards at first, so it's worth working through. When the model is sure, the top token gets nearly all the mass and the other $k-1$ tokens get tiny probabilities. Tiny probabilities have large negative logs, and after the minus sign they become large positive numbers. So $C_i$ is big. When the model is torn, the top-$k$ probabilities are all middling and their negative logs are all moderate, so $C_i$ is small.
     </p>
     <p>
-      Put differently, $C_i$ mostly measures how unlikely the runners-up are, not how likely the winner is. The top token contributes almost nothing. I think that's a slightly odd design, but it's cheap: inference servers already return top-k logprobs, so you never need the full vocabulary distribution.
+      Put differently, $C_i$ mostly measures how unlikely the runners-up are, not how likely the winner is. The top token contributes almost nothing. I think that's a slightly odd design, but it's cheap: inference servers already return top-$k$ logprobs, so you never need the full vocabulary distribution.
     </p>
 
-    <h3>Worked example with k = 5</h3>
+    <h3>Worked example with $k = 5$</h3>
     <p>Two positions in a trace. At position A the model is sure of the next token. At position B it is hedging.</p>
     <div class="table-wrap">
     <table class="data-table">
@@ -121,13 +121,13 @@
       Try the two-way split. The model is choosing between two tokens at roughly 50/50, which is real uncertainty, yet $C_i$ comes out fairly high because ranks 3 to 5 are tiny. Top-k confidence with a large $k$ partly hides this kind of fork. Averaging over a window of tokens softens it, but it's worth knowing the metric has blind spots.
     </p>
 
-    <div class="mcq-box">
-      <div class="mcq-title">Check 1</div>
+    <details class="mcq-box" data-topic="Token confidence mechanics">
+      <summary class="mcq-title">Check 1: Token confidence mechanics (tap to expand)</summary>
       <p>Token confidence $C_i$ at some position is very high. What is the most accurate reading?</p>
       <label class="mcq-option" data-correct="false" data-why="No. The top token's own term $-\log P$ is close to zero when it is likely, so it barely adds to $C_i$. The score is driven by the other tokens.">
         <input type="radio" name="q1"> The top token's own log-probability is large, which pushes $C_i$ up.
       </label>
-      <label class="mcq-option" data-correct="true" data-why="Right. High $C_i$ means the tokens ranked 2 to k have very small probabilities, so their negative logs are large. The model has more or less ruled out the alternatives.">
+      <label class="mcq-option" data-correct="true" data-why="Right. High $C_i$ means the tokens ranked $2$ to $k$ have very small probabilities, so their negative logs are large. The model has more or less ruled out the alternatives.">
         <input type="radio" name="q1"> The runner-up tokens all have very small probabilities.
       </label>
       <label class="mcq-option" data-correct="false" data-why="No. A high value means a peaked distribution, the opposite of high entropy. Low entropy and high $C_i$ go together.">
@@ -137,7 +137,7 @@
         <input type="radio" name="q1"> The token is probably correct.
       </label>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
     <!-- SECTION 3 -->
     <h2>3. From tokens to traces: global versus local scores</h2>
@@ -146,17 +146,17 @@
     </p>
     <div class="math-block">$$C_{\text{avg}} = \frac{1}{N}\sum_{i=1}^{N} C_i$$</div>
     <p>
-      The problem is that a 12,000-token trace can have a stretch of 300 tokens where the model clearly lost the thread ("wait, let me reconsider... actually no...") and still post a decent average, because the other 11,700 tokens of routine algebra are confident. The breakdown is exactly what predicts a wrong answer, and averaging dilutes it to almost nothing.
+      The problem is that a $12{,}000$-token trace can have a stretch of $300$ tokens where the model clearly lost the thread ("wait, let me reconsider... actually no...") and still post a decent average, because the other $11{,}700$ tokens of routine algebra are confident. The breakdown is exactly what predicts a wrong answer, and averaging dilutes it to almost nothing.
     </p>
     <p>
-      So the paper switches to local measures. The building block is <em>group confidence</em>: the mean token confidence over a window $G_i$ of $n$ consecutive tokens, with windows overlapping (one per position).
+      So the paper switches to local measures. The building block is <span class="term" data-term="group-conf">group confidence $C_{G_i}$</span>: the mean token confidence over a window $G_i$ of $n$ consecutive tokens, with windows overlapping (one per position).
     </p>
     <div class="math-block">$$C_{G_i} = \frac{1}{|G_i|}\sum_{t \in G_i} C_t$$</div>
-    <p>The paper uses windows of 2048 tokens. From the series of group confidences it builds several trace scores:</p>
+    <p>The paper uses windows of $n = 2048$ tokens. From the series of group confidences it builds several trace scores:</p>
     <ul>
-      <li><strong>Bottom-10% group confidence:</strong> the mean of the lowest 10% of group confidences in the trace.</li>
-      <li><strong>Lowest group confidence:</strong> just the minimum. This is the one the online algorithm uses, because you can track it while generating.</li>
-      <li><strong>Tail confidence:</strong> the mean token confidence over the final stretch of the trace (they use the last 2048 tokens). The reasoning is that the end of a trace, where the answer gets written down, matters most.</li>
+      <li><strong>Bottom-$10\%$ group confidence:</strong> the mean of the lowest $10\%$ of group confidences in the trace.</li>
+      <li><strong>Lowest group confidence:</strong> just the minimum $\min_i C_{G_i}$. This is the one the online algorithm uses, because you can track it while generating.</li>
+      <li><strong>Tail confidence:</strong> the mean token confidence over the final stretch of the trace (the last $2048$ tokens), where the final answer is derived.</li>
     </ul>
 
     <h3>Worked example: window of 4 over 10 tokens</h3>
@@ -200,8 +200,8 @@
       Toggle the breakdown on and off and watch the trace average. It moves by a fraction of a point. The lowest group confidence drops hard. Then try a window of 1: the minimum is now set by whichever single token happened to be noisiest, which tells you nothing. Make the window much wider than the breakdown and the dip gets smeared out. The paper's 2048 is a choice for traces that run to tens of thousands of tokens. They report it works without per-dataset tuning, though I'd expect very short traces to need something smaller.
     </p>
 
-    <div class="mcq-box">
-      <div class="mcq-title">Check 2</div>
+    <details class="mcq-box" data-topic="Global vs. local trace confidence">
+      <summary class="mcq-title">Check 2: Global vs. local trace confidence (tap to expand)</summary>
       <p>Why does DeepConf prefer lowest group confidence over average trace confidence?</p>
       <label class="mcq-option" data-correct="false" data-why="No. Both are cheap to compute from the same logprobs. Cost isn't the reason.">
         <input type="radio" name="q2"> It's cheaper to compute.
@@ -212,11 +212,11 @@
       <label class="mcq-option" data-correct="false" data-why="No. The minimum is a noisier statistic than the mean, not a smoother one. The window averaging is what tames the noise.">
         <input type="radio" name="q2"> The minimum is less noisy than the mean.
       </label>
-      <label class="mcq-option" data-correct="false" data-why="No. Both are computed from the same top-k logprobs. Neither needs the full vocabulary.">
+      <label class="mcq-option" data-correct="false" data-why="No. Both are computed from the same top-$k$ logprobs. Neither needs the full vocabulary.">
         <input type="radio" name="q2"> It doesn't require logprobs.
       </label>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
     <!-- SECTION 4 -->
     <h2>4. Offline DeepConf: filter, then weight</h2>
@@ -306,13 +306,13 @@ for t in keep:
 return argmax_a V[a]</code></pre>
     </details>
 
-    <div class="mcq-box">
-      <div class="mcq-title">Check 3</div>
+    <details class="mcq-box" data-topic="Why filtering beats pure weighting">
+      <summary class="mcq-title">Check 3: Filtering vs. weighting (tap to expand)</summary>
       <p>In the 8-trace example, why did weighting alone fail while filtering succeeded?</p>
       <label class="mcq-option" data-correct="false" data-why="No. The weights were computed correctly. They just weren't spread out enough to beat a 4-to-3 count.">
         <input type="radio" name="q3"> The weights were computed with the wrong formula.
       </label>
-      <label class="mcq-option" data-correct="true" data-why="Right. Confidence scores of 10.6 to 13.5 differ by at most about 27%, so four mediocre wrong traces still outvote three good ones. Filtering sets the worst traces' weight to zero, which is a far stronger correction.">
+      <label class="mcq-option" data-correct="true" data-why="Right. Confidence scores of $10.6$ to $13.5$ differ by at most about $27\%$, so four mediocre wrong traces still outvote three good ones. Filtering sets the worst traces' weight to zero, which is a far stronger correction.">
         <input type="radio" name="q3"> The scores sat in a narrow band, so weighting barely changed anyone's influence; filtering zeroes out the low ones entirely.
       </label>
       <label class="mcq-option" data-correct="false" data-why="No. Filtering doesn't use the answers at all, just the scores. That's what makes it legitimate: it never peeks at which answer is correct.">
@@ -322,28 +322,28 @@ return argmax_a V[a]</code></pre>
         <input type="radio" name="q3"> Fewer traces always means a more accurate vote.
       </label>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
     <!-- SECTION 5 -->
     <h2>5. Online DeepConf: stop bad traces early</h2>
     <p>
-      Offline filtering improves accuracy but saves nothing, since you already paid for all 512 traces. The online version uses the same idea to stop paying for traces that are going badly.
+      Offline filtering improves accuracy but saves nothing, since you already paid for all $512$ traces. The online version uses the same idea to stop paying for traces that are going badly.
     </p>
     <p>It runs in three parts.</p>
     <ol>
-      <li><strong>Warmup.</strong> Generate $N_{\text{init}} = 16$ traces to completion. Compute each one's lowest group confidence.</li>
-      <li><strong>Set the threshold.</strong> Pick $s$ as a <span class="term" data-term="percentile">percentile</span> of those 16 values. DeepConf-low keeps roughly the top 10%, so $s$ is the 90th percentile. DeepConf-high keeps roughly the top 90%, so $s$ is the 10th percentile.</li>
+      <li><strong>Warmup.</strong> Generate $N_{\text{init}} = 16$ traces to completion. Compute each one's lowest <span class="term" data-term="group-conf">group confidence</span>.</li>
+      <li><strong>Set the threshold.</strong> Pick <span class="term" data-term="threshold-s">$s$</span> as a <span class="term" data-term="percentile">percentile</span> of those $16$ values. DeepConf-low keeps roughly the top $10\%$, so $s$ is the $90\text{th}$ percentile. DeepConf-high keeps roughly the top $90\%$, so $s$ is the $10\text{th}$ percentile.</li>
       <li><strong>Generate with early stopping.</strong> For each new trace, track group confidence over the most recent window as tokens come out. The moment it drops below $s$, kill the trace. Its tokens are spent but you stop spending more, and it doesn't vote.</li>
     </ol>
     <p>
       The logic of step 3: a finished trace's lowest group confidence is at most the group confidence of any window along the way. So if the current window is already below $s$, the trace's final score will be below $s$ too, and offline filtering would have discarded it anyway. Killing it now gives the same answer as generating it fully and then filtering. That's a neat argument, and it only holds because the score is a minimum. It wouldn't work for the average or the tail score.
     </p>
     <p>
-      There's a second, independent saving: adaptive sampling. After each trace finishes, compute the weighted share of the leading answer:
+      There's a second, independent saving: adaptive sampling. After each trace finishes, compute the weighted share <span class="term" data-term="consensus-beta">$\beta$</span> of the leading answer $\hat{a}$:
     </p>
     <div class="math-block">$$\beta = \frac{V(\hat{a})}{\sum_a V(a)}$$</div>
     <p>
-      If $\beta \ge \tau$ (the paper uses $\tau = 0.95$), stop sampling. Otherwise keep going until you hit the budget $B$ (512 in their runs). Easy problems where every trace agrees stop after a few dozen traces; hard ones use more of the budget.
+      If $\beta \ge \tau$ (the paper uses $\tau = 0.95$), stop sampling. Otherwise keep going until you hit the budget $B$ ($512$ in their runs). Easy problems where every trace agrees stop after a few dozen traces; hard ones use more of the budget.
     </p>
 
     <h3>Worked example: threshold from 16 warmup traces</h3>
@@ -441,10 +441,10 @@ return argmax(votes)</code></pre>
       <p>In a real server the "for each new trace" loop runs as a batch of concurrent requests, not one at a time. Consensus is checked as traces finish.</p>
     </details>
 
-    <div class="mcq-box">
-      <div class="mcq-title">Check 4</div>
+    <details class="mcq-box" data-topic="Online early-stopping guarantee">
+      <summary class="mcq-title">Check 4: Online early-stopping guarantee (tap to expand)</summary>
       <p>Why is killing a trace mid-generation guaranteed to agree with what offline filtering on lowest group confidence would have done?</p>
-      <label class="mcq-option" data-correct="true" data-why="Right. The final score is a minimum over all windows. Once one window is below s, no later tokens can raise the minimum back up, so the trace was doomed to fail the filter anyway.">
+      <label class="mcq-option" data-correct="true" data-why="Right. The final score is a minimum over all windows. Once one window is below $s$, no later tokens can raise the minimum back up, so the trace was doomed to fail the filter anyway.">
         <input type="radio" name="q4"> The trace's final score is the minimum over windows, so once any window is below $s$, the final score must be below $s$.
       </label>
       <label class="mcq-option" data-correct="false" data-why="No. Traces do sometimes recover after a dip and reach the correct answer. The guarantee is only about agreement with the offline filter, not about correctness.">
@@ -457,22 +457,22 @@ return argmax(votes)</code></pre>
         <input type="radio" name="q4"> It would hold for average trace confidence just as well.
       </label>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
-    <div class="mcq-box">
-      <div class="mcq-title">Check 5</div>
-      <p>Warmup scores give a 10th percentile of 10.05 and a 90th percentile of 13.05. Which setup kills more traces?</p>
-      <label class="mcq-option" data-correct="false" data-why="No. DeepConf-high uses s = 10.05, the 10th percentile. Only traces that dip below 10.05 die, which is roughly the worst 10%.">
+    <details class="mcq-box" data-topic="DeepConf-low vs. DeepConf-high">
+      <summary class="mcq-title">Check 5: DeepConf-low vs. DeepConf-high (tap to expand)</summary>
+      <p>Warmup scores give a $10\text{th}$ percentile of $10.05$ and a $90\text{th}$ percentile of $13.05$. Which setup kills more traces?</p>
+      <label class="mcq-option" data-correct="false" data-why="No. DeepConf-high uses $s = 10.05$, the 10th percentile. Only traces that dip below $10.05$ die, which is roughly the worst $10\%$.">
         <input type="radio" name="q5"> DeepConf-high, since "high" means a higher threshold.
       </label>
-      <label class="mcq-option" data-correct="true" data-why="Right. The names refer to how many traces are kept (low = keep 10%, high = keep 90%), not the threshold. DeepConf-low has the higher threshold, 13.05, and kills about 90% of traces.">
-        <input type="radio" name="q5"> DeepConf-low, which uses $s = 13.05$ and keeps only about 10%.
+      <label class="mcq-option" data-correct="true" data-why="Right. The names refer to how many traces are kept (low = keep $10\%$, high = keep $90\%$), not the threshold. DeepConf-low has the higher threshold, $13.05$, and kills about $90\%$ of traces.">
+        <input type="radio" name="q5"> DeepConf-low, which uses $s = 13.05$ and keeps only about $10\%$.
       </label>
-      <label class="mcq-option" data-correct="false" data-why="No. The two thresholds differ by 3 points; traces scoring between 10.05 and 13.05 survive one and die in the other.">
+      <label class="mcq-option" data-correct="false" data-why="No. The two thresholds differ by $3$ points; traces scoring between $10.05$ and $13.05$ survive one and die in the other.">
         <input type="radio" name="q5"> They kill the same number; only the voting differs.
       </label>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
     <!-- SECTION 6 -->
     <h2>6. What it saves</h2>
@@ -484,15 +484,15 @@ return argmax(votes)</code></pre>
     <div class="interactive-card" id="w-save">
       <h3>Token savings estimator</h3>
       <div class="row">
-        <label>Budget B <input type="number" id="sv-B" value="512" min="16" step="16" oninput="drawSave()"></label>
-        <label>Avg trace length <input type="number" id="sv-L" value="12000" min="100" step="500" oninput="drawSave()"></label>
-        <label>Warmup N<sub>init</sub> <input type="number" id="sv-N" value="16" min="1" step="1" oninput="drawSave()"></label>
+        <label>Budget $B$ <input type="number" id="sv-B" value="512" min="16" step="16" oninput="drawSave()"></label>
+        <label>Avg trace length $L$ <input type="number" id="sv-L" value="12000" min="100" step="500" oninput="drawSave()"></label>
+        <label>Warmup $N_{\text{init}}$ <input type="number" id="sv-N" value="16" min="1" step="1" oninput="drawSave()"></label>
       </div>
       <div class="widget-label">Share of post-warmup traces killed: <span id="sv-kr-val">90</span>%</div>
       <input type="range" id="sv-kr" min="0" max="100" step="5" value="90" oninput="drawSave()">
       <div class="widget-label">Killed traces die after this fraction of full length: <span id="sv-kp-val">35</span>%</div>
       <input type="range" id="sv-kp" min="5" max="100" step="5" value="35" oninput="drawSave()">
-      <div class="widget-label">Traces sampled before consensus (&beta; &ge; &tau;): <span id="sv-n-val">512</span></div>
+      <div class="widget-label">Traces sampled before consensus ($\beta \ge \tau$): <span id="sv-n-val">512</span></div>
       <input type="range" id="sv-n" min="16" max="512" step="8" value="512" oninput="drawSave()">
       <svg class="chart" id="sv-chart" viewBox="0 0 600 110"></svg>
       <div class="readout" id="sv-out"></div>
@@ -597,67 +597,83 @@ def weighted_vote(answers, scores, keep_frac=1.0):
       None of that makes the paper less useful. The offline filter is a few lines of code on top of a vote you were already running, and the online version is one of the more practical test-time compute savings I've seen, because it needs nothing beyond what the server already computes. I'd use DeepConf-high by default and treat DeepConf-low as something to validate per model first.
     </p>
 
-    <div class="mcq-box">
-      <div class="mcq-title">Check 6</div>
+    <details class="mcq-box" data-topic="Failure mode of confidence filtering">
+      <summary class="mcq-title">Check 6: Failure mode of confidence filtering (tap to expand)</summary>
       <p>Which scenario is most likely to make DeepConf do worse than plain majority voting?</p>
       <label class="mcq-option" data-correct="false" data-why="No. If the model is torn, wrong traces tend to have low confidence and get filtered out. That's the case DeepConf handles well.">
         <input type="radio" name="q6"> Wrong traces are hesitant and full of self-corrections.
       </label>
-      <label class="mcq-option" data-correct="true" data-why="Right. If the wrong traces are the confident ones, filtering removes the correct-but-hesitant traces and weighting boosts the wrong ones. Aggressive filtering (10%) makes it worse.">
+      <label class="mcq-option" data-correct="true" data-why="Right. If the wrong traces are the confident ones, filtering removes the correct-but-hesitant traces and weighting boosts the wrong ones. Aggressive filtering ($10\%$) makes it worse.">
         <input type="radio" name="q6"> Several traces make the same mistake fluently and confidently, while correct traces hesitate.
       </label>
       <label class="mcq-option" data-correct="false" data-why="No. If every trace agrees, majority voting and DeepConf return the same answer, and adaptive sampling just stops early to save tokens.">
         <input type="radio" name="q6"> All traces reach the same answer.
       </label>
       <label class="mcq-option" data-correct="false" data-why="No. Trace length doesn't matter much, as long as traces are at least a window long. Short traces are an edge case for the window, not a reason for worse accuracy.">
-        <input type="radio" name="q6"> Traces are around 10,000 tokens long.
+        <input type="radio" name="q6"> Traces are around $10{,}000$ tokens long.
       </label>
       <div class="mcq-feedback"></div>
-    </div>
+    </details>
 
     <h2>Reference</h2>
     <p>
       Yichao Fu, Xuewei Wang, Yuandong Tian, Jiawei Zhao. "Deep Think with Confidence." arXiv:2508.15260, 2025. Meta AI and UC San Diego.
     </p>
-
-    <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
-      <a href="index.html" class="btn" style="text-decoration: none; display: inline-block;">&larr; All guides</a>
-    </div>
   </main>
 
   <script>
     var glossary = {
       'self-consistency': {
-        title: 'Self-consistency',
-        body: 'Wang et al., 2022. Sample many chain-of-thought answers to the same question at nonzero temperature and return the most common final answer. Written cons@N for N samples. It is the baseline DeepConf tries to beat.'
+        title: 'Self-consistency ($\\text{cons@}N$)',
+        body: 'Wang et al., 2022. Sample $N$ chain-of-thought answers to the same question at nonzero temperature and return the most common final answer. Written $\\text{cons@}N$ for $N$ samples. It is the baseline DeepConf tries to beat.'
       },
       'parallel-thinking': {
         title: 'Parallel thinking',
-        body: 'Spending extra inference compute by generating many independent reasoning traces at once (rather than one longer trace) and aggregating their answers, usually by voting. Contrast with sequential approaches like a longer thinking budget.'
+        body: 'Spending extra inference compute by generating many independent reasoning traces at once (rather than one longer trace) and aggregating their answers, usually by voting.'
       },
       'logprob': {
         title: 'Log-probability (logprob)',
-        body: 'The natural log of the probability the model assigned to a token, always zero or negative. Inference APIs often return the logprobs of the top few candidates at each position. ln(0.9) = -0.105, ln(0.01) = -4.605.'
+        body: 'The natural log $\\ln P$ of the probability the model assigned to a token, always $\\le 0$. Inference APIs return the logprobs of the <span class="term" data-term="top-k">top-$k$</span> candidates at each position: $\\ln(0.9) = -0.105$, $\\ln(0.01) = -4.605$.'
       },
       'top-k': {
-        title: 'Top-k tokens',
-        body: 'The k highest-probability tokens at a position. DeepConf computes token confidence from these alone, which matters because servers usually return only the top few logprobs, not the full vocabulary distribution.'
+        title: 'Top-$k$ tokens',
+        body: 'The $k$ highest-probability tokens at position $i$. DeepConf computes <span class="term" data-term="token-conf">token confidence $C_i$</span> from these alone because inference servers return top-$k$ logprobs without the full vocabulary distribution.'
+      },
+      'token-conf': {
+        title: 'Token confidence ($C_i$)',
+        body: '$C_i = -\\frac{1}{k}\\sum_{j=1}^k \\log P_i(j)$. Average negative log-probability across the <span class="term" data-term="top-k">top-$k$</span> candidate tokens at position $i$. Higher $C_i$ means the runner-up tokens have tiny probabilities (high certainty).'
+      },
+      'group-conf': {
+        title: 'Group confidence ($C_{G_i}$)',
+        body: '$C_{G_i} = \\frac{1}{|G_i|}\\sum_{t \\in G_i} C_t$. Sliding-window mean of <span class="term" data-term="token-conf">token confidence</span> over $n$ consecutive tokens ($n = 2048$). Taking $\\min_i C_{G_i}$ isolates short local breakdowns that would disappear in a whole-trace mean.'
+      },
+      'threshold-s': {
+        title: 'Early-stopping threshold ($s$)',
+        body: 'Cutoff computed from the $(100 - \\eta)$-th <span class="term" data-term="percentile">percentile</span> of the $N_{\\text{init}} = 16$ warmup traces\' lowest group confidences. In online generation, any trace whose current window falls below $s$ is terminated immediately.'
+      },
+      'consensus-beta': {
+        title: 'Consensus vote share ($\\beta$)',
+        body: '$\\beta = V(\\hat{a}) / \\sum_a V(a)$: fraction of total confidence-weighted votes held by the leading answer $\\hat{a}$. Adaptive sampling stops early once $\\beta \\ge \\tau$ (typically $\\tau = 0.95$).'
+      },
+      'aime': {
+        title: 'AIME (American Invitational Mathematics Examination)',
+        body: 'Standard 30-problem competition math benchmark where every answer is an integer in $[000, 999]$, making exact answer extraction and majority voting straightforward.'
       },
       'entropy': {
-        title: 'Entropy',
-        body: 'H = -sum p log p over the distribution. Zero when one token has all the mass; ln(V) when V tokens are equally likely. Low entropy = confident. DeepConf\'s token confidence is a cheaper top-k proxy that moves in the opposite direction (high = confident).'
+        title: 'Entropy ($H_i$)',
+        body: '$H_i = -\\sum_j P_i(j) \\log P_i(j)$ over the distribution. $0$ when one token has all the mass; $\\ln V$ when $V$ tokens are equally likely. Low entropy $=$ confident. DeepConf\'s <span class="term" data-term="token-conf">$C_i$</span> moves in the opposite direction (high $=$ confident).'
       },
       'percentile': {
         title: 'Percentile',
-        body: 'The p-th percentile is the value below which p% of the data falls. With 16 warmup scores, the 90th percentile sits between the 2nd-highest and highest values. numpy.percentile interpolates linearly at rank (n-1)*p/100.'
+        body: 'The $p$-th percentile is the value below which $p\\%$ of the data falls. With $16$ warmup scores, the $90\\text{th}$ percentile sits at fractional rank $(n-1)\\cdot p/100 = 15 \\times 0.9 = 13.5$ (halfway between the 2nd-highest and highest scores).'
       },
       'self-certainty': {
         title: 'Self-certainty',
-        body: 'A trace-level confidence score from earlier work (Kang et al., 2025): roughly, how far the model\'s token distributions are from uniform, averaged across the whole response. DeepConf\'s point is that any whole-trace average hides short local breakdowns.'
+        body: 'A whole-trace confidence score (Kang et al., 2025) averaged across all tokens in a response. DeepConf shows that whole-trace averages dilute short local breakdowns.'
       },
       'vllm': {
         title: 'vLLM',
-        body: 'A widely used open-source LLM inference server with paged attention and continuous batching. It can return per-token top-k logprobs, which is all DeepConf needs. The online mode needs a hook in the decode loop to finish a request early.'
+        body: 'Open-source LLM inference engine with PagedAttention and continuous batching. Returns per-token <span class="term" data-term="top-k">top-$k$</span> <span class="term" data-term="logprob">logprobs</span>, which is all DeepConf needs.'
       }
     };
 
