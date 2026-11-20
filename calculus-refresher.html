@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculus for ML Refresher: The 10% of Calc 1–3 You Actually Need</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <div>
+      <span class="tag">Fast Refresher</span>
+      <span class="tag">Calculus for ML</span>
+      <span class="tag">Boox Go 10.3 &amp; Palma 3</span>
+    </div>
+
+    <h1>Calculus for ML Refresher: The 10% of Calc 1&ndash;3 You Actually Need</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>Forget integration tricks and vector-field theorems:</strong> You don't need trig substitutions, integration by parts, spherical triple integrals, or Stokes' theorem for ML. Deep learning is 99% <strong>differential calculus</strong> (derivatives).</li>
+        <li><strong>A <span class="term" data-term="gradient">gradient ($\nabla_w L$)</span> is just a list of Calc 1 derivatives:</strong> Each <span class="term" data-term="partial">partial derivative</span> $\frac{\partial L}{\partial w_i}$ freezes all other weights and asks: <em>"If I nudge $w_i$ up by $\epsilon$, how much does the loss $L$ change?"</em> Stacking them into a vector points <strong>steepest uphill</strong>, so we step in $-\nabla_w L$.</li>
+        <li><strong><span class="term" data-term="backprop">Backpropagation</span> is just the <span class="term" data-term="chain-rule">Chain Rule</span>:</strong> In a chain $w \to z \to \hat{y} \to L$, you multiply local derivatives backward ($\frac{\partial L}{\partial w} = \frac{\partial L}{\partial \hat{y}} \frac{\partial \hat{y}}{\partial z} \frac{\partial z}{\partial w}$). When one variable feeds multiple paths, you <strong>add</strong> the derivatives from each branch.</li>
+        <li><strong>Second derivatives (<span class="term" data-term="hessian">Hessian</span>) measure bowl curvature:</strong> The first derivative tells you which way is downhill; the second derivative tells you how sharply the slope bends, setting the maximum safe <span class="term" data-term="learning-rate">learning rate</span> before steps overshoot and explode.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Calc 1&ndash;3 Topic</th><th>Keep or Skip?</th><th>Why It Matters (or Doesn't) in ML</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term" data-term="partial">Partial Derivatives</span> &amp; <span class="term" data-term="gradient">Gradient $\nabla L$</span></td>
+            <td><strong>Essential daily</strong></td>
+            <td>Every optimizer (`SGD`, `AdamW`) steps along $-\nabla_w L$.</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="chain-rule">Multivariable Chain Rule</span></td>
+            <td><strong>Essential daily</strong></td>
+            <td>It <em>is</em> <span class="term" data-term="backprop">backpropagation</span> (`loss.backward()`). Explains vanishing and exploding gradients.</td>
+          </tr>
+          <tr>
+            <td>Derivatives of $w^2, e^x, \ln x, \sigma(z), \text{ReLU}$</td>
+            <td><strong>High value</strong></td>
+            <td>Explains why <span class="term" data-term="cross-entropy">cross-entropy</span> + <span class="term" data-term="sigmoid">sigmoid</span>/<span class="term" data-term="softmax">softmax</span> has the clean gradient $\hat{p} - y$.</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="taylor">Taylor Series</span> &amp; <span class="term" data-term="hessian">Hessian ($L''$)</span></td>
+            <td><strong>Conceptual</strong></td>
+            <td>Explains loss curvature, max safe learning rate ($\eta < 2/\lambda_{\max}$), and adaptive step sizes.</td>
+          </tr>
+          <tr>
+            <td>By-hand integrals, u-sub, Green's/Stokes', curl/div</td>
+            <td><strong>Skip 100%</strong></td>
+            <td>High-dimensional integrals in ML are intractable analytically and estimated by Monte Carlo sampling.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- SECTION 1 -->
+    <h2 id="s1">1. Partials &amp; The Gradient: Which Way Is Downhill?</h2>
+    <p>
+      In Calc 1, the <span class="term" data-term="derivative">derivative</span> $f'(w)$ is the slope of a curve: if $f'(w) = -4$, nudging $w$ by $+0.01$ changes $f(w)$ by roughly $(-4)(0.01) = -0.04$.
+    </p>
+    <p>
+      In Calc 3, a neural network loss $L(w_1, w_2, \dots, w_d)$ depends on millions of weights. To take a <span class="term" data-term="partial">partial derivative</span> $\frac{\partial L}{\partial w_1}$, you treat every other weight ($w_2, w_3, \dots$) as a frozen number and take the ordinary Calc 1 derivative with respect to $w_1$. Packing all $d$ partial derivatives into a column vector gives the <span class="term" data-term="gradient">gradient</span>:
+    </p>
+
+    <div class="math-block">
+      $$\nabla_w L = \begin{bmatrix} \frac{\partial L}{\partial w_1} \\ \frac{\partial L}{\partial w_2} \end{bmatrix}, \qquad w_{\text{new}} = w - \eta \nabla_w L$$
+      <div class="math-hint">Why does $\nabla_w L$ point steepest uphill? For any unit step direction $u$, the rate of change (<span class="term" data-term="directional-deriv">directional derivative</span>) is $\nabla_w L \cdot u = \|\nabla_w L\|_2 \cos\theta$, which is maximized when $\theta = 0^\circ$ ($u$ points along $\nabla_w L$) and most negative when $\theta = 180^\circ$ ($u$ points along $-\nabla_w L$).</div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked 2-weight mental-math example:</strong></p>
+      <p>
+        Suppose our loss bowl is $L(w_1, w_2) = w_1^2 + 3w_2^2$ and our current weights are $(w_1, w_2) = (2, -1)$ with <span class="term" data-term="learning-rate">learning rate</span> $\eta = 0.1$:
+      </p>
+      <p>
+        1. <strong>Current loss:</strong> $L(2, -1) = (2)^2 + 3(-1)^2 = 4 + 3 = \mathbf{7}$.<br>
+        2. <strong>Partial derivatives:</strong> $\frac{\partial L}{\partial w_1} = 2w_1 = 2(2) = \mathbf{4}$, and $\frac{\partial L}{\partial w_2} = 6w_2 = 6(-1) = \mathbf{-6}$. So $\nabla_w L = [4, -6]^\top$.<br>
+        3. <strong>Gradient descent step:</strong> $w_{\text{new}} = [2, -1]^\top - 0.1\,[4, -6]^\top = [\mathbf{1.6}, \mathbf{-0.4}]^\top$.<br>
+        4. <strong>New loss:</strong> $L(1.6, -0.4) = (1.6)^2 + 3(-0.4)^2 = 2.56 + 0.48 = \mathbf{3.04}$ (dropped from $7$ to $3.04$ in one step).
+      </p>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h2 id="s2">2. The Chain Rule Is Backpropagation</h2>
+    <p>
+      A neural network is just nested functions: inputs multiply weights to make pre-activations $z$, which pass through an activation function to make predictions $\hat{y}$, which enter a loss function $L$. The <span class="term" data-term="chain-rule">Chain Rule</span> says the derivative of a chain is the <strong>product of the local derivatives along the path</strong>:
+    </p>
+
+    <div class="math-block">
+      $$w \longrightarrow z = wx + b \longrightarrow \hat{y} = f(z) \longrightarrow L(\hat{y}, y) \quad \Longrightarrow \quad \frac{\partial L}{\partial w} = \underbrace{\frac{\partial L}{\partial \hat{y}}}_{\text{loss slope}} \cdot \underbrace{\frac{\partial \hat{y}}{\partial z}}_{\text{activation slope}} \cdot \underbrace{\frac{\partial z}{\partial w}}_{=\, x}$$
+      <div class="math-hint"><strong>Multivariable rule:</strong> Multiply local derivatives along a single serial path; <strong>add</strong> paths together wherever a variable branches into multiple downstream consumers.</div>
+    </div>
+
+    <div class="interactive-card" id="chain-widget">
+      <div class="widget-label">Interactive Chain-Rule &amp; Vanishing Gradient Inspector</div>
+      <h3>Trace One Neuron Forward and Backward: $z = wx$, $\hat{y} = f(z)$, $L = \frac{1}{2}(\hat{y} - y)^2$</h3>
+      <p style="margin-top:0.2rem;">
+        Fix input $x = 2.0$ and target $y = 1.0$. Slide weight $w$ or switch between <span class="term" data-term="relu">ReLU</span> and <span class="term" data-term="sigmoid">Sigmoid</span> to see how each local derivative multiplies into $\frac{\partial L}{\partial w}$.
+      </p>
+
+      <div class="control-row">
+        <span style="font-weight:bold;">Activation $f(z)$:</span>
+        <button class="btn btn-small active" id="act-relu" onclick="setChainAct('relu')">ReLU: max(0, z)</button>
+        <button class="btn btn-small" id="act-sig" onclick="setChainAct('sig')">Sigmoid: 1 / (1 + e⁻ᶻ)</button>
+      </div>
+
+      <div class="control-row">
+        <label for="cw-slider">Weight $w$:</label>
+        <input type="range" id="cw-slider" min="-2.0" max="2.5" step="0.5" value="1.5" oninput="updateChainWidget()">
+        <span class="val" id="cw-val">w = 1.5</span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Forward: z &rarr; &hat;y &rarr; L</div><div class="v" id="st-ch-fwd">-</div></div>
+        <div class="stat"><div class="k">&part;L / &part;&hat;y = (&hat;y - y)</div><div class="v" id="st-ch-dly">-</div></div>
+        <div class="stat"><div class="k">&part;&hat;y / &part;z = f'(z)</div><div class="v" id="st-ch-dyz">-</div></div>
+        <div class="stat"><div class="k">&part;L / &part;w (Product)</div><div class="v" id="st-ch-dlw">-</div></div>
+      </div>
+
+      <div class="readout" id="chain-readout"></div>
+    </div>
+
+    <!-- SECTION 3 -->
+    <h2 id="s3">3. The Only 4 Derivatives You Need to Know by Heart</h2>
+    <p>
+      PyTorch's autograd computes derivatives for you, but knowing four specific derivatives explains <em>why</em> modern architectures use <span class="term" data-term="relu">ReLU</span> and <span class="term" data-term="cross-entropy">Cross-Entropy</span>:
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Function $f(z)$</th><th>Derivative $f'(z)$</th><th>Key ML Consequence</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Quadratic:</strong> $\frac{1}{2}w^2$</td>
+            <td>$w$</td>
+            <td>Slope shrinks linearly as you approach $w=0$ ($L_2$ weight decay &amp; MSE loss).</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="relu">ReLU</span>:</strong> $\max(0, z)$</td>
+            <td>$\begin{cases} 1 & z > 0 \\ 0 & z < 0 \end{cases}$</td>
+            <td>When active ($z>0$), multiplying by $1$ passes gradients backward through 100 layers without shrinking!When $z<0$, gradient is $0$ ("dead ReLU").</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="sigmoid">Sigmoid</span>:</strong> $\sigma(z) = \frac{1}{1+e^{-z}}$</td>
+            <td>$\sigma(z)(1 - \sigma(z))$</td>
+            <td>Maximum derivative is only $\mathbf{0.25}$ (at $z=0$). Multiply $0.25$ across 10 layers and gradient shrinks by $0.25^{10} \approx 10^{-6}$ (<span class="term" data-term="vanishing-grad">vanishing gradient</span>).</td>
+          </tr>
+          <tr>
+            <td><strong>Log &amp; Exp:</strong> $\ln(p)$, $e^z$</td>
+            <td>$\frac{1}{p}$, $\;e^z$</td>
+            <td>Pairing $-\ln(\hat{p})$ (<span class="term" data-term="cross-entropy">cross-entropy</span>) with <span class="term" data-term="sigmoid">sigmoid</span>/<span class="term" data-term="softmax">softmax</span> cancels the $\sigma(z)(1-\sigma(z))$ term completely!</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>3-Line Proof: Why Cross-Entropy + Sigmoid cancels to $\frac{\partial L}{\partial z} = \hat{p} - y$</summary>
+      <p style="margin-top:0.6rem;">
+        If you use MSE loss with a <span class="term" data-term="sigmoid">sigmoid</span> output $\hat{p} = \sigma(z)$ when $z = -5$ ($\hat{p} \approx 0.0067$) and true label $y = 1$, the sigmoid derivative $\hat{p}(1-\hat{p}) \approx 0.0066$ stalls learning even though the model is terribly wrong.
+      </p>
+      <p>
+        With binary <span class="term" data-term="cross-entropy">cross-entropy</span> $L = -\left[y \ln \hat{p} + (1-y)\ln(1-\hat{p})\right]$, watch the <span class="term" data-term="chain-rule">chain rule</span> cancel $\hat{p}(1-\hat{p})$:
+      </p>
+      <div class="math-block">
+        $$\frac{\partial L}{\partial \hat{p}} = -\frac{y}{\hat{p}} + \frac{1-y}{1-\hat{p}} = \frac{\hat{p} - y}{\hat{p}(1 - \hat{p})} \quad \Longrightarrow \quad \frac{\partial L}{\partial z} = \frac{\partial L}{\partial \hat{p}} \cdot \frac{\partial \hat{p}}{\partial z} = \frac{\hat{p} - y}{\cancel{\hat{p}(1 - \hat{p})}} \cdot \cancel{\hat{p}(1 - \hat{p})} = \mathbf{\hat{p} - y}$$
+      </div>
+      <p style="margin-bottom:0;">
+        That exact cancellation ($\text{gradient} = \text{prediction} - \text{truth}$) also holds for multiclass <span class="term" data-term="softmax">Softmax</span> + Cross-Entropy, giving strong, clean gradients whenever a prediction is wrong.
+      </p>
+    </details>
+
+    <!-- SECTION 4 -->
+    <h2 id="s4">4. Second Derivatives, Taylor Series &amp; Why Learning Rates Explode</h2>
+    <p>
+      If the first derivative $L'(w)$ is velocity (slope), the <span class="term" data-term="second-deriv">second derivative</span> $L''(w)$ (or the <span class="term" data-term="hessian">Hessian matrix $H$</span> in high dimensions) is <strong>curvature</strong>—how fast the slope itself changes as you move.
+    </p>
+    <p>
+      Using a second-order <span class="term" data-term="taylor">Taylor approximation</span> around current weight $w$ with gradient $g = L'(w)$ and curvature $h = L''(w) > 0$:
+    </p>
+
+    <div class="math-block">
+      $$L(w - \eta g) \approx L(w) - \eta g^2 + \frac{1}{2} h \eta^2 g^2 = L(w) - \eta g^2 \left(1 - \frac{1}{2} h \eta\right)$$
+      <div class="math-hint">Look at the factor $\left(1 - \frac{1}{2} h \eta\right)$: best 1-step drop happens at $\eta^* = \frac{1}{h}$ (Newton's step). If $\eta > \frac{2}{h}$, that factor turns negative and the loss <strong>increases</strong> on every step!</div>
+    </div>
+
+    <div class="interactive-card" id="curv-widget">
+      <div class="widget-label">Interactive Curvature ($h = L''$) &amp; Learning-Rate Explorer</div>
+      <h3>See How Bowl Steepness ($h$) Sets the Maximum Safe Learning Rate ($\eta_{\max} = 2/h$)</h3>
+      <p style="margin-top:0.2rem;">
+        Start at $w_0 = 2.0$ on the parabola $L(w) = \frac{1}{2} h w^2$ (minimum at $w^* = 0$). Pick curvature $h$ and learning rate $\eta$ to trace 4 steps of gradient descent $w_{t+1} = w_t - \eta (h w_t) = (1 - \eta h) w_t$.
+      </p>
+
+      <div class="control-row">
+        <span style="font-weight:bold;">Curvature $h = L''(w)$:</span>
+        <button class="btn btn-small" id="curv-h1" onclick="setCurvH(1)">Flat Bowl (h = 1, max &eta; = 2.0)</button>
+        <button class="btn btn-small active" id="curv-h4" onclick="setCurvH(4)">Sharp Canyon (h = 4, max &eta; = 0.50)</button>
+      </div>
+
+      <div class="control-row">
+        <label for="curv-eta">Learning Rate $\eta$:</label>
+        <input type="range" id="curv-eta" min="0.10" max="0.60" step="0.05" value="0.25" oninput="updateCurvWidget()">
+        <span class="val" id="curv-eta-val">&eta; = 0.25</span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Step Multiplier (1 - &eta;h)</div><div class="v" id="st-cv-mult">0.00</div></div>
+        <div class="stat"><div class="k">Weights: w₀ &rarr; w₁ &rarr; w₂</div><div class="v" id="st-cv-w">-</div></div>
+        <div class="stat"><div class="k">Loss: L(w₀) &rarr; L(w₂)</div><div class="v" id="st-cv-loss">-</div></div>
+        <div class="stat"><div class="k">Regime (&eta; vs 2/h)</div><div class="v" id="st-cv-regime">-</div></div>
+      </div>
+
+      <div class="readout" id="curv-readout"></div>
+    </div>
+
+    <!-- SECTION 5: CHECKS -->
+    <h2 id="s5">5. Quick Self-Checks</h2>
+
+    <details class="mcq-box" data-correct="C" data-topic="Partial Derivatives &amp; Gradient Descent">
+      <p>For $L(w_1, w_2) = 2w_1^2 + w_1 w_2$ at $(w_1, w_2) = (1, 3)$, what is the <span class="term" data-term="gradient">gradient</span> $\nabla_w L = \left[\frac{\partial L}{\partial w_1}, \frac{\partial L}{\partial w_2}\right]^\top$, and which way does gradient descent move?</p>
+      <label class="mcq-option" data-explain="dL/dw_1 is 4w_1 + w_2 = 4(1) + 3 = 7, and dL/dw_2 is w_1 = 1.">$\nabla_w L = [4, 3]^\top$; gradient descent adds $[4, 3]^\top$.</label>
+      <label class="mcq-option" data-explain="The gradient is [7, 1]^T, which points uphill; to minimize loss we subtract eta * [7, 1]^T.">$\nabla_w L = [7, 1]^\top$; gradient descent steps in the $+[7, 1]^\top$ direction.</label>
+      <label class="mcq-option" data-explain="Correct. dL/dw_1 = 4w_1 + w_2 = 7 and dL/dw_2 = w_1 = 1. Since the gradient points steepest uphill, gradient descent steps in the negative direction -[7, 1]^T.">$\nabla_w L = [7, 1]^\top$; gradient descent steps in the $-[7, 1]^\top$ direction.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Chain Rule &amp; Vanishing Gradients">
+      <p>Why does a 20-layer network using <span class="term" data-term="sigmoid">sigmoid</span> activations suffer from <span class="term" data-term="vanishing-grad">vanishing gradients</span> in its early layers, while <span class="term" data-term="relu">ReLU</span> avoids this for active neurons ($z > 0$)?</p>
+      <label class="mcq-option" data-explain="Sigmoid outputs are always positive in (0, 1); the problem is the magnitude of its derivative.">Sigmoid outputs negative numbers that cancel out across layers.</label>
+      <label class="mcq-option" data-explain="Correct. By the chain rule, backpropagation multiplies activation derivatives across every layer. Since sigma'(z) <= 0.25, multiplying 20 of them shrinks the gradient by at least 0.25^20, whereas ReLU'(z) = 1 for z > 0.">Backprop multiplies local derivatives $\sigma'(z) = \sigma(z)(1-\sigma(z)) \le 0.25$ at every layer, whereas $\text{ReLU}'(z) = 1$ for $z > 0$.</label>
+      <label class="mcq-option" data-explain="Sigmoid is smooth and differentiable everywhere; ReLU is the one with a kink at z = 0.">Sigmoid has no derivative at $z = 0$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Cross-Entropy + Sigmoid Derivative">
+      <p>A binary classifier uses <span class="term" data-term="sigmoid">sigmoid</span> $\hat{p} = \sigma(z)$ and binary <span class="term" data-term="cross-entropy">cross-entropy</span> loss $L$. On a positive example ($y = 1$), the model outputs logit $z = 0$, so $\hat{p} = 0.50$. What is the exact gradient $\frac{\partial L}{\partial z}$?</p>
+      <label class="mcq-option" data-explain="Correct. For cross-entropy + sigmoid, dL/dz simplifies to p_hat - y = 0.50 - 1.0 = -0.50 (telling us to increase z).">$\hat{p} - y = 0.50 - 1.00 = -0.50$.</label>
+      <label class="mcq-option" data-explain="The p_hat(1 - p_hat) = 0.25 factor from the sigmoid derivative cancels against the denominator of the cross-entropy derivative.">$(0.50 - 1.00) \times 0.25 = -0.125$.</label>
+      <label class="mcq-option" data-explain="Since p_hat = 0.50 is below the target y = 1, increasing z lowers the loss, so dL/dz is negative (-0.50).">$y - \hat{p} = +0.50$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="Second Derivative &amp; Maximum Learning Rate">
+      <p>Along a steep canyon wall of the loss surface, the second derivative (<span class="term" data-term="hessian">Hessian</span> curvature) is $h = L''(w) = 10$. What happens if you run gradient descent with <span class="term" data-term="learning-rate">learning rate</span> $\eta = 0.25$?</p>
+      <label class="mcq-option" data-explain="At h = 10, the exact Newton step to the minimum is eta = 1/h = 0.10, not 0.25.">It lands directly on the minimum in one step.</label>
+      <label class="mcq-option" data-explain="1 - eta*h = 1 - 2.5 = -1.5, which has magnitude > 1, so each step lands 1.5x farther away on the opposite wall.">It converges slowly without overshooting.</label>
+      <label class="mcq-option" data-explain="Correct. The maximum stable learning rate is 2/h = 2/10 = 0.20. At eta = 0.25 > 0.20, each step multiplies distance to the minimum by (1 - eta*h) = -1.5, bouncing across the canyon and exploding.">It overshoots the opposite canyon wall and diverges because $\eta = 0.25 > \frac{2}{h} = 0.20$.</label>
+    </details>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'derivative': {
+        title: 'Derivative f\'(w) = df/dw',
+        body: 'The instantaneous slope of $f(w)$: if you nudge $w$ by a tiny $\\Delta w$, the output changes by $\\Delta f \\approx f\'(w)\\,\\Delta w$. When $f\'(w) = 0$, you are at a flat spot (minimum, maximum, or saddle point).'
+      },
+      'partial': {
+        title: 'Partial Derivative (∂L / ∂wᵢ)',
+        body: 'The ordinary Calc 1 <span class="term" data-term="derivative">derivative</span> of a multivariable function $L(w_1, \\dots, w_d)$ with respect to a single variable $w_i$, treating all other variables $w_{j \\ne i}$ as constants.'
+      },
+      'gradient': {
+        title: 'Gradient Vector (∇w L)',
+        body: 'The column vector of all <span class="term" data-term="partial">partial derivatives</span> $\\nabla_w L = [\\frac{\\partial L}{\\partial w_1}, \\dots, \\frac{\\partial L}{\\partial w_d}]^\\top$. Always points in the direction of <strong>steepest ascent</strong> (fastest loss increase), so $-\nabla_w L$ points steepest downhill.'
+      },
+      'directional-deriv': {
+        title: 'Directional Derivative (∇L · u)',
+        body: 'The slope of $L(w)$ when stepping in unit direction $u$: $D_u L = \\nabla L \\cdot u = \\|\\nabla L\\|_2 \\cos\\theta$. Maximized when $u$ aligns with $\\nabla L$ ($\\theta = 0^\\circ$) and minimized when $u$ points opposite ($\\theta = 180^\\circ$).'
+      },
+      'chain-rule': {
+        title: 'Chain Rule',
+        body: 'If $L$ depends on $\\hat{y}$, which depends on $z$, which depends on $w$, then rates of change multiply along the chain: $\\frac{\\partial L}{\\partial w} = \\frac{\\partial L}{\\partial \\hat{y}} \\cdot \\frac{\\partial \\hat{y}}{\\partial z} \\cdot \\frac{\\partial z}{\\partial w}$. If a variable splits into multiple paths, add the products from each path.'
+      },
+      'backprop': {
+        title: 'Backpropagation',
+        body: 'Applying the <span class="term" data-term="chain-rule">chain rule</span> from the scalar loss $L$ backward to every layer\'s weights by caching activations during the forward pass and multiplying local derivatives backward.'
+      },
+      'learning-rate': {
+        title: 'Learning Rate (η)',
+        body: 'The step-size multiplier $\\eta > 0$ in $w \\leftarrow w - \\eta \\nabla_w L$. Too small stalls training; larger than $2/\\lambda_{\\max}$ (where $\\lambda_{\\max}$ is the steepest <span class="term" data-term="hessian">Hessian</span> curvature) causes steps to overshoot and diverge.'
+      },
+      'relu': {
+        title: 'ReLU (Rectified Linear Unit)',
+        body: '$\\text{ReLU}(z) = \\max(0, z)$. Its derivative is $1$ for $z > 0$ and $0$ for $z < 0$. Because multiplying by $1$ does not shrink gradients, active ReLU units avoid the <span class="term" data-term="vanishing-grad">vanishing gradient</span> problem.'
+      },
+      'sigmoid': {
+        title: 'Sigmoid Activation σ(z)',
+        body: '$\\sigma(z) = \\frac{1}{1 + e^{-z}} \\in (0, 1)$. Squashes real logits into probabilities. Its derivative is $\\sigma\'(z) = \\sigma(z)(1 - \\sigma(z))$, which peaks at $0.25$ (at $z=0$) and approaches $0$ when $|z|$ is large.'
+      },
+      'softmax': {
+        title: 'Softmax Function',
+        body: 'Turns a vector of $K$ logits $z$ into a probability distribution: $\\hat{p}_i = \\frac{e^{z_i}}{\\sum_{j=1}^K e^{z_j}}$. Paired with <span class="term" data-term="cross-entropy">cross-entropy</span> loss, its gradient with respect to logit $z_i$ is simply $\\hat{p}_i - y_i$.'
+      },
+      'cross-entropy': {
+        title: 'Cross-Entropy Loss',
+        body: 'Negative log-probability of the true class: $L = -\\ln \\hat{p}_{\\text{true}}$ (or $-y\\ln\\hat{p} - (1-y)\\ln(1-\\hat{p})$ in binary classification). Its $\\frac{1}{\\hat{p}}$ derivative cancels the $\\hat{p}(1-\\hat{p})$ saturation of <span class="term" data-term="sigmoid">sigmoid</span>/<span class="term" data-term="softmax">softmax</span>.'
+      },
+      'vanishing-grad': {
+        title: 'Vanishing Gradient Problem',
+        body: 'When local derivatives $< 1$ (such as <span class="term" data-term="sigmoid">sigmoid</span>\'s $\\le 0.25$) are multiplied across many layers by the <span class="term" data-term="chain-rule">chain rule</span>, the gradient reaching early layers shrinks exponentially toward zero.'
+      },
+      'second-deriv': {
+        title: 'Second Derivative L\'\'(w)',
+        body: 'The derivative of the derivative: $\\frac{d^2 L}{dw^2}$. Measures curvature (how rapidly the slope changes). Positive in a valley bowl ($L\'\' > 0$), negative on a hilltop ($L\'\' < 0$).'
+      },
+      'hessian': {
+        title: 'Hessian Matrix (H)',
+        body: 'The $(d \\times d)$ symmetric matrix of all second partial derivatives $H_{i,j} = \\frac{\\partial^2 L}{\\partial w_i \\partial w_j}$. Its largest eigenvalue $\\lambda_{\\max}$ is the steepest curvature and sets the stability limit $\\eta < 2/\\lambda_{\\max}$.'
+      },
+      'taylor': {
+        title: 'Second-Order Taylor Approximation',
+        body: 'Approximates a smooth loss bowl locally around $w$ using its slope $g = \\nabla L(w)$ and curvature $H = \\nabla^2 L(w)$: $L(w + \\Delta w) \\approx L(w) + g^\\top \\Delta w + \\frac{1}{2} \\Delta w^\\top H \\Delta w$.'
+      }
+    };
+
+    var SPACED_CARDS = [
+      { q: 'Why does Gradient Descent subtract the gradient (w <- w - eta * grad_L)?', a: 'Because the directional derivative grad_L · u = ||grad_L|| cos(theta) is maximized at theta = 0° (steepest uphill) and most negative at theta = 180° (-grad_L, steepest downhill).' },
+      { q: 'In the multivariable chain rule, when do you multiply local derivatives vs. add them?', a: 'You multiply local derivatives along a sequential chain (w -> z -> y_hat -> L), and you add derivatives whenever a variable branches to feed multiple downstream paths.' },
+      { q: 'What is the derivative of sigmoid(z), and why does it cause vanishing gradients in deep networks?', a: 'sigma\'(z) = sigma(z)(1 - sigma(z)), which is at most 0.25 (at z = 0) and near 0 for large |z|. Multiplying numbers <= 0.25 across many layers shrinks gradients exponentially.' },
+      { q: 'What is the gradient dL/dz of Cross-Entropy loss combined with Sigmoid or Softmax logits z?', a: 'dL/dz = p_hat - y (predicted probability minus true label), because the 1/p_hat derivative of -ln(p_hat) cancels the p_hat(1 - p_hat) factor from sigmoid/softmax.' },
+      { q: 'If a loss valley has second-derivative curvature h = L\'\'(w) > 0, what is the optimal 1-step learning rate and the maximum stable learning rate?', a: 'Optimal 1-step Newton learning rate is eta = 1/h; maximum stable learning rate before steps overshoot and diverge is eta_max = 2/h.' }
+    ];
+
+    /* ---------- Widget 1: Chain Rule & Vanishing Gradient Inspector ---------- */
+    var chainAct = 'relu';
+
+    function setChainAct(mode) {
+      chainAct = mode;
+      document.getElementById('act-relu').classList.toggle('active', mode === 'relu');
+      document.getElementById('act-sig').classList.toggle('active', mode === 'sig');
+      updateChainWidget();
+    }
+
+    function updateChainWidget() {
+      var w = parseFloat(document.getElementById('cw-slider').value);
+      document.getElementById('cw-val').textContent = 'w = ' + fmt(w, 1);
+      var x = 2.0, y = 1.0;
+      var z = w * x;
+      var yhat, dyz, actExplain;
+      if (chainAct === 'relu') {
+        yhat = Math.max(0, z);
+        dyz = z > 0 ? 1.0 : 0.0;
+        actExplain = z > 0
+          ? 'Because $z = ' + fmt(z, 1) + ' > 0$, $\\text{ReLU}\'(z) = \\mathbf{1.00}$ (full gradient passes through).'
+          : 'Because $z = ' + fmt(z, 1) + ' \\le 0$, $\\text{ReLU}\'(z) = \\mathbf{0.00}$ (dead ReLU: zero gradient reaches $w$).';
+      } else {
+        yhat = sigmoid(z);
+        dyz = yhat * (1 - yhat);
+        actExplain = 'For Sigmoid, $f\'(z) = \\sigma(z)(1-\\sigma(z)) = ' + fmt(yhat, 2) + ' \\times ' + fmt(1 - yhat, 2) + ' = \\mathbf{' + fmt(dyz, 3) + '}$ (at most $0.25$, and shrinks toward $0$ as $|z|$ grows).';
+      }
+      var loss = 0.5 * (yhat - y) * (yhat - y);
+      var dly = yhat - y;
+      var dzw = x;
+      var dlw = dly * dyz * dzw;
+
+      document.getElementById('st-ch-fwd').textContent = fmt(z, 1) + ' \u2192 ' + fmt(yhat, 2) + ' \u2192 ' + fmt(loss, 2);
+      document.getElementById('st-ch-dly').textContent = (dly >= 0 ? '+' : '') + fmt(dly, 2);
+      document.getElementById('st-ch-dyz').textContent = fmt(dyz, 3);
+      document.getElementById('st-ch-dlw').textContent = (dlw >= 0 ? '+' : '') + fmt(dlw, 3);
+
+      var ro = document.getElementById('chain-readout');
+      ro.innerHTML = '<strong>Chain rule multiplication:</strong> ' +
+        '$\\frac{\\partial L}{\\partial w} = \\frac{\\partial L}{\\partial \\hat{y}} \\cdot \\frac{\\partial \\hat{y}}{\\partial z} \\cdot \\frac{\\partial z}{\\partial w} = (' +
+        fmt(dly, 2) + ') \\times (' + fmt(dyz, 3) + ') \\times (' + fmt(dzw, 1) + ') = \\mathbf{' + fmt(dlw, 3) + '}$.<br>' + actExplain;
+      renderMathIn(ro);
+    }
+
+    /* ---------- Widget 2: Second Derivative Curvature & Learning Rate ---------- */
+    var curvH = 4;
+
+    function setCurvH(h) {
+      curvH = h;
+      document.getElementById('curv-h1').classList.toggle('active', h === 1);
+      document.getElementById('curv-h4').classList.toggle('active', h === 4);
+      updateCurvWidget();
+    }
+
+    function updateCurvWidget() {
+      var eta = parseFloat(document.getElementById('curv-eta').value);
+      document.getElementById('curv-eta-val').textContent = '\u03B7 = ' + fmt(eta, 2);
+      var mult = 1 - eta * curvH;
+      var w0 = 2.0;
+      var w1 = w0 * mult;
+      var w2 = w1 * mult;
+      var L0 = 0.5 * curvH * w0 * w0;
+      var L2 = 0.5 * curvH * w2 * w2;
+      var maxEta = 2 / curvH;
+      var optEta = 1 / curvH;
+
+      var regime;
+      if (Math.abs(eta - optEta) < 1e-6) {
+        regime = 'Exact 1-Step (\u03B7 = 1/h)';
+      } else if (eta < optEta) {
+        regime = 'Monotonic (\u03B7 < 1/h)';
+      } else if (eta < maxEta - 1e-6) {
+        regime = 'Oscillating (1/h < \u03B7 < 2/h)';
+      } else if (Math.abs(eta - maxEta) < 1e-6) {
+        regime = 'Bouncing Limit (\u03B7 = 2/h)';
+      } else {
+        regime = 'EXPLODING (\u03B7 > 2/h)';
+      }
+
+      document.getElementById('st-cv-mult').textContent = (mult >= 0 ? '+' : '') + fmt(mult, 2) + 'x';
+      document.getElementById('st-cv-w').textContent = fmt(w0, 1) + ' \u2192 ' + fmt(w1, 1) + ' \u2192 ' + fmt(w2, 1);
+      document.getElementById('st-cv-loss').textContent = fmt(L0, 1) + ' \u2192 ' + fmt(L2, 1);
+      document.getElementById('st-cv-regime').textContent = regime;
+
+      var ro = document.getElementById('curv-readout');
+      ro.innerHTML = 'With curvature $h = L\'\'(w) = ' + curvH + '$, the gradient at $w$ is $g = h w = ' + curvH + 'w$. ' +
+        'Each step updates $w_{t+1} = w_t - \\eta(' + curvH + 'w_t) = (1 - ' + curvH + '\\eta)w_t = (' + fmt(mult, 2) + ')w_t$. ' +
+        'Optimal 1-step convergence happens at $\\eta^* = 1/h = ' + fmt(optEta, 2) + '$, and stability breaks above $\\eta_{\\max} = 2/h = ' + fmt(maxEta, 2) + '$.';
+      renderMathIn(ro);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      updateChainWidget();
+      updateCurvWidget();
+    });
+  </script>
+</body>
+</html>
