@@ -29,6 +29,7 @@ When creating or editing interactive learning articles in `~/matt-learning`, fol
    - Write plain, direct human prose with zero AI tells.
    - See `ARTICLE_RULES.md` for the full 5-stage pedagogical architecture and pre-publish audit checklist.
 
-6. **Publishing Workflow**
+6. **Shared Assets & Publishing Workflow**
+   - Always link `common.css` and `common.js` in `<head>` for shared E-ink styles, header/footer/popover setup, font scaling, KaTeX rendering, MCQ grading, and spaced-recall cards (do not inline duplicate base CSS/JS).
    - Always add a card/link for any new article to `index.html`.
    - Commit and push changes to `main` so they are live on GitHub Pages (`https://tabletmatt100.github.io/matt-learning/<filename>`).

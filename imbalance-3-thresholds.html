@@ -7,55 +7,12 @@
   <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
   <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
   <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
-  <link rel="stylesheet" href="imbalance-style.css">
-  <script src="imbalance-common.js"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
   <style>
     .mode-row .btn { min-width: 10rem; }
     .verdict { border: 2px solid #000; padding: 0.6rem 0.8rem; margin-top: 0.8rem; font-weight: 600; }
     .mcq-box pre { font-size: 0.85em; }
-
-    /* Boox Palma 3 & Narrow Pocket Screen Optimization (~360-520px) */
-    html, body { overflow-x: hidden; max-width: 100%; }
-    .table-wrap { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
-    svg, .diagram-svg, .chart { max-width: 100%; height: auto; }
-    @media (max-width: 520px) {
-      header { padding: 0.45rem 0.7rem; }
-      main { padding: 1.2rem 0.75rem 3.5rem 0.75rem; }
-      h1 { font-size: 1.55rem !important; line-height: 1.22; }
-      h2 { font-size: 1.28rem !important; margin-top: 1.9rem; }
-      h3 { font-size: 1.08rem !important; }
-      .tldr, .interactive-card, .mcq-box, .article-card, .story-box, details {
-        padding: 0.85rem 0.85rem !important;
-        margin: 1.15rem 0;
-      }
-      .math-block, pre {
-        padding: 0.6rem 0.65rem !important;
-        font-size: 0.88em;
-      }
-      .control-row, .row { gap: 8px; }
-      .control-row label { min-width: 100% !important; }
-      .control-row .btn, .row .btn, .article-card a.read-btn {
-        width: 100%;
-        text-align: center;
-      }
-      .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 6px; }
-      .stat .v { font-size: 1.02rem; }
-      .small-multiples { grid-template-columns: 1fr !important; }
-      th, td, table.data-table th, table.data-table td {
-        padding: 6px 7px !important;
-        font-size: 0.84em;
-      }
-      .matrix-grid {
-        grid-template-columns: repeat(4, minmax(56px, 1fr)) !important;
-        width: 100%;
-        max-width: 280px;
-      }
-      .matrix-cell { width: auto !important; min-height: 46px; }
-      #popover-box {
-        width: min(94vw, 440px) !important;
-        padding: 0.9rem 0.95rem !important;
-      }
-    }
   </style>
 </head>
 <body>
@@ -555,15 +512,6 @@ print("test F1:", f1_score(y_test, p_test &gt;= t))</code></pre>
   </main>
 
   <!-- POPOVER (keep exactly) -->
-  <div id="popover-backdrop" onclick="closePopover()"></div>
-  <div id="popover-box" role="dialog" aria-modal="true">
-    <div id="popover-title">
-      <span id="popover-term-name">Term</span>
-      <button id="popover-close" onclick="closePopover()" aria-label="Close">&times;</button>
-    </div>
-    <button id="popover-back">&larr; Back</button>
-    <div id="popover-body"></div>
-  </div>
 
   <script>
     var glossary = {

@@ -62,6 +62,9 @@ Follow this loop for every major concept:
 
 ## 3. Hardware, UI & Prose Rules (Boox Go 10.3 & Boox Palma 3)
 
+- **Shared `common.css` and `common.js`**:
+  - Every article must load `<link rel="stylesheet" href="common.css">` and `<script src="common.js"></script>` in `<head>` (right after the KaTeX tags) instead of duplicating the 500-line E-ink stylesheet or the 300-line JS engine for font-scaling, KaTeX auto-rendering, anchored popovers, MCQ grading, and spaced-recall cards.
+  - Each article's `<script>` only defines its `var GLOSSARY = {...}`, its `var SPACED_CARDS = [...]`, and its page-specific interactive widget functions.
 - **Monochrome E-ink CSS**: `#000000` text on `#ffffff` background, crisp `1px`/`2px`/`3px` solid `#000` borders, `#e8e8e8` highlight fills, zero shadows, zero gradients, and `transition: none !important; animation: none !important;` on `*`.
 - **Responsive Layout for Both Go 10.3 (10.3" tablet) and Palma 3 (6.13" pocket reader, ~360–412px CSS width)**:
   - Never let tables, equations, or SVGs push the page wider than the viewport (`overflow-x: hidden` on `html, body`, every `<table>` inside `.table-wrap { overflow-x: auto; }`, and `.math-block { overflow-x: auto; }`).
