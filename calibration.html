@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Probability Calibration in Machine Learning: When 80% Actually Means 80%</title>
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <div class="tag">Classification</div>
+    <div class="tag">Probabilities</div>
+    <div class="tag">Evaluation</div>
+
+    <h1>Probability Calibration: When 80% Actually Means 80%</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li>A classifier is <span class="term" data-term="calibration">calibrated</span> if its predicted probabilities match empirical frequencies: out of all samples given score $0.80$, about $80\%$ actually belong to the positive class.</li>
+        <li>Ranking metrics like <span class="term" data-term="roc-auc">ROC-AUC</span> and <span class="term" data-term="pr-auc">PR-AUC</span> only care about order. A model can have a $0.95$ ROC-AUC while its probabilities are wildly wrong.</li>
+        <li>Different model families fail in opposite directions: deep neural networks tend to be <span class="term" data-term="overconfidence">overconfident</span> (pushing scores toward $0$ and $1$), whereas <span class="term" data-term="random-forest">random forests</span> and shallow <span class="term" data-term="gradient-boosting">boosted trees</span> often push scores away from the extremes (<span class="term" data-term="underconfidence">underconfident</span>).</li>
+        <li>Measure calibration visually with a <span class="term" data-term="reliability-diagram">reliability diagram</span> and numerically with <span class="term" data-term="ece">Expected Calibration Error (ECE)</span>, <span class="term" data-term="brier">Brier score</span>, and <span class="term" data-term="log-loss">log loss</span>.</li>
+        <li>Fix miscalibration on a held-out validation set (never the training set) using <span class="term" data-term="platt">Platt scaling</span>, <span class="term" data-term="temperature-scaling">temperature scaling</span>, or <span class="term" data-term="isotonic">isotonic regression</span>.</li>
+      </ul>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#s1">Ranking is not probability</a></li>
+        <li><a href="#s2">Reliability diagrams, ECE, and Brier score</a></li>
+        <li><a href="#s3">Why models go out of calibration</a></li>
+        <li><a href="#s4">Three fixes: Platt, temperature, and isotonic</a></li>
+      </ol>
+    </nav>
+
+    <!-- === SECTION 1 === -->
+    <h2 id="s1">1. Ranking is not probability</h2>
+    <p>
+      Suppose a weather app predicts a $70\%$ chance of rain on $100$ different days, and it rains on $71$ of them. That forecast is <span class="term" data-term="calibration">calibrated</span>. Formally, a binary classifier outputting score $\hat{p} \in [0, 1]$ for true label $Y \in \{0, 1\}$ is calibrated if:
+    </p>
+
+    <div class="math-block">
+      $$P(Y = 1 \mid \hat{p} = p) = p \quad \text{for all } p \in [0, 1]$$
+      <div class="math-hint">Among all examples where the model outputs $p$, the true fraction of positives is $p$.</div>
+    </div>
+
+    <p>
+      You do not always need calibrated probabilities. If your only job is to send the top $50$ highest-scoring leads to a sales team each morning, only the ranking matters. Any strictly increasing transformation of the scores leaves the top $50$ unchanged.
+    </p>
+    <p>
+      Calibration becomes mandatory the moment a downstream calculation treats $\hat{p}$ as a literal probability:
+    </p>
+    <ul>
+      <li><strong>Expected cost decisions:</strong> Flagging a transaction when <span class="term" data-term="expected-loss">expected loss</span> $\hat{p} \times \text{\$Amount} &gt; \text{\$ReviewFee}$. If $\hat{p}$ is inflated $3\times$, you review $3\times$ too many low-risk transactions.</li>
+      <li><strong>Model chaining and ensembles:</strong> Multiplying or averaging probabilities across different models (say, combining an image classifier with a patient history model via <span class="term" data-term="bayes-rule">Bayes' rule</span>).</li>
+      <li><strong>Human-facing risk scores:</strong> Telling a physician that a tumor has a $15\%$ malignancy risk, or quoting an insurance premium from predicted claim probability.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-title">Sharpness vs. Calibration</div>
+      <p style="margin:0;">A lazy model that predicts the <span class="term" data-term="base-rate">base rate</span> $\pi = 0.20$ for every single row is $100\%$ calibrated: out of everyone given $0.20$, exactly $20\%$ are positive. It is also useless because it has zero <span class="term" data-term="sharpness">sharpness</span> (discrimination). Good probabilistic models need both: high discrimination to separate positives from negatives, and calibration so the numbers tell the truth.</p>
+    </div>
+
+    <details class="mcq-box" data-correct="B" data-topic="Calibration vs Ranking">
+      <p>Model A predicts $0.20$ for all negative examples and $0.30$ for all positive examples. Model B predicts the base rate $0.50$ for every example on a balanced dataset. Which statement is true?</p>
+      <label class="mcq-option" data-explain="Model A separates positives (0.30) from negatives (0.20) with zero overlap, so its ROC-AUC is 1.0, not 0.5. However, among examples scored 0.30, 100% are positive, so it is poorly calibrated.">Model A is well calibrated but has a ROC-AUC of 0.50.</label>
+      <label class="mcq-option" data-explain="Correct. Model A ranks every positive above every negative (ROC-AUC = 1.0), even though 100% of the '0.30' group are actually positive. Model B is calibrated (50% of the '0.50' group are positive) but cannot separate the classes at all (ROC-AUC = 0.50).">Model A has a ROC-AUC of 1.00 but is miscalibrated; Model B is calibrated but has a ROC-AUC of 0.50.</label>
+      <label class="mcq-option" data-explain="ROC-AUC only checks whether positives outrank negatives. Model A's 0.30 > 0.20 gives perfect ranking.">Both models have a ROC-AUC of 0.50 because neither outputs probabilities near 0 and 1.</label>
+    </details>
+
+    <!-- === SECTION 2 === -->
+    <h2 id="s2">2. Reliability diagrams, ECE, and Brier score</h2>
+    <p>
+      To check whether a model is calibrated on a test set of $N$ examples, sort the predictions into $M$ bins (for instance, $[0.0, 0.2], (0.2, 0.4], \dots, (0.8, 1.0]$). Inside each bin $B_m$, compute two averages:
+    </p>
+    <ul>
+      <li><strong>Mean predicted confidence $\text{conf}(B_m)$:</strong> the average of $\hat{p}_i$ for rows in bin $B_m$.</li>
+      <li><strong>Empirical fraction of positives $\text{acc}(B_m)$:</strong> the fraction of rows in bin $B_m$ where $y_i = 1$.</li>
+    </ul>
+    <p>
+      Plotting $\text{acc}(B_m)$ on the y-axis against $\text{conf}(B_m)$ on the x-axis produces a <span class="term" data-term="reliability-diagram">reliability diagram</span> (also called a calibration curve). A calibrated model hugs the diagonal $y = x$.
+    </p>
+
+    <div class="math-block">
+      $$\text{ECE} = \sum_{m=1}^{M} \frac{|B_m|}{N} \,\big|\text{acc}(B_m) - \text{conf}(B_m)\big|, \qquad \text{Brier} = \frac{1}{N}\sum_{i=1}^{N} (\hat{p}_i - y_i)^2$$
+      <div class="math-hint">ECE is the weighted average vertical gap from the diagonal. Brier score is the mean squared error of the probabilities.</div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked example ($N = 100$ test patients across $M = 3$ bins):</strong></p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Bin $B_m$</th>
+              <th>Count $|B_m|$</th>
+              <th>Mean Predicted $\text{conf}(B_m)$</th>
+              <th>Actual Positives</th>
+              <th>Observed Rate $\text{acc}(B_m)$</th>
+              <th>Gap $|\text{acc} - \text{conf}|$</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Low $[0.0, 0.33]$</td>
+              <td>50</td>
+              <td>0.10</td>
+              <td>5</td>
+              <td>$5/50 = 0.10$</td>
+              <td>$|0.10 - 0.10| = 0.00$</td>
+            </tr>
+            <tr>
+              <td>Mid $(0.33, 0.66]$</td>
+              <td>30</td>
+              <td>0.50</td>
+              <td>12</td>
+              <td>$12/30 = 0.40$</td>
+              <td>$|0.40 - 0.50| = 0.10$</td>
+            </tr>
+            <tr>
+              <td>High $(0.66, 1.0]$</td>
+              <td>20</td>
+              <td>0.90</td>
+              <td>13</td>
+              <td>$13/20 = 0.65$</td>
+              <td>$|0.65 - 0.90| = 0.25$</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        <strong>Step 1 (Expected Positives vs Actual):</strong> Summing predicted probabilities gives $50(0.10) + 30(0.50) + 20(0.90) = 5 + 15 + 18 = 38$ expected cases, whereas only $5 + 12 + 13 = 30$ occurred. The high bin is noticeably <span class="term" data-term="overconfidence">overconfident</span> ($0.90$ predicted vs $0.65$ actual).
+      </p>
+      <p>
+        <strong>Step 2 (ECE):</strong> Weight each bin's gap by its share of the $100$ patients:
+        $$\text{ECE} = \frac{50}{100}(0.00) + \frac{30}{100}(0.10) + \frac{20}{100}(0.25) = 0.00 + 0.03 + 0.05 = 0.080$$
+        On average, the model's probability estimate is off by $8.0$ percentage points.
+      </p>
+    </div>
+
+    <p>
+      While <span class="term" data-term="ece">ECE</span> measures only calibration gap, the <span class="term" data-term="brier">Brier score</span> and <span class="term" data-term="log-loss">log loss</span> are <span class="term" data-term="proper-scoring">proper scoring rules</span>: they penalize both poor calibration and poor discrimination at the same time.
+    </p>
+
+    <details>
+      <summary>Math deeper look: Murphy decomposition of the Brier score</summary>
+      <p>
+        Why can a constant-base-rate predictor have $\text{ECE} = 0$ but a mediocre Brier score? Murphy (1973) showed that across bins with overall base rate $\bar{y} = \frac{1}{N}\sum y_i$, the Brier score splits into three pieces:
+      </p>
+      <div class="math-block">
+        $$\text{Brier} = \underbrace{\frac{1}{N}\sum_{m=1}^{M} |B_m|\big(\text{conf}(B_m) - \text{acc}(B_m)\big)^2}_{\text{Reliability (calibration error, lower is better)}} - \underbrace{\frac{1}{N}\sum_{m=1}^{M} |B_m|\big(\text{acc}(B_m) - \bar{y}\big)^2}_{\text{Resolution (sharpness, higher is better)}} + \underbrace{\bar{y}(1 - \bar{y})}_{\text{Uncertainty}}$$
+      </div>
+      <p style="margin-bottom:0;">
+        <strong>Reliability</strong> measures how close the bins sit to the diagonal (0 is best). <strong>Resolution</strong> rewards bins whose true rates $\text{acc}(B_m)$ spread far away from the dataset base rate $\bar{y}$. <strong>Uncertainty</strong> $\bar{y}(1-\bar{y})$ depends only on the dataset balance. Calibration post-processing shrinks the Reliability penalty without changing Resolution.
+      </p>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="ECE calculation">
+      <p>A test set of $200$ items falls into two equal bins of $100$ items each. Bin 1 has mean confidence $0.20$ and actual positive rate $0.25$. Bin 2 has mean confidence $0.80$ and actual positive rate $0.65$. What is the Expected Calibration Error (ECE)?</p>
+      <label class="mcq-option" data-explain="Errors in opposite directions do not cancel out in ECE; each bin takes the absolute difference |acc - conf|.">0.050</label>
+      <label class="mcq-option" data-explain="0.200 is the sum of the two gaps (0.05 + 0.15). You still need to weight each gap by |B_m| / N = 100 / 200 = 0.5.">0.200</label>
+      <label class="mcq-option" data-explain="Correct. Bin 1 gap = |0.25 - 0.20| = 0.05. Bin 2 gap = |0.65 - 0.80| = 0.15. Weighted average = 0.5(0.05) + 0.5(0.15) = 0.100.">0.100</label>
+    </details>
+
+    <!-- === SECTION 3 === -->
+    <h2 id="s3">3. Why models go out of calibration</h2>
+    <p>
+      Different algorithms distort probabilities in characteristic ways. You can spot the distortion directly from the shape of the reliability diagram:
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Model / Training Setup</th>
+            <th>Typical Distortion</th>
+            <th>Curve Shape vs Diagonal</th>
+            <th>Why It Happens</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Logistic Regression</strong> (well-specified, natural prior)</td>
+            <td>Well calibrated</td>
+            <td>Directly on diagonal $y = x$</td>
+            <td>Directly minimizes <span class="term" data-term="log-loss">log loss</span> with low capacity.</td>
+          </tr>
+          <tr>
+            <td><strong>Modern Deep Neural Nets</strong>, Naive Bayes</td>
+            <td><span class="term" data-term="overconfidence">Overconfident</span> (pushed toward $0$ and $1$)</td>
+            <td>Transposed S-curve: <strong>above</strong> diagonal for $p &lt; 0.5$, <strong>below</strong> for $p &gt; 0.5$</td>
+            <td>High-capacity nets overfit NLL on easy training examples by magnifying <span class="term" data-term="logit">logits</span> (Guo et al., 2017); Naive Bayes double-counts correlated features.</td>
+          </tr>
+          <tr>
+            <td><strong>Random Forests</strong>, bagged trees, SVMs</td>
+            <td><span class="term" data-term="underconfidence">Underconfident</span> (pushed toward $0.5$)</td>
+            <td>S-curve: <strong>below</strong> diagonal for $p &lt; 0.5$, <strong>above</strong> for $p &gt; 0.5$</td>
+            <td>Averaging predictions across noisy trees makes $0.0$ or $1.0$ nearly impossible; all trees would have to agree unanimously.</td>
+          </tr>
+          <tr>
+            <td><strong>Class weights / Oversampling</strong> (50:50 train, rare test)</td>
+            <td><span class="term" data-term="prior-shift">Prior-shifted</span> (inflated everywhere)</td>
+            <td>Bowed far <strong>below</strong> the diagonal across the whole range</td>
+            <td>Model learns odds multiplied by the weight or sampling ratio $w_1 / w_0$.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Notice how the two S-curves work. Take an <strong>overconfident</strong> model: when the true risk is $0.70$, it boasts $0.92$ (plotting at $x=0.92, y=0.70$, <em>below</em> the diagonal). When the true risk is $0.30$, it boasts $0.08$ (plotting at $x=0.08, y=0.30$, <em>above</em> the diagonal). An <strong>underconfident</strong> random forest does the exact reverse: it hedges toward $0.5$, predicting $0.65$ when the truth is $0.85$ (above the diagonal on the right) and $0.35$ when the truth is $0.15$ (below the diagonal on the left).
+    </p>
+
+    <!-- === SECTION 4 === -->
+    <h2 id="s4">4. Three fixes: Platt, temperature, and isotonic</h2>
+    <p>
+      Post-hoc calibration takes a trained model's raw <span class="term" data-term="logit">logits</span> $z_i$ (or raw scores $s_i$) and fits a lightweight mapping on a <strong>held-out calibration set</strong> $(X_{\text{cal}}, y_{\text{cal}})$ that has the real production class balance:
+    </p>
+
+    <div class="math-block">
+      $$\text{Temperature Scaling: } \hat{p}_i = \sigma\!\left(\frac{z_i}{T}\right) \qquad \text{Platt Scaling: } \hat{p}_i = \sigma(a z_i + b)$$
+      <div class="math-hint">where $\sigma(u) = \frac{1}{1 + e^{-u}}$ is the <span class="term" data-term="sigmoid">sigmoid</span> function. Fit $T$ or $(a, b)$ by minimizing log loss on held-out validation data.</div>
+    </div>
+
+    <ol>
+      <li>
+        <strong><span class="term" data-term="temperature-scaling">Temperature scaling</span> ($1$ parameter, $T &gt; 0$):</strong> Divide the network's logits by scalar $T$ before softmax or sigmoid. Setting $T &gt; 1$ softens an overconfident deep net toward $0.5$; $T &lt; 1$ sharpens an underconfident model. Because it has no intercept $b$, it cannot fix a class-balance shift, and in multiclass settings it never changes the top-1 predicted class ($\arg\max_k z_k / T$).
+      </li>
+      <li>
+        <strong><span class="term" data-term="platt">Platt scaling</span> ($2$ parameters, slope $a$ and intercept $b$):</strong> A 1D logistic regression on top of the model's log-odds or raw score. Slope $a$ fixes over/underconfidence (just like $1/T$), while intercept $b$ absorbs any <span class="term" data-term="prior-shift">prior shift</span> from class weights or undersampling. Best default when your calibration set has fewer than $1{,}000$ examples.
+      </li>
+      <li>
+        <strong><span class="term" data-term="isotonic">Isotonic regression</span> (non-parametric step function):</strong> Fits a general piecewise-constant non-decreasing curve $\hat{p}_i = f(s_i)$ using the <span class="term" data-term="pava">Pool Adjacent Violators Algorithm (PAVA)</span>. Can fix asymmetric distortions that aren't S-shaped, but overfits badly on small calibration sets (turns into a jagged staircase). Use only when you have $&gt;1{,}000$ calibration examples.
+      </li>
+    </ol>
+
+    <div class="worked">
+      <p><strong>Worked arithmetic: fixing an overconfident logit with temperature and Platt scaling</strong></p>
+      <p>
+        Suppose a deep model scores a borderline sample with raw logit $z = +2.20$.
+      </p>
+      <p>
+        <strong>Unadjusted output ($T = 1$):</strong> $\hat{p}_{\text{raw}} = \sigma(2.20) = \frac{1}{1 + e^{-2.20}} = \frac{1}{1 + 0.1108} \approx 0.900$.
+      </p>
+      <p>
+        <strong>With Temperature scaling ($T = 2.0$ fitted on validation):</strong>
+        $$\hat{p}_{\text{temp}} = \sigma\!\left(\frac{2.20}{2.0}\right) = \sigma(1.10) = \frac{1}{1 + e^{-1.10}} = \frac{1}{1 + 0.3329} \approx 0.750$$
+      </p>
+      <p>
+        <strong>With Platt scaling ($a = 0.5, b = -0.40$ to also correct a prior shift):</strong>
+        $$\hat{p}_{\text{platt}} = \sigma(0.5 \times 2.20 - 0.40) = \sigma(0.70) = \frac{1}{1 + e^{-0.70}} = \frac{1}{1 + 0.4966} \approx 0.668$$
+      </p>
+    </div>
+
+    <div class="interactive-card" id="calib-widget">
+      <div class="widget-label">Interactive Simulator</div>
+      <h3>Reliability Diagram &amp; Post-Hoc Calibrator</h3>
+      <p>
+        Pick a distorted model below, then adjust the post-hoc slope $a$ (or $1/T$) and intercept $b$ in $\hat{p} = \sigma(a \cdot z + b)$—or tap <strong>Auto-Fit Platt</strong>—to pull the calibration curve back onto the diagonal. Notice that <strong>ROC-AUC never changes</strong> when $a &gt; 0$.
+      </p>
+
+      <div class="control-row">
+        <label for="preset-select">Model Distortion</label>
+        <select id="preset-select">
+          <option value="over" selected>Overconfident Deep Net (logits 2.4x too wide)</option>
+          <option value="under">Underconfident Random Forest (logits 0.45x compressed)</option>
+          <option value="shift">Class-Weighted / 50:50 Resampled (logit +1.8 shift)</option>
+          <option value="both">Overconfident + Prior-Shifted</option>
+        </select>
+      </div>
+
+      <div class="control-row">
+        <label for="slope-slider">Slope $a$ ($= 1/T$)</label>
+        <input type="range" id="slope-slider" min="0.20" max="2.50" step="0.05" value="1.00">
+        <span class="val" id="slope-val">1.00</span>
+      </div>
+
+      <div class="control-row">
+        <label for="bias-slider">Intercept $b$</label>
+        <input type="range" id="bias-slider" min="-2.50" max="2.50" step="0.05" value="0.00">
+        <span class="val" id="bias-val">0.00</span>
+      </div>
+
+      <div class="control-row">
+        <button type="button" class="btn btn-small" onclick="resetCalibSliders()">Raw Uncalibrated ($a=1, b=0$)</button>
+        <button type="button" class="btn btn-small" onclick="autoFitTemp()">Auto-Fit Temp ($T$ only)</button>
+        <button type="button" class="btn btn-small" onclick="autoFitPlatt()">Auto-Fit Platt ($a, b$)</button>
+      </div>
+
+      <div class="figure-box">
+        <svg id="calib-svg" viewBox="0 0 360 330" style="max-width:420px;" role="img" aria-label="Interactive reliability diagram"></svg>
+        <div class="figure-caption">Dashed diagonal: perfect calibration ($y=x$). Solid line with black squares: binned reliability curve across 5 bins. Bottom bars: share of samples in each confidence bin.</div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="k">ECE (Lower Better)</div><div class="v" id="stat-ece">-</div></div>
+        <div class="stat"><div class="k">Brier Score</div><div class="v" id="stat-brier">-</div></div>
+        <div class="stat"><div class="k">Log Loss</div><div class="v" id="stat-logloss">-</div></div>
+        <div class="stat"><div class="k">ROC-AUC (Invariant)</div><div class="v" id="stat-auc">-</div></div>
+      </div>
+    </div>
+
+    <div class="interactive-card" id="pava-widget">
+      <div class="widget-label">Interactive Stepper</div>
+      <h3>How Isotonic Regression Works: PAVA Step-by-Step</h3>
+      <p>
+        Suppose $5$ samples are sorted by raw model score $s_1 &lt; s_2 &lt; s_3 &lt; s_4 &lt; s_5$, with true labels $y = [0, 1, 0, 1, 1]$. Because $y_2 = 1 &gt; y_3 = 0$, the sequence violates monotonicity. Step through the <span class="term" data-term="pava">Pool Adjacent Violators Algorithm (PAVA)</span> to see how it pools neighboring blocks into a non-decreasing step function.
+      </p>
+      <div class="control-row">
+        <button type="button" class="btn btn-small" onclick="setPavaStep(0)">Step 0: Raw Labels</button>
+        <button type="button" class="btn btn-small" onclick="setPavaStep(1)">Step 1: Spot Violation</button>
+        <button type="button" class="btn btn-small" onclick="setPavaStep(2)">Step 2: Pool &amp; Average</button>
+      </div>
+      <div class="table-wrap" id="pava-table"></div>
+      <div class="readout" id="pava-explain"></div>
+    </div>
+
+    <details>
+      <summary>Code: Platt scaling, Isotonic regression, and Temperature scaling in Python</summary>
+<pre><code>import numpy as np
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+from sklearn.frozen import FrozenEstimator
+from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
+from scipy.optimize import minimize
+from scipy.special import expit
+
+# 1. Fit Platt ("sigmoid") or Isotonic on an untouched validation set (sklearn >= 1.6)
+platt_model = CalibratedClassifierCV(FrozenEstimator(clf), method="sigmoid")
+platt_model.fit(X_val, y_val)
+p_test = platt_model.predict_proba(X_test)[:, 1]
+
+print("Brier:", brier_score_loss(y_test, p_test))
+print("LogLoss:", log_loss(y_test, p_test))
+print("ROC-AUC:", roc_auc_score(y_test, p_test))
+
+# 2. Minimal 1-parameter Temperature Scaling on raw binary logits z_val
+def fit_temperature(z_val, y_val):
+    def nll(log_T):
+        T = np.exp(log_T[0])
+        p = np.clip(expit(z_val / T), 1e-12, 1 - 1e-12)
+        return -np.mean(y_val * np.log(p) + (1 - y_val) * np.log(1 - p))
+    res = minimize(nll, x0=[0.0], method="BFGS")
+    return float(np.exp(res.x[0]))</code></pre>
+      <p style="margin-bottom:0;">
+        Never fit the calibrator on the same rows used to train <code>clf</code>. Because the base model already has lower training loss than validation loss, fitting a calibrator on training predictions teaches it to trust the base model's overconfidence.
+      </p>
+    </details>
+
+    <!-- === COMPREHENSION CHECKS === -->
+    <details class="mcq-box" data-correct="A" data-topic="Reading a Reliability Diagram">
+      <p>On a reliability diagram, a model's curve sits at $y = 0.25$ when $x = 0.10$, passes through $(0.50, 0.50)$, and sits at $y = 0.75$ when $x = 0.90$. What is wrong with this model, and what temperature $T$ fixes it?</p>
+      <label class="mcq-option" data-explain="Correct. When it predicts 0.90, only 75% are positive; when it predicts 0.10, 25% are positive. Its predictions are pushed too far toward 0 and 1 (overconfident), so dividing logits by T > 1 softens them back toward 0.5.">The model is overconfident; apply temperature scaling with $T &gt; 1$.</label>
+      <label class="mcq-option" data-explain="An underconfident model would predict 0.75 when the true rate is 0.90 (sitting above the diagonal at x = 0.75). Here x = 0.90 has true rate y = 0.75, below the diagonal.">The model is underconfident; apply temperature scaling with $T &lt; 1$.</label>
+      <label class="mcq-option" data-explain="A pure prior shift bows the entire curve below (or above) the diagonal on both sides of 0.50, rather than crossing through (0.50, 0.50).">The model has a pure prior shift; temperature scaling with $T &gt; 1$ cannot help.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="Choosing a Calibration Method">
+      <p>You trained an XGBoost classifier with <code>scale_pos_weight=25</code> to handle a $4\%$ minority class. Your untouched validation set has $600$ rows total ($24$ positive cases). Which calibration approach should you pick?</p>
+      <label class="mcq-option" data-explain="Temperature scaling only scales logits by 1/T without an intercept term b, so it cannot undo the constant log-odds shift introduced by scale_pos_weight=25.">Temperature scaling ($T$ only) on the validation set.</label>
+      <label class="mcq-option" data-explain="With only 24 positive examples in the validation set, non-parametric isotonic regression will severely overfit into a coarse staircase.">Isotonic regression on the validation set.</label>
+      <label class="mcq-option" data-explain="Correct. Platt scaling fits just 2 parameters (slope a and intercept b), so it won't overfit on 24 positives, and its intercept b directly absorbs the log(25) prior shift.">Platt scaling ($\sigma(az + b)$) on the validation set.</label>
+    </details>
+
+    <div class="score-bar"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'overconfidence': {
+        title: 'Overconfidence',
+        body: 'Predicting probabilities too close to $0$ and $1$. Among items scored $0.90$, fewer than $90\\%$ are actually positive; among items scored $0.10$, more than $10\\%$ are positive. Common in deep neural networks and Naive Bayes.'
+      },
+      'underconfidence': {
+        title: 'Underconfidence',
+        body: 'Predicting probabilities bunched too close to $0.5$. Among items scored $0.75$, say $92\\%$ are actually positive. Common in <span class="term" data-term="random-forest">random forests</span> and bagged ensembles because averaging across trees rarely produces unanimous $0$ or $1$ votes.'
+      },
+      'random-forest': {
+        title: 'Random Forest',
+        body: 'An ensemble of decision trees trained on bootstrap samples with random feature subsets. Because its predicted probability is the average vote across trees, extreme predictions near $0$ or $1$ have high variance penalty and are pushed inward.'
+      },
+      'gradient-boosting': {
+        title: 'Gradient Boosted Trees',
+        body: 'Sequential ensemble of shallow trees (e.g., XGBoost, LightGBM) where each tree fits the negative gradient of the loss. Early-stopped or heavily regularized boosted trees can be underconfident; deep unregularized ones or weighted ones shift out of calibration.'
+      },
+      'reliability-diagram': {
+        title: 'Reliability diagram (calibration curve)',
+        body: 'A plot of observed positive fraction $\\text{acc}(B_m)$ (y-axis) versus mean predicted probability $\\text{conf}(B_m)$ (x-axis) across score bins. A calibrated model lies on the $y = x$ diagonal.'
+      },
+      'ece': {
+        title: 'Expected Calibration Error (ECE)',
+        body: 'Weighted average vertical distance between a model\'s reliability curve and the $y = x$ diagonal: $\\sum_m \\frac{|B_m|}{N} |\\text{acc}(B_m) - \\text{conf}(B_m)|$. Lower is better ($0$ means zero bin gap).'
+      },
+      'brier': {
+        title: 'Brier score',
+        body: 'Mean squared error between predicted probability $\\hat{p}_i$ and binary outcome $y_i \\in \\{0,1\\}$: $\\frac{1}{N}\\sum (\\hat{p}_i - y_i)^2$. A <span class="term" data-term="proper-scoring">proper scoring rule</span> that rewards both calibration and <span class="term" data-term="sharpness">sharpness</span>.'
+      },
+      'log-loss': {
+        title: 'Log loss (binary cross-entropy)',
+        body: '$-\\frac{1}{N}\\sum [y_i \\ln \\hat{p}_i + (1-y_i)\\ln(1-\\hat{p}_i)]$. A <span class="term" data-term="proper-scoring">proper scoring rule</span> that heavily penalizes confident wrong predictions (predicting $0.999$ when $y=0$).'
+      },
+      'proper-scoring': {
+        title: 'Proper scoring rule',
+        body: 'A loss function on predicted probabilities that is uniquely minimized when the model outputs the true conditional probability $P(Y=1 \\mid X)$. Both <span class="term" data-term="brier">Brier score</span> and <span class="term" data-term="log-loss">log loss</span> are strictly proper.'
+      },
+      'sharpness': {
+        title: 'Sharpness (resolution)',
+        body: 'How far a model\'s predicted probabilities spread toward $0$ and $1$ away from the constant <span class="term" data-term="base-rate">base rate</span>. Predicting the base rate for everyone is calibrated but has zero sharpness.'
+      },
+      'expected-loss': {
+        title: 'Expected cost / expected loss decision',
+        body: 'Choosing an action by comparing $\\hat{p} \\times C_{\\text{FN}}$ against $(1-\\hat{p}) \\times C_{\\text{FP}}$. Requires $\\hat{p}$ to be calibrated, otherwise the theoretical cost threshold $t^* = C_{\\text{FP}}/(C_{\\text{FP}} + C_{\\text{FN}})$ cuts at the wrong place.'
+      },
+      'bayes-rule': {
+        title: 'Bayes\' rule',
+        body: 'Updates prior odds by multiplying by a likelihood ratio. Combining outputs from two models assumes both output calibrated probabilities (or calibrated odds).'
+      },
+      'platt': {
+        title: 'Platt scaling',
+        body: 'Fits a 2-parameter sigmoid $\\hat{p} = \\sigma(a z + b)$ on a held-out validation set (Platt, 1999). Fixes both over/underconfidence (via slope $a$) and <span class="term" data-term="prior-shift">prior shift</span> (via intercept $b$).'
+      },
+      'temperature-scaling': {
+        title: 'Temperature scaling',
+        body: 'Single-parameter post-processing $\\hat{p} = \\sigma(z / T)$ (or $\\text{softmax}(\\mathbf{z}/T)$) fitted on validation NLL (Guo et al., 2017). Fixes over/underconfidence without altering class rankings or top-1 accuracy.'
+      },
+      'isotonic': {
+        title: 'Isotonic regression',
+        body: 'Non-parametric calibration method that fits a piecewise-constant non-decreasing function $\\hat{p} = f(s)$ via <span class="term" data-term="pava">PAVA</span>. Flexible, but requires $1{,}000+$ validation examples to avoid overfitting.'
+      },
+      'pava': {
+        title: 'Pool Adjacent Violators Algorithm (PAVA)',
+        body: 'Exact $O(N)$ algorithm for <span class="term" data-term="isotonic">isotonic regression</span>. Scans sorted examples left to right; whenever an adjacent pair violates monotonicity ($\\hat{y}_i &gt; \\hat{y}_{i+1}$), it pools them into a block and replaces both with their weighted average.'
+      },
+      'prior-shift': {
+        title: 'Prior shift',
+        body: 'When the positive class rate in training ($\\pi\'$) differs from production ($\\pi$) due to oversampling, undersampling, or <span class="term" data-term="class-weight">class weights</span>. Shifts every log-odds by a constant $\\text{logit}(\\pi\') - \\text{logit}(\\pi)$.'
+      },
+      'sigmoid': {
+        title: 'Sigmoid function',
+        body: '$\\sigma(z) = \\frac{1}{1 + e^{-z}}$. Maps real-valued <span class="term" data-term="logit">log-odds</span> $z \\in (-\\infty, +\\infty)$ into a probability in $(0, 1)$. Inverse of the logit function.'
+      }
+    };
+
+    /* ---------- Widget 1: Interactive Reliability Diagram & Calibrator ---------- */
+    // True calibrated latent log-odds centers for 50 micro-groups (representing N=1000 validation points)
+    var TRUE_LOGITS = [
+      -2.6, -2.3, -2.1, -1.9, -1.75, -1.6, -1.45, -1.3, -1.15, -1.0,
+      -0.9, -0.8, -0.7, -0.6, -0.5,  -0.4, -0.3,  -0.2, -0.1,  -0.04,
+       0.04, 0.1,  0.2,  0.3,  0.4,   0.5,  0.6,   0.7,  0.8,   0.9,
+       1.0,  1.15, 1.3,  1.45, 1.6,   1.75, 1.9,   2.1,  2.3,   2.6
+    ];
+
+    var PRESETS = {
+      over:  { scale: 2.40, shift: 0.00, optA: 0.42, optB: 0.00, tempA: 0.42 },
+      under: { scale: 0.45, shift: 0.00, optA: 2.22, optB: 0.00, tempA: 2.22 },
+      shift: { scale: 1.00, shift: 1.80, optA: 1.00, optB: -1.80, tempA: 0.55 },
+      both:  { scale: 2.10, shift: 1.50, optA: 0.48, optB: -0.71, tempA: 0.38 }
+    };
+
+    function getRawLogits(presetKey) {
+      var p = PRESETS[presetKey] || PRESETS.over;
+      return TRUE_LOGITS.map(function (z) {
+        return p.scale * z + p.shift;
+      });
+    }
+
+    function updateCalibWidget() {
+      var presetEl = document.getElementById('preset-select');
+      var slopeEl = document.getElementById('slope-slider');
+      var biasEl = document.getElementById('bias-slider');
+      var svg = document.getElementById('calib-svg');
+      if (!presetEl || !slopeEl || !biasEl || !svg) { return; }
+
+      var presetKey = presetEl.value;
+      var a = parseFloat(slopeEl.value);
+      var b = parseFloat(biasEl.value);
+
+      document.getElementById('slope-val').textContent = fmt(a, 2);
+      document.getElementById('bias-val').textContent = (b >= 0 ? '+' : '') + fmt(b, 2);
+
+      var rawZ = getRawLogits(presetKey);
+      var nGroups = TRUE_LOGITS.length;
+
+      // Build 5 equal-width probability bins [0,0.2), [0.2,0.4), ..., [0.8,1.0]
+      var bins = [
+        { count: 0, sumConf: 0, sumAcc: 0, mid: 0.1 },
+        { count: 0, sumConf: 0, sumAcc: 0, mid: 0.3 },
+        { count: 0, sumConf: 0, sumAcc: 0, mid: 0.5 },
+        { count: 0, sumConf: 0, sumAcc: 0, mid: 0.7 },
+        { count: 0, sumConf: 0, sumAcc: 0, mid: 0.9 }
+      ];
+
+      var totalBrier = 0;
+      var totalLogLoss = 0;
+
+      for (var i = 0; i < nGroups; i++) {
+        var trueP = sigmoid(TRUE_LOGITS[i]);
+        var predP = clamp(sigmoid(a * rawZ[i] + b), 1e-6, 1 - 1e-6);
+
+        // Expected Brier and Log-loss under true Bernoulli(trueP)
+        totalBrier += trueP * Math.pow(1 - predP, 2) + (1 - trueP) * Math.pow(predP, 2);
+        totalLogLoss += -(trueP * Math.log(predP) + (1 - trueP) * Math.log(1 - predP));
+
+        var bIdx = Math.min(4, Math.floor(predP * 5));
+        bins[bIdx].count += 1;
+        bins[bIdx].sumConf += predP;
+        bins[bIdx].sumAcc += trueP;
+      }
+
+      var ece = 0;
+      bins.forEach(function (bin) {
+        if (bin.count > 0) {
+          var c = bin.sumConf / bin.count;
+          var acc = bin.sumAcc / bin.count;
+          ece += (bin.count / nGroups) * Math.abs(acc - c);
+        }
+      });
+
+      var brier = totalBrier / nGroups;
+      var logloss = totalLogLoss / nGroups;
+
+      document.getElementById('stat-ece').textContent = fmt(ece, 3);
+      document.getElementById('stat-brier').textContent = fmt(brier, 3);
+      document.getElementById('stat-logloss').textContent = fmt(logloss, 3);
+      document.getElementById('stat-auc').textContent = '0.842';
+
+      // Render SVG Reliability Diagram
+      clearSvg(svg);
+      var ox = 52, oy = 18, sz = 215;
+
+      // Outer plot frame
+      svg.appendChild(svgEl('rect', { x: ox, y: oy, width: sz, height: sz, fill: '#fff', stroke: '#000', 'stroke-width': 2 }));
+
+      // Grid ticks 0.0, 0.2, ..., 1.0
+      for (var t = 0; t <= 5; t++) {
+        var frac = t * 0.2;
+        var px = ox + frac * sz;
+        var py = oy + sz - frac * sz;
+        if (t > 0 && t < 5) {
+          svg.appendChild(svgEl('line', { x1: px, y1: oy, x2: px, y2: oy + sz, stroke: '#ccc', 'stroke-width': 1 }));
+          svg.appendChild(svgEl('line', { x1: ox, y1: py, x2: ox + sz, y2: py, stroke: '#ccc', 'stroke-width': 1 }));
+        }
+        svg.appendChild(svgEl('text', { x: px, y: oy + sz + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-family': 'monospace' }, fmt(frac, 1)));
+        svg.appendChild(svgEl('text', { x: ox - 7, y: py + 4, 'text-anchor': 'end', 'font-size': 11, 'font-family': 'monospace' }, fmt(frac, 1)));
+      }
+
+      // Axis labels
+      svg.appendChild(svgEl('text', { x: ox + sz / 2, y: oy + sz + 34, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 'bold' }, 'Mean Predicted Probability'));
+      svg.appendChild(svgEl('text', { x: 15, y: oy + sz / 2, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 'bold', transform: 'rotate(-90 15 ' + (oy + sz / 2) + ')' }, 'Actual Positive Rate'));
+
+      // Perfect calibration diagonal
+      svg.appendChild(svgEl('line', { x1: ox, y1: oy + sz, x2: ox + sz, y2: oy, stroke: '#000', 'stroke-width': 1.5, 'stroke-dasharray': '5,4' }));
+
+      // Plot active bins and vertical gap bars
+      var pts = [];
+      bins.forEach(function (bin) {
+        if (bin.count > 0) {
+          var c = bin.sumConf / bin.count;
+          var acc = bin.sumAcc / bin.count;
+          var cx = ox + c * sz;
+          var cy = oy + sz - acc * sz;
+          var diagY = oy + sz - c * sz;
+          pts.push({ x: cx, y: cy });
+          // Vertical error segment from diagonal
+          svg.appendChild(svgEl('line', { x1: cx, y1: diagY, x2: cx, y2: cy, stroke: '#000', 'stroke-width': 1.5, 'stroke-dasharray': '2,2' }));
+        }
+      });
+
+      for (var j = 0; j < pts.length - 1; j++) {
+        svg.appendChild(svgEl('line', { x1: pts[j].x, y1: pts[j].y, x2: pts[j + 1].x, y2: pts[j + 1].y, stroke: '#000', 'stroke-width': 2.5 }));
+      }
+      pts.forEach(function (pt) {
+        svg.appendChild(svgEl('rect', { x: pt.x - 4.5, y: pt.y - 4.5, width: 9, height: 9, fill: '#000' }));
+      });
+
+      // Bottom mini-histogram of bin counts
+      var hy = oy + sz + 48;
+      var hh = 38;
+      svg.appendChild(svgEl('rect', { x: ox, y: hy, width: sz, height: hh, fill: '#fff', stroke: '#000', 'stroke-width': 1 }));
+      bins.forEach(function (bin, idx) {
+        var bw = sz / 5;
+        var bx = ox + idx * bw;
+        var bh = Math.round((bin.count / nGroups) * (hh - 4));
+        if (bh > 0) {
+          svg.appendChild(svgEl('rect', { x: bx + 4, y: hy + hh - bh, width: bw - 8, height: bh, fill: '#000' }));
+        }
+        svg.appendChild(svgEl('text', { x: bx + bw / 2, y: hy + hh + 13, 'text-anchor': 'middle', 'font-size': 10, 'font-family': 'monospace' }, Math.round((bin.count / nGroups) * 100) + '%'));
+      });
+      svg.appendChild(svgEl('text', { x: ox - 7, y: hy + hh / 2 + 4, 'text-anchor': 'end', 'font-size': 10, 'font-weight': 'bold' }, 'Bin %'));
+    }
+
+    function resetCalibSliders() {
+      document.getElementById('slope-slider').value = '1.00';
+      document.getElementById('bias-slider').value = '0.00';
+      updateCalibWidget();
+    }
+
+    function autoFitTemp() {
+      var key = document.getElementById('preset-select').value;
+      var p = PRESETS[key] || PRESETS.over;
+      document.getElementById('slope-slider').value = String(p.tempA);
+      document.getElementById('bias-slider').value = '0.00';
+      updateCalibWidget();
+    }
+
+    function autoFitPlatt() {
+      var key = document.getElementById('preset-select').value;
+      var p = PRESETS[key] || PRESETS.over;
+      document.getElementById('slope-slider').value = String(p.optA);
+      document.getElementById('bias-slider').value = String(p.optB);
+      updateCalibWidget();
+    }
+
+    /* ---------- Widget 2: PAVA Stepper ---------- */
+    var PAVA_STEPS = [
+      {
+        rows: [
+          { idx: '1', score: '0.12', y: '0', block: '[1]', cal: '0.00', status: 'OK' },
+          { idx: '2', score: '0.31', y: '1', block: '[2]', cal: '1.00', status: 'OK' },
+          { idx: '3', score: '0.48', y: '0', block: '[3]', cal: '0.00', status: 'OK' },
+          { idx: '4', score: '0.74', y: '1', block: '[4]', cal: '1.00', status: 'OK' },
+          { idx: '5', score: '0.89', y: '1', block: '[5]', cal: '1.00', status: 'OK' }
+        ],
+        note: '<strong>Step 0 (Initialize):</strong> Sort the 5 calibration points by raw score $s_i$. Start with each point in its own block equal to its true label $y_i \\in \\{0, 1\\}$.'
+      },
+      {
+        rows: [
+          { idx: '1', score: '0.12', y: '0', block: '[1]', cal: '0.00', status: '0.00 <= 1.00 (OK)' },
+          { idx: '2', score: '0.31', y: '1', block: '[2]', cal: '1.00', status: 'VIOLATOR: 1.00 > 0.00' },
+          { idx: '3', score: '0.48', y: '0', block: '[3]', cal: '0.00', status: 'VIOLATOR: 1.00 > 0.00' },
+          { idx: '4', score: '0.74', y: '1', block: '[4]', cal: '1.00', status: 'OK' },
+          { idx: '5', score: '0.89', y: '1', block: '[5]', cal: '1.00', status: 'OK' }
+        ],
+        note: '<strong>Step 1 (Scan for adjacent violators):</strong> Sample 2 has higher raw score than Sample 1 ($1.00 \\ge 0.00$), which is fine. But Sample 2 ($1.00$) &gt; Sample 3 ($0.00$) violates monotonicity: a higher model score should not map to a lower probability.'
+      },
+      {
+        rows: [
+          { idx: '1', score: '0.12', y: '0', block: '[1]', cal: '0.00', status: '0.00 <= 0.50 (Monotone)' },
+          { idx: '2', score: '0.31', y: '1', block: '[2, 3] pooled', cal: '0.50', status: '(1 + 0) / 2 = 0.50' },
+          { idx: '3', score: '0.48', y: '0', block: '[2, 3] pooled', cal: '0.50', status: '(1 + 0) / 2 = 0.50' },
+          { idx: '4', score: '0.74', y: '1', block: '[4]', cal: '1.00', status: '0.50 <= 1.00 (Monotone)' },
+          { idx: '5', score: '0.89', y: '1', block: '[5]', cal: '1.00', status: '1.00 <= 1.00 (Monotone)' }
+        ],
+        note: '<strong>Step 2 (Pool and average):</strong> Merge blocks $[2]$ and $[3]$ into $[2, 3]$ with average label $(1+0)/2 = 0.50$. Now the calibrated sequence $[0.00, 0.50, 0.50, 1.00, 1.00]$ is non-decreasing everywhere. Notice how samples 2 and 3 are tied at $0.50$.'
+      }
+    ];
+
+    function setPavaStep(stepIdx) {
+      var st = PAVA_STEPS[stepIdx] || PAVA_STEPS[0];
+      var html = '<table class="data-table"><thead><tr><th>Sample</th><th>Raw Score $s_i$</th><th>True $y_i$</th><th>Active Block</th><th>Isotonic $\\hat{p}_i$</th><th>Check</th></tr></thead><tbody>';
+      st.rows.forEach(function (r) {
+        var bold = r.status.indexOf('VIOLATOR') !== -1 || r.block.indexOf('pooled') !== -1;
+        var style = bold ? ' style="background:var(--highlight-bg);font-weight:bold;"' : '';
+        html += '<tr' + style + '><td>#' + r.idx + '</td><td>' + r.score + '</td><td>' + r.y + '</td><td>' + r.block + '</td><td>' + r.cal + '</td><td>' + r.status + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      var tbl = document.getElementById('pava-table');
+      var exp = document.getElementById('pava-explain');
+      if (tbl) { tbl.innerHTML = html; renderMathIn(tbl); }
+      if (exp) { exp.innerHTML = st.note; renderMathIn(exp); }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var presetEl = document.getElementById('preset-select');
+      var slopeEl = document.getElementById('slope-slider');
+      var biasEl = document.getElementById('bias-slider');
+      if (presetEl) {
+        presetEl.addEventListener('change', function () {
+          resetCalibSliders();
+        });
+      }
+      if (slopeEl) { slopeEl.addEventListener('input', updateCalibWidget); }
+      if (biasEl) { biasEl.addEventListener('input', updateCalibWidget); }
+      updateCalibWidget();
+      setPavaStep(0);
+    });
+  </script>
+</body>
+</html>
