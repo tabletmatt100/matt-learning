@@ -5,14 +5,7 @@
             Spaced Recall Flashcards, and Class Imbalance Series Nav.
    ========================================================================== */
 
-var SERIES = [
-  { file: 'imbalance-1-metrics.html',       title: 'Why accuracy lies: metrics for rare classes' },
-  { file: 'imbalance-2-evaluation.html',    title: 'Honest evaluation: splits, folds and leakage' },
-  { file: 'imbalance-3-thresholds.html',    title: 'Threshold moving and cost-based decisions' },
-  { file: 'imbalance-4-weights.html',       title: 'Class weights and focal loss' },
-  { file: 'imbalance-5-resampling.html',    title: 'Resampling, SMOTE and balanced ensembles' },
-  { file: 'imbalance-6-probabilities.html', title: 'Fixing probabilities, other angles, and a checklist' }
-];
+var SERIES = [];
 
 /* ---------- Utilities & Math Helpers ---------- */
 function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
@@ -88,17 +81,15 @@ function applyFontSize(px) {
   } catch (e) {}
 }
 
-/* ---------- Shared Base Glossary (Class Imbalance Series) ---------- */
+/* ---------- Shared Base Glossary (Class Imbalance & Core Classification) ---------- */
 var SHARED_GLOSSARY = {
   'precision': {
     title: 'Precision',
-    body: 'Of everything the model flagged as positive, the fraction that really is positive: $TP/(TP+FP)$. Also called positive predictive value. Low precision means lots of false alarms. Unlike recall, it depends on the class balance: the same model has lower precision on a rarer problem.',
-    more: { href: 'imbalance-1-metrics.html#s-metrics', label: 'Part 1: the metrics that actually move' }
+    body: 'Of everything the model flagged as positive, the fraction that really is positive: $TP/(TP+FP)$. Also called positive predictive value. Low precision means lots of false alarms. Unlike recall, it depends on the class balance: the same model has lower precision on a rarer problem.'
   },
   'recall': {
     title: 'Recall',
-    body: 'Of all real positives, the fraction the model caught: $TP/(TP+FN)$. Same thing as sensitivity and <span class="term" data-term="tpr">true positive rate</span>. A model that predicts "negative" for everything has recall 0, whatever its accuracy.',
-    more: { href: 'imbalance-1-metrics.html#s-metrics', label: 'Part 1: the metrics that actually move' }
+    body: 'Of all real positives, the fraction the model caught: $TP/(TP+FN)$. Same thing as sensitivity and <span class="term" data-term="tpr">true positive rate</span>. A model that predicts "negative" for everything has recall 0, whatever its accuracy.'
   },
   'tpr': {
     title: 'True positive rate (TPR)',
@@ -114,13 +105,11 @@ var SHARED_GLOSSARY = {
   },
   'f1': {
     title: 'F1 score',
-    body: 'The harmonic mean of <span class="term" data-term="precision">precision</span> and <span class="term" data-term="recall">recall</span>: $2PR/(P+R)$. The harmonic mean is dragged toward the smaller of the two, so you cannot get a high F1 by maxing one and ignoring the other. It ignores true negatives entirely.',
-    more: { href: 'imbalance-1-metrics.html#s-metrics', label: 'Part 1: F1 worked example' }
+    body: 'The harmonic mean of <span class="term" data-term="precision">precision</span> and <span class="term" data-term="recall">recall</span>: $2PR/(P+R)$. The harmonic mean is dragged toward the smaller of the two, so you cannot get a high F1 by maxing one and ignoring the other. It ignores true negatives entirely.'
   },
   'confusion-matrix': {
     title: 'Confusion matrix',
-    body: 'A 2x2 table (for binary problems) counting true positives, false negatives, false positives and true negatives. Every threshold-based metric is some formula of these four numbers.',
-    more: { href: 'imbalance-1-metrics.html#s1', label: 'Part 1: a fraud confusion matrix' }
+    body: 'A 2x2 table (for binary problems) counting true positives, false negatives, false positives and true negatives. Every threshold-based metric is some formula of these four numbers.'
   },
   'balanced-accuracy': {
     title: 'Balanced accuracy',
@@ -128,57 +117,47 @@ var SHARED_GLOSSARY = {
   },
   'mcc': {
     title: 'Matthews correlation coefficient (MCC)',
-    body: 'The Pearson correlation between predicted and true binary labels. Ranges from -1 (always wrong) through 0 (chance) to 1 (perfect). It only gets high when all four confusion-matrix cells are good, which makes it hard to game with imbalance.',
-    more: { href: 'imbalance-1-metrics.html#s-mcc', label: 'Part 1: MCC worked example' }
+    body: 'The Pearson correlation between predicted and true binary labels. Ranges from -1 (always wrong) through 0 (chance) to 1 (perfect). It only gets high when all four confusion-matrix cells are good, which makes it hard to game with imbalance.'
   },
   'roc-auc': {
     title: 'ROC-AUC',
-    body: 'Area under the curve of <span class="term" data-term="tpr">true positive rate</span> vs <span class="term" data-term="fpr">false positive rate</span> as the threshold sweeps. Equals the probability that a random positive gets a higher score than a random negative. Random = 0.5 at any imbalance, which makes it look flattering when negatives vastly outnumber positives.',
-    more: { href: 'imbalance-1-metrics.html#s-curves', label: 'Part 1: PR-AUC vs ROC-AUC' }
+    body: 'Area under the curve of <span class="term" data-term="tpr">true positive rate</span> vs <span class="term" data-term="fpr">false positive rate</span> as the threshold sweeps. Equals the probability that a random positive gets a higher score than a random negative. Random = 0.5 at any imbalance, which makes it look flattering when negatives vastly outnumber positives.'
   },
   'pr-auc': {
     title: 'PR-AUC (average precision)',
-    body: 'Area under the precision-recall curve. A random scorer gets PR-AUC equal to the positive rate (0.01 for 1% fraud), so always compare to that baseline. More sensitive than ROC-AUC to false positives on imbalanced data. In sklearn: <code>average_precision_score</code>.',
-    more: { href: 'imbalance-1-metrics.html#s-curves', label: 'Part 1: PR-AUC vs ROC-AUC' }
+    body: 'Area under the precision-recall curve. A random scorer gets PR-AUC equal to the positive rate (0.01 for 1% fraud), so always compare to that baseline. More sensitive than ROC-AUC to false positives on imbalanced data. In sklearn: <code>average_precision_score</code>.'
   },
   'base-rate': {
     title: 'Base rate (prevalence)',
-    body: 'The fraction of all cases that are positive, before looking at any features. In the running fraud example it is 100 / 10,000 = 1%. Also called the prior, written $\\pi$ in this series.'
+    body: 'The fraction of all cases that are positive, before looking at any features. In the running fraud example it is 100 / 10,000 = 1%. Also called the prior, written $\\pi$.'
   },
   'stratified': {
     title: 'Stratified split',
-    body: 'A train/test split or CV fold assignment that keeps the class proportions identical in every part. Without it, a small minority class can end up badly over- or under-represented in some folds.',
-    more: { href: 'imbalance-2-evaluation.html#s-stratify', label: 'Part 2: stratify your splits' }
+    body: 'A train/test split or CV fold assignment that keeps the class proportions identical in every part. Without it, a small minority class can end up badly over- or under-represented in some folds.'
   },
   'leakage': {
     title: 'Leakage',
-    body: 'Any path by which information from validation/test data reaches the training process. Resampling before splitting is a classic example: copies or interpolations of test positives end up in training, inflating scores.',
-    more: { href: 'imbalance-2-evaluation.html#s-leakage', label: 'Part 2: resample only inside training folds' }
+    body: 'Any path by which information from validation/test data reaches the training process. Resampling before splitting is a classic example: copies or interpolations of test positives end up in training, inflating scores.'
   },
   'threshold': {
     title: 'Decision threshold',
-    body: 'The cutoff $t$ that turns a score into a label: predict positive when score $\\ge t$. The default 0.5 is only optimal when both kinds of mistake cost the same and the scores are calibrated.',
-    more: { href: 'imbalance-3-thresholds.html', label: 'Part 3: threshold moving' }
+    body: 'The cutoff $t$ that turns a score into a label: predict positive when score $\\ge t$. The default 0.5 is only optimal when both kinds of mistake cost the same and the scores are calibrated.'
   },
   'class-weight': {
     title: 'Class weights',
-    body: 'Multipliers on each class\'s contribution to the training loss. Giving the rare class a bigger weight makes its errors cost more, so the model works harder to get it right. sklearn\'s "balanced" setting uses $w_c = n/(k\\,n_c)$.',
-    more: { href: 'imbalance-4-weights.html', label: 'Part 4: class weights and focal loss' }
+    body: 'Multipliers on each class\'s contribution to the training loss. Giving the rare class a bigger weight makes its errors cost more, so the model works harder to get it right. sklearn\'s "balanced" setting uses $w_c = n/(k\\,n_c)$.'
   },
   'focal-loss': {
     title: 'Focal loss',
-    body: '$-\\alpha_t(1-p_t)^\\gamma \\log p_t$. Cross-entropy multiplied by a factor that shrinks the loss of well-classified examples. Introduced for RetinaNet (Lin et al., 2017) to stop masses of easy background boxes from dominating training.',
-    more: { href: 'imbalance-4-weights.html#s-focal', label: 'Part 4: focal loss' }
+    body: '$-\\alpha_t(1-p_t)^\\gamma \\log p_t$. Cross-entropy multiplied by a factor that shrinks the loss of well-classified examples. Introduced for RetinaNet (Lin et al., 2017) to stop masses of easy background boxes from dominating training.'
   },
   'smote': {
     title: 'SMOTE',
-    body: 'Synthetic Minority Over-sampling Technique (Chawla et al., 2002). Creates new minority examples by interpolating between a minority point and one of its $k$ nearest minority neighbours: $x_i + \\lambda(x_{nn}-x_i)$, $\\lambda \\in [0,1]$.',
-    more: { href: 'imbalance-5-resampling.html#s-smote', label: 'Part 5: SMOTE and its stepper widget' }
+    body: 'Synthetic Minority Over-sampling Technique (Chawla et al., 2002). Creates new minority examples by interpolating between a minority point and one of its $k$ nearest minority neighbours: $x_i + \\lambda(x_{nn}-x_i)$, $\\lambda \\in [0,1]$.'
   },
   'calibration': {
     title: 'Calibration',
-    body: 'A model is calibrated if, among all cases it gives probability 0.2, about 20% are positive. Ranking metrics like AUC ignore calibration entirely. Resampling, class weights and focal loss all break it.',
-    more: { href: 'imbalance-6-probabilities.html', label: 'Part 6: getting probabilities back' }
+    body: 'A model is calibrated if, among all cases it gives probability 0.2, about 20% are positive. Ranking metrics like AUC ignore calibration entirely. Resampling, class weights and focal loss all break it.'
   },
   'logit': {
     title: 'Logit (log-odds)',

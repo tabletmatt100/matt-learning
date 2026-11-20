@@ -24,13 +24,12 @@ These explainer articles are designed for the **Boox Go 10.3** (Carta 1200 E-ink
    - Interactive KL simulator & on-policy mixing slider
    - Comparison: GKD vs SFT vs RLHF / PPO
 
-3. **[Dealing with Class Imbalance (6-part series)](class-imbalance.html)**:
-   - [Part 1: Why accuracy lies: metrics for rare classes](imbalance-1-metrics.html)
-   - [Part 2: Honest evaluation: splits, folds and leakage](imbalance-2-evaluation.html)
-   - [Part 3: Threshold moving and cost-based decisions](imbalance-3-thresholds.html)
-   - [Part 4: Class weights and focal loss](imbalance-4-weights.html)
-   - [Part 5: Resampling, SMOTE and balanced ensembles](imbalance-5-resampling.html)
-   - [Part 6: Fixing probabilities, other angles, and a checklist](imbalance-6-probabilities.html)
+3. **[Dealing with Class Imbalance: Metrics, Thresholds, Weights & Calibration](class-imbalance.html)**:
+   - Why accuracy and ROC-AUC hide false-alarm floods at low base rates ($\pi = 1\%$)
+   - Stratified splits, natural test priors, and the SMOTE-before-split data leakage bug
+   - Cost-optimal threshold moving ($t^* = \frac{C_{FP}}{C_{FP} + C_{FN}}$)
+   - Class weights ($w_+$), Focal Loss ($\gamma$), undersampling, and when high-D SMOTE hurts
+   - Exact prior-shift probability recovery ($\text{logit}(\hat{p}) = \text{logit}(\tilde{p}) - \ln w_+$)
 
 4. **[DeepConf: Deep Think with Confidence](deepconf.html)**:
    - Token confidence from top-k log-probabilities
