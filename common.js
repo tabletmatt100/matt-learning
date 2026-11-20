@@ -547,28 +547,88 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  /* MCQs setup (supports both Check-button MCQs and instant-click MCQs like deepconf.html) */
-  document.querySelectorAll('.mcq-option input').forEach(function (inp) {
-    inp.addEventListener('change', function () {
-      var box = inp.closest('.mcq-box');
-      if (!box) { return; }
-      box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
-      var opt = inp.closest('.mcq-option');
-      if (opt) { opt.classList.add('picked'); }
-    });
-  });
+  /* MCQs setup: auto-generates <summary class="mcq-title">, radio inputs (from data-option / data-explain),
+     Check answer button, <div class="mcq-feedback">, and supports existing full markup & instant-click MCQs */
+  var LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
   document.querySelectorAll('.mcq-box').forEach(function (box, i) {
     var total = document.querySelectorAll('.mcq-box').length;
+    if (!box.id) { box.id = 'mcq-' + (i + 1); }
+    var boxId = box.id;
+
+    /* 1. Auto-create <summary class="mcq-title"> if missing on <details class="mcq-box"> */
     var t = box.querySelector('.mcq-title');
+    if (!t && box.tagName.toLowerCase() === 'details') {
+      t = document.createElement('summary');
+      t.className = 'mcq-title';
+      box.insertBefore(t, box.firstChild);
+    }
     var topic = box.getAttribute('data-topic');
     if (t && !t.textContent.trim()) {
       t.textContent = 'Check ' + (i + 1) + ' of ' + total +
         (topic ? ': ' + topic : '') +
         (box.tagName.toLowerCase() === 'details' ? ' (tap to expand)' : '');
     }
-    /* Instant-click MCQs (where .mcq-option has data-correct and data-why) */
+
+    /* 2. Auto-upgrade compact .mcq-option elements that lack an <input type="radio">
+          (unless they are instant-click options with data-correct="true|false") */
+    var isInstant = box.querySelector('.mcq-option[data-correct]') !== null;
+    if (!isInstant) {
+      box.querySelectorAll('.mcq-option').forEach(function (opt, optIdx) {
+        var inp = opt.querySelector('input[type="radio"]');
+        if (!inp) {
+          var val = opt.getAttribute('data-option') || opt.getAttribute('data-value') || LETTERS[optIdx] || String(optIdx + 1);
+          var explain = opt.getAttribute('data-explain');
+          inp = document.createElement('input');
+          inp.type = 'radio';
+          inp.name = boxId;
+          inp.value = val;
+          if (explain !== null) { inp.setAttribute('data-explain', explain); }
+          var trimmed = (opt.textContent || '').trim();
+          var hasLetterPrefix = /^[A-H][).:]\s/.test(trimmed);
+          if (!hasLetterPrefix) {
+            opt.insertBefore(document.createTextNode(' ' + val + ') '), opt.firstChild);
+          } else {
+            opt.insertBefore(document.createTextNode(' '), opt.firstChild);
+          }
+          opt.insertBefore(inp, opt.firstChild);
+        } else {
+          if (!inp.name) { inp.name = boxId; }
+          if (!inp.hasAttribute('data-explain') && opt.hasAttribute('data-explain')) {
+            inp.setAttribute('data-explain', opt.getAttribute('data-explain'));
+          }
+        }
+      });
+    }
+
+    /* 3. Auto-create <div class="mcq-feedback"> if missing */
     var fb = box.querySelector('.mcq-feedback');
+    if (!fb) {
+      fb = document.createElement('div');
+      fb.className = 'mcq-feedback';
+      box.appendChild(fb);
+    }
+
+    /* 4. Auto-create "Check answer" button if missing on standard radio MCQs */
+    if (!isInstant && box.hasAttribute('data-correct') && !box.querySelector('button')) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.textContent = 'Check answer';
+      btn.addEventListener('click', function () { checkMCQ(boxId); });
+      box.insertBefore(btn, fb);
+    }
+
+    /* 5. Bind radio selection highlight */
+    box.querySelectorAll('.mcq-option input[type="radio"]').forEach(function (inp) {
+      inp.addEventListener('change', function () {
+        box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked'); });
+        var opt = inp.closest('.mcq-option');
+        if (opt) { opt.classList.add('picked'); }
+      });
+    });
+
+    /* 6. Instant-click MCQs (where .mcq-option has data-correct and data-why) */
     box.querySelectorAll('.mcq-option[data-correct]').forEach(function (opt) {
       opt.addEventListener('click', function () {
         box.querySelectorAll('.mcq-option').forEach(function (o) { o.classList.remove('picked', 'right', 'wrong'); });
@@ -585,6 +645,36 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  /* Auto-populate score bar and Reset checks button if .score-bar is empty or missing inner markup */
+  document.querySelectorAll('.score-bar').forEach(function (bar) {
+    if (!bar.querySelector('#mcq-score')) {
+      var sp = document.createElement('span');
+      sp.id = 'mcq-score';
+      bar.insertBefore(sp, bar.firstChild);
+    }
+    if (!bar.querySelector('button')) {
+      var rbtn = document.createElement('button');
+      rbtn.type = 'button';
+      rbtn.className = 'btn btn-small';
+      rbtn.textContent = 'Reset checks';
+      rbtn.addEventListener('click', resetMCQs);
+      bar.appendChild(rbtn);
+    }
+  });
+
+  /* Auto-populate #spaced-widget chrome if only #spaced-list or empty #spaced-widget is provided */
+  var sw = document.getElementById('spaced-widget');
+  if (sw && !sw.querySelector('#spaced-list')) {
+    sw.innerHTML =
+      '<div class="widget-label">Spaced Recall Export (1d / 4d / 14d / 30d)</div>' +
+      '<h3>Core Retrieval Prompts</h3>' +
+      '<p>Tap any card to test yourself, or copy all Q&amp;A pairs into your spaced-repetition deck.</p>' +
+      '<div id="spaced-list"></div>' +
+      '<div class="control-row">' +
+        '<button type="button" class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>' +
+        '<span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>' +
+      '</div>';
+  }
   renderSpacedCards();
   updateScore();
   ensureMathRendered(10);

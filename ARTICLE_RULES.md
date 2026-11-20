@@ -72,7 +72,7 @@ Follow this loop for every major concept:
 - **Touch targets & font scaling**: Minimum `48px` height on buttons/inputs, `44px` hit track on sliders with `28px` thumbs, working `A-` / `A+` header buttons scaling `:root` `--font-size` and persisting to `localStorage`.
 - **Offline + Online KaTeX**: Load from local `katex/` with `onerror` fallback to jsDelivr.
 - **Aggressive anchored popovers for all concepts AND symbols**: Every non-obvious concept, technical term, acronym, prerequisite, and mathematical symbol/variable/operator (in prose, symbol legends, and equations) must be clickable (`.term[data-term]`) and open an anchored popover explaining what it means in plain English (including nested `.term` links inside popover definitions). Popovers must anchor directly to the clicked term or symbol (no full-screen backdrop) so the reader can keep viewing the page.
-- **Collapsed MCQs by default**: Wrap every MCQ in `<details class="mcq-box">` with `<summary class="mcq-title">` and `data-explain` on every option.
+- **Collapsed MCQs by default**: Wrap every MCQ in `<details class="mcq-box" data-correct="B" data-topic="...">` with `<label class="mcq-option" data-explain="...">Option text</label>`. `common.js` automatically generates the `id`, `<summary class="mcq-title">`, `<input type="radio">`, letter prefixes (`A)`, `B)`, `C)`), the `Check answer` button, `<div class="mcq-feedback">`, and the `.score-bar` contents.
 - **Human prose, zero AI tells**: Plain descriptive headings, varied sentence lengths, concrete numbers, no emojis, no em-dash overuse, no filler ("delve", "crucial", "landscape", "it's important to note", "in conclusion", "let's dive in"), and no padded summaries at the end of every section.
 
 ---
