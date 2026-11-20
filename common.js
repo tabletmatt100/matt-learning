@@ -758,4 +758,17 @@ document.addEventListener('DOMContentLoaded', function () {
   ensureMathRendered(10);
 });
 
-window.addEventListener('load', function () { renderAllMath(); });
+window.addEventListener('load', function () {
+  renderAllMath();
+
+  /* Register PWA Service Worker & Manifest for 100% offline reading */
+  if (!document.querySelector('link[rel="manifest"]')) {
+    var mf = document.createElement('link');
+    mf.rel = 'manifest';
+    mf.href = 'manifest.json';
+    document.head.appendChild(mf);
+  }
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+});

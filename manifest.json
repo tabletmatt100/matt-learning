@@ -1,0 +1,18 @@
+{
+  "name": "Matt's Learning Library",
+  "short_name": "matt-learning",
+  "description": "E-ink optimized interactive ML & math explainers for Boox Go 10.3 & Palma 3",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
