@@ -111,44 +111,21 @@
         <a class="article-row-title" href="calculus-refresher.html">13. Calculus for ML Refresher: The 10% of Calc 1–3 You Actually Need</a>
         <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('calculus-refresher.html')">Mark Complete</button>
       </li>
+      <li class="article-row" data-article="backpropagation.html">
+        <a class="article-row-title" href="backpropagation.html">14. Backpropagation From Scratch: How Gradients Flow Through Graphs &amp; Matrices</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('backpropagation.html')">Mark Complete</button>
+      </li>
       <li class="article-row" data-article="template.html">
-        <a class="article-row-title" href="template.html">13.1 Article Template 1 (Original E-ink Component Template)</a>
+        <a class="article-row-title" href="template.html">14.1 Article Template 1 (Original E-ink Component Template)</a>
         <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template.html')">Mark Complete</button>
       </li>
       <li class="article-row" data-article="template2.html">
-        <a class="article-row-title" href="template2.html">13.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
+        <a class="article-row-title" href="template2.html">14.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
         <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template2.html')">Mark Complete</button>
       </li>
     </ul>
 
     <div class="empty-tab-msg" id="empty-tab-msg" style="display: none;"></div>
-
-    <!-- E-ink Stylus Scratchpad Test Box -->
-    <section class="widget" id="stylus-test-widget" style="margin-top: 2rem;">
-      <div class="widget-label">Boox Go 10.3 Stylus &amp; E-ink Latency Test</div>
-      <h3 style="margin-top: 0.25rem;">Stylus Scratchpad Sandbox</h3>
-      <p style="margin-bottom: 0.75rem; font-size: 0.92em;">
-        Write inside the box below to test how browser canvas drawing feels on E-ink. In <strong>Pen Only</strong> mode, your finger scrolls the page normally while the Wacom stylus draws.
-      </p>
-
-      <div class="control-row" style="display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.6rem;">
-        <button type="button" class="btn btn-small active" id="pen-mode-draw" onclick="setPenTool('draw')">Pen</button>
-        <button type="button" class="btn btn-small" id="pen-mode-erase" onclick="setPenTool('erase')">Eraser</button>
-        <button type="button" class="btn btn-small" id="pen-input-toggle" onclick="togglePenOnly()">Input: Pen Only</button>
-        <button type="button" class="btn btn-small" id="pen-width-toggle" onclick="cyclePenWidth()">Width: 2px</button>
-        <button type="button" class="btn btn-small" onclick="undoStroke()">Undo</button>
-        <button type="button" class="btn btn-small" onclick="clearScratchpad()">Clear</button>
-      </div>
-
-      <div id="scratchpad-wrap" style="border: 2px solid #000000; background: #ffffff; position: relative; width: 100%; height: 340px; overflow: hidden;">
-        <canvas id="scratchpad-canvas" style="display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y;"></canvas>
-      </div>
-
-      <div id="stylus-telemetry" style="margin-top: 0.5rem; font-family: var(--font-mono); font-size: 0.8em; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem;">
-        <span id="stylus-status">Waiting for input...</span>
-        <span id="stylus-stats">Strokes: 0</span>
-      </div>
-    </section>
   </main>
 
   <script>
@@ -226,210 +203,6 @@
 
     document.addEventListener('DOMContentLoaded', renderHomeList);
     window.addEventListener('pageshow', renderHomeList);
-
-    /* ---------- E-ink Stylus Scratchpad Sandbox ---------- */
-    var SP_STORAGE_KEY = 'matt_learning_index_scratchpad_v1';
-    var spCanvas, spCtx;
-    var spStrokes = [];
-    var spCurrentStroke = null;
-    var spTool = 'draw';       // 'draw' | 'erase'
-    var spPenOnly = true;      // true = only pointerType === 'pen' draws; false = finger/mouse also draw
-    var spWidths = [2, 3.5, 6];
-    var spWidthIdx = 0;
-
-    function initScratchpad() {
-      spCanvas = document.getElementById('scratchpad-canvas');
-      if (!spCanvas) { return; }
-      spCtx = spCanvas.getContext('2d', { desynchronized: true }) || spCanvas.getContext('2d');
-
-      try {
-        var saved = localStorage.getItem(SP_STORAGE_KEY);
-        if (saved) { spStrokes = JSON.parse(saved) || []; }
-      } catch (e) { spStrokes = []; }
-
-      resizeScratchpad();
-      window.addEventListener('resize', resizeScratchpad);
-
-      spCanvas.addEventListener('pointerdown', onSpPointerDown);
-      spCanvas.addEventListener('pointermove', onSpPointerMove);
-      spCanvas.addEventListener('pointerup', onSpPointerUp);
-      spCanvas.addEventListener('pointercancel', onSpPointerUp);
-      updateSpTelemetry('Ready (touch with stylus)');
-    }
-
-    function resizeScratchpad() {
-      if (!spCanvas || !spCtx) { return; }
-      var rect = spCanvas.getBoundingClientRect();
-      var dpr = window.devicePixelRatio || 1;
-      spCanvas.width = Math.round(rect.width * dpr);
-      spCanvas.height = Math.round(rect.height * dpr);
-      spCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      spCtx.lineCap = 'round';
-      spCtx.lineJoin = 'round';
-      redrawAllStrokes();
-    }
-
-    function drawSegment(x0, y0, x1, y1, width, erase) {
-      spCtx.save();
-      spCtx.beginPath();
-      spCtx.strokeStyle = erase ? '#ffffff' : '#000000';
-      spCtx.lineWidth = erase ? width * 6 : width;
-      spCtx.moveTo(x0, y0);
-      spCtx.lineTo(x1, y1);
-      spCtx.stroke();
-      spCtx.restore();
-    }
-
-    function redrawAllStrokes() {
-      if (!spCanvas || !spCtx) { return; }
-      var rect = spCanvas.getBoundingClientRect();
-      spCtx.fillStyle = '#ffffff';
-      spCtx.fillRect(0, 0, rect.width, rect.height);
-
-      /* Subtle dotted grid lines for math / handwriting alignment */
-      spCtx.fillStyle = '#000000';
-      var step = 28;
-      for (var y = step; y < rect.height; y += step) {
-        for (var x = step; x < rect.width; x += step) {
-          spCtx.fillRect(x, y, 1, 1);
-        }
-      }
-
-      for (var i = 0; i < spStrokes.length; i++) {
-        var s = spStrokes[i];
-        var pts = s.pts;
-        if (!pts || pts.length === 0) { continue; }
-        if (pts.length === 1) {
-          drawSegment(pts[0][0], pts[0][1], pts[0][0] + 0.1, pts[0][1] + 0.1, pts[0][2], s.erase);
-        } else {
-          for (var j = 1; j < pts.length; j++) {
-            drawSegment(pts[j - 1][0], pts[j - 1][1], pts[j][0], pts[j][1], pts[j][2], s.erase);
-          }
-        }
-      }
-      var stEl = document.getElementById('stylus-stats');
-      if (stEl) { stEl.textContent = 'Strokes: ' + spStrokes.length; }
-    }
-
-    function getCanvasPoint(e) {
-      var rect = spCanvas.getBoundingClientRect();
-      var baseW = spWidths[spWidthIdx];
-      var p = (e.pressure && e.pressure > 0 && e.pointerType === 'pen') ? (0.5 + e.pressure) : 1;
-      var w = Math.max(1, Math.round(baseW * p * 10) / 10);
-      return [
-        Math.round((e.clientX - rect.left) * 10) / 10,
-        Math.round((e.clientY - rect.top) * 10) / 10,
-        w
-      ];
-    }
-
-    function onSpPointerDown(e) {
-      var pType = e.pointerType || 'unknown';
-      var isTailEraser = (e.buttons === 32) || (e.button === 5);
-
-      if (spPenOnly && pType === 'touch') {
-        updateSpTelemetry('Ignored finger touch (scroll mode). Tap "Input: Pen Only" to allow finger drawing.');
-        return;
-      }
-
-      e.preventDefault();
-      if (spCanvas.setPointerCapture) {
-        try { spCanvas.setPointerCapture(e.pointerId); } catch (err) {}
-      }
-
-      var erase = (spTool === 'erase') || isTailEraser;
-      var pt = getCanvasPoint(e);
-      spCurrentStroke = { erase: erase, pts: [pt] };
-      drawSegment(pt[0], pt[1], pt[0] + 0.1, pt[1] + 0.1, pt[2], erase);
-      updateSpTelemetry('Input: ' + pType + (isTailEraser ? ' (tail eraser)' : '') + ' | Pressure: ' + (e.pressure ? e.pressure.toFixed(2) : 'n/a'));
-    }
-
-    function onSpPointerMove(e) {
-      if (!spCurrentStroke) { return; }
-      e.preventDefault();
-      var events = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : [e];
-      if (!events || events.length === 0) { events = [e]; }
-
-      for (var i = 0; i < events.length; i++) {
-        var ev = events[i];
-        var pt = getCanvasPoint(ev);
-        var prev = spCurrentStroke.pts[spCurrentStroke.pts.length - 1];
-        drawSegment(prev[0], prev[1], pt[0], pt[1], pt[2], spCurrentStroke.erase);
-        spCurrentStroke.pts.push(pt);
-      }
-      if (e.pressure) {
-        updateSpTelemetry('Input: ' + (e.pointerType || 'pen') + ' | Pressure: ' + e.pressure.toFixed(2));
-      }
-    }
-
-    function onSpPointerUp(e) {
-      if (!spCurrentStroke) { return; }
-      e.preventDefault();
-      spStrokes.push(spCurrentStroke);
-      spCurrentStroke = null;
-      saveStrokes();
-      if (spCurrentStroke === null && spStrokes.length > 0 && spStrokes[spStrokes.length - 1].erase) {
-        redrawAllStrokes();
-      } else {
-        var stEl = document.getElementById('stylus-stats');
-        if (stEl) { stEl.textContent = 'Strokes: ' + spStrokes.length; }
-      }
-    }
-
-    function saveStrokes() {
-      try {
-        localStorage.setItem(SP_STORAGE_KEY, JSON.stringify(spStrokes));
-      } catch (e) {}
-    }
-
-    function setPenTool(tool) {
-      spTool = tool;
-      var dBtn = document.getElementById('pen-mode-draw');
-      var eBtn = document.getElementById('pen-mode-erase');
-      if (dBtn) { dBtn.className = 'btn btn-small' + (tool === 'draw' ? ' active' : ''); }
-      if (eBtn) { eBtn.className = 'btn btn-small' + (tool === 'erase' ? ' active' : ''); }
-    }
-
-    function togglePenOnly() {
-      spPenOnly = !spPenOnly;
-      var btn = document.getElementById('pen-input-toggle');
-      if (btn) {
-        btn.textContent = spPenOnly ? 'Input: Pen Only' : 'Input: Pen + Finger';
-      }
-      if (spCanvas) {
-        spCanvas.style.touchAction = spPenOnly ? 'pan-y' : 'none';
-      }
-      updateSpTelemetry(spPenOnly ? 'Pen Only mode (finger scrolls page)' : 'Pen + Finger mode (both draw)');
-    }
-
-    function cyclePenWidth() {
-      spWidthIdx = (spWidthIdx + 1) % spWidths.length;
-      var btn = document.getElementById('pen-width-toggle');
-      if (btn) {
-        btn.textContent = 'Width: ' + spWidths[spWidthIdx] + 'px';
-      }
-    }
-
-    function undoStroke() {
-      if (spStrokes.length === 0) { return; }
-      spStrokes.pop();
-      saveStrokes();
-      redrawAllStrokes();
-    }
-
-    function clearScratchpad() {
-      spStrokes = [];
-      saveStrokes();
-      redrawAllStrokes();
-      updateSpTelemetry('Cleared scratchpad');
-    }
-
-    function updateSpTelemetry(msg) {
-      var el = document.getElementById('stylus-status');
-      if (el) { el.textContent = msg; }
-    }
-
-    document.addEventListener('DOMContentLoaded', initScratchpad);
   </script>
 </body>
 </html>

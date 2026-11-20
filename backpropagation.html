@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backpropagation From Scratch: How Gradients Flow Through Graphs &amp; Matrices</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
+    <div>
+      <span class="tag">Deep Learning Core</span>
+      <span class="tag">Reverse-Mode Autodiff</span>
+      <span class="tag">Boox Go 10.3 &amp; Palma 3</span>
+    </div>
+
+    <h1>Backpropagation From Scratch: How Gradients Flow Through Graphs &amp; Matrices</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>Why not just wiggle each weight?</strong> Evaluating the <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span> after nudging each of <span class="term" data-term="sym-d">$d$</span> weights one by one (<span class="term" data-term="finite-diff">finite differences</span>) requires $d + 1$ full forward passes. <span class="term" data-term="backprop">Backpropagation</span> (<span class="term" data-term="reverse-autodiff">reverse-mode autodiff</span>) gets all $d$ exact <span class="term" data-term="partial">partial derivatives</span> in <strong>one</strong> forward pass plus <strong>one</strong> backward pass.</li>
+        <li><strong>Every node obeys one local rule:</strong> A node receives an <span class="term" data-term="upstream-grad">upstream gradient</span> <span class="term" data-term="sym-dLdz">$\frac{\partial L}{\partial z}$</span> from its output, multiplies it by its <span class="term" data-term="local-grad">local derivative</span> <span class="term" data-term="sym-dzdx">$\frac{\partial z}{\partial x}$</span>, and passes the product backward (<span class="term" data-term="chain-rule">Chain Rule</span>). If a variable feeds two branches, you <strong>add</strong> the incoming gradients from both branches.</li>
+        <li><strong>Forward values become backward multipliers:</strong> In <span class="term" data-term="sym-z">$z = w \cdot x + b$</span>, the backward gradient into <span class="term" data-term="sym-w">$w$</span> multiplies by the cached forward activation <span class="term" data-term="sym-x">$x$</span>, while the backward gradient into $x$ multiplies by $w$. That is why training requires storing intermediate <span class="term" data-term="activations">activations</span> in memory (and why <span class="term" data-term="inference">inference</span> does not).</li>
+        <li><strong>Where it breaks:</strong> Any local derivative equal to $0$ (like a negative input into <span class="term" data-term="relu">ReLU</span>) kills all upstream signal behind it (<span class="term" data-term="dead-relu">dead neuron</span>), and multiplying many local slopes $< 1$ or $> 1$ across deep layers causes <span class="term" data-term="vanishing-grad">vanishing</span> or <span class="term" data-term="exploding-grad">exploding gradients</span> unless <span class="term" data-term="residual">residual connections</span> create an additive $+1$ highway.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Symbol / Shorthand</th><th>Plain-English Meaning</th><th>Shape Match Rule</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term" data-term="sym-L">$L$</span></td>
+            <td>Scalar <span class="term" data-term="loss">loss</span> value at the very end of the network (one number measuring error)</td>
+            <td class="num">Scalar ($1 \times 1$)</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-gbar">$\bar{v} \equiv \frac{\partial L}{\partial v}$</span></td>
+            <td>Adjoint / <span class="term" data-term="upstream-grad">gradient of loss $L$ with respect to node $v$</span> ("how much $L$ moves per unit nudge of $v$")</td>
+            <td class="num">Same shape as $v$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-dLdz">$\bar{z} = \frac{\partial L}{\partial z}$</span></td>
+            <td><span class="term" data-term="upstream-grad">Upstream gradient</span> arriving at node $z$ from later layers</td>
+            <td class="num">Same shape as $z$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-dzdx">$\frac{\partial z}{\partial x}$</span></td>
+            <td><span class="term" data-term="local-grad">Local derivative</span> (or <span class="term" data-term="jacobian">Jacobian</span>) of a single elementary gate $z = f(x)$</td>
+            <td class="num">Local slope at forward $x$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-W">$W, x, b$</span></td>
+            <td>Weight matrix <span class="term" data-term="sym-W">$W$</span>, input activation vector <span class="term" data-term="sym-x">$x$</span>, and bias vector <span class="term" data-term="sym-b">$b$</span> in <span class="term" data-term="sym-z">$z = Wx + b$</span></td>
+            <td class="num">$\bar{W} = \bar{z} x^\top,\; \bar{x} = W^\top \bar{z}$</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="interactive-card" id="fast-forward-box">
+      <div class="widget-label">Stage 0: Expert Fast-Forward Check</div>
+      <p style="margin-top:0.3rem;">Already comfortable with scalar computation graphs and local gate rules? Answer this 1-line check to collapse Stages 1&ndash;2 and jump straight to matrix backprop and practice.</p>
+      <div class="control-row">
+        <label for="ff-input">If $z = w \cdot x$ with $w = 3, x = 4$ and upstream $\bar{z} = \frac{\partial L}{\partial z} = -2$, what is $\bar{w} = \frac{\partial L}{\partial w}$?</label>
+        <input type="text" id="ff-input" placeholder="Enter integer for dL/dw" style="flex:1; min-width:160px;">
+        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
+      </div>
+      <div id="ff-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#s1">1. Stage 1 &amp; 2: The Multiply Gate Swap (Predict First)</a></li>
+        <li><a href="#s2">2. Stage 3A: The Three Elementary Gates &amp; Full Graph Trace</a></li>
+        <li><a href="#s3">3. Stage 3B: Matrix Backprop Without Index Headaches</a></li>
+        <li><a href="#s4">4. Stage 3C: Why Deep Gradients Vanish (and Why ResNets Fix It)</a></li>
+        <li><a href="#s5">5. Stage 4: Backward-Faded Practice &amp; Closed-Book Retrieval</a></li>
+        <li><a href="#s6">6. Stage 5: Contrastive Matrix, Interleaved Checks &amp; Spaced Cards</a></li>
+      </ol>
+    </nav>
+
+    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
+    <div id="scaffolding-section">
+      <h2 id="s1">1. Predict first: who gets the larger gradient at a multiply gate?</h2>
+      <p>
+        Consider a single linear neuron without bias: <span class="term" data-term="sym-z">$z = w \cdot x$</span>, feeding directly into a squared error <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L = \frac{1}{2}(z - y)^2$</span>.
+      </p>
+      <p>
+        Suppose on the <span class="term" data-term="forward-pass">forward pass</span> the input feature is huge, <span class="term" data-term="sym-x">$x = 10$</span>, the weight is tiny, <span class="term" data-term="sym-w">$w = 0.5$</span>, and the target is <span class="term" data-term="sym-y">$y = 3$</span>. The prediction is $z = 0.5 \times 10 = 5$, so the error signal arriving at $z$ is <span class="term" data-term="sym-dLdz">$\bar{z} = \frac{\partial L}{\partial z} = z - y = 5 - 3 = +2$</span>.
+      </p>
+
+      <div class="interactive-card" id="poe-widget">
+        <div class="widget-label">Stage 1: Predict-Observe-Explain (Guess First)</div>
+        <h3>Prediction: Which parameter has the larger sensitivity, $\bar{w} = \frac{\partial L}{\partial w}$ or $\bar{x} = \frac{\partial L}{\partial x}$?</h3>
+        <p>Commit to a prediction before revealing the backward flow on the graph:</p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runPOE('A')">A) $\bar{x} = 20$ is huge because $x = 10$ is huge; $\bar{w} = 1$ is tiny</button>
+          <button class="btn btn-small" onclick="runPOE('B')">B) $\bar{w} = 20$ is huge and $\bar{x} = 1$ is tiny (they swap partners)</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) Both equal $+2$ because the upstream error is $+2$</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="poe-reveal" style="display:none;">
+          <div class="figure-box">
+            <svg id="poe-svg" viewBox="0 0 500 155" width="500" height="155" role="img" aria-label="Multiply gate forward and backward partner swap"></svg>
+          </div>
+          <div class="refutation" id="poe-refutation"></div>
+        </div>
+      </div>
+
+      <!-- === STAGE 3A: SEGMENTED MECHANISM + WORKED EXAMPLE + STEPPER === -->
+      <h2 id="s2">2. The three local gate rules &amp; full computation graph</h2>
+      <p>
+        Every neural network—whether a 2-layer MLP or a 70-billion-parameter Transformer—decomposes into a <span class="term" data-term="comp-graph">computation graph</span> built from three wiring patterns. During the <span class="term" data-term="backward-pass">backward pass</span>, each gate only needs to know its own local rule:
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Gate Type</th><th>Forward Rule</th><th>Local Derivative</th><th>Backward Rule (Given Upstream <span class="term" data-term="sym-dLdz">$\bar{z}$</span>)</th><th>Plain-English Behavior</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Add Gate ($+$)</strong></td>
+              <td>$z = a + b$</td>
+              <td class="num">$\frac{\partial z}{\partial a} = 1,\; \frac{\partial z}{\partial b} = 1$</td>
+              <td class="num">$\bar{a} = \bar{z},\quad \bar{b} = \bar{z}$</td>
+              <td><strong>Gradient distributor:</strong> copies $\bar{z}$ unchanged to every input branch.</td>
+            </tr>
+            <tr>
+              <td><strong>Multiply Gate ($\times$)</strong></td>
+              <td>$z = w \cdot x$</td>
+              <td class="num">$\frac{\partial z}{\partial w} = x,\; \frac{\partial z}{\partial x} = w$</td>
+              <td class="num">$\bar{w} = x \cdot \bar{z},\quad \bar{x} = w \cdot \bar{z}$</td>
+              <td><strong>Partner swapper:</strong> multiplies $\bar{z}$ by the <em>other</em> input's cached forward value.</td>
+            </tr>
+            <tr>
+              <td><strong>Max / <span class="term" data-term="relu">ReLU</span> Gate</strong></td>
+              <td>$a = \max(0, z)$</td>
+              <td class="num">$1$ if $z &gt; 0$, else $0$</td>
+              <td class="num">$\bar{z} = \begin{cases}\bar{a} &amp; z &gt; 0 \\ 0 &amp; z \le 0\end{cases}$</td>
+              <td><strong>Gradient switch:</strong> passes $\bar{a}$ straight through if active; blocks it to $0$ if negative.</td>
+            </tr>
+            <tr>
+              <td><strong>Fan-Out Split (Branch)</strong></td>
+              <td>$u$ feeds both $z_1$ and $z_2$</td>
+              <td class="num">Multivariable sum</td>
+              <td class="num">$\bar{u} = \bar{u}_{\text{from } z_1} + \bar{u}_{\text{from } z_2}$</td>
+              <td><strong>Gradient adder:</strong> if one variable is used twice forward, add its backward gradients.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="worked">
+        <p><strong>Worked numerical trace through a 4-stage neuron:</strong></p>
+        <p>
+          Take distinct numbers: input <span class="term" data-term="sym-x">$x = 2$</span>, weight <span class="term" data-term="sym-w">$w = 3$</span>, bias <span class="term" data-term="sym-b">$b = -1$</span>, target <span class="term" data-term="sym-y">$y = 2$</span>, with <span class="term" data-term="relu">ReLU</span> activation <span class="term" data-term="sym-a">$a = \max(0, z)$</span> and squared error <span class="term" data-term="sym-L">$L = \frac{1}{2}(a - y)^2$</span>.
+        </p>
+        <p>
+          <strong>Forward pass (left to right — compute and cache):</strong><br>
+          1. Product node: $u = w \cdot x = 3 \times 2 = \mathbf{6}$ (cache $x = 2, w = 3$).<br>
+          2. Pre-activation: $z = u + b = 6 + (-1) = \mathbf{5}$.<br>
+          3. ReLU activation: $a = \max(0, 5) = \mathbf{5}$ (cache active mask $z &gt; 0 \Rightarrow 1$).<br>
+          4. Loss: $L = \frac{1}{2}(5 - 2)^2 = \frac{1}{2}(9) = \mathbf{4.5}$.
+        </p>
+        <p>
+          <strong>Backward pass (right to left — multiply local slopes):</strong><br>
+          1. Base seed: $\bar{L} = \frac{\partial L}{\partial L} = \mathbf{1}$.<br>
+          2. Loss derivative: $\bar{a} = \frac{\partial L}{\partial a} = a - y = 5 - 2 = \mathbf{+3}$.<br>
+          3. Through ReLU ($z = 5 &gt; 0$, slope $= 1$): $\bar{z} = \bar{a} \cdot 1 = \mathbf{+3}$.<br>
+          4. Through Add gate ($z = u + b$, slopes $= 1, 1$): $\bar{u} = \mathbf{+3}$ and $\bar{b} = \mathbf{+3}$.<br>
+          5. Through Multiply gate ($u = w \cdot x$, swap partners): $\bar{w} = x \cdot \bar{u} = 2 \times 3 = \mathbf{+6}$, and $\bar{x} = w \cdot \bar{u} = 3 \times 3 = \mathbf{+9}$.
+        </p>
+      </div>
+
+      <div class="math-block">
+        $$\frac{\partial L}{\partial w} = \underbrace{\frac{\partial L}{\partial a}}_{a - y \,=\, 3} \cdot \underbrace{\frac{\partial a}{\partial z}}_{\mathbb{1}[z &gt; 0] \,=\, 1} \cdot \underbrace{\frac{\partial z}{\partial u}}_{1} \cdot \underbrace{\frac{\partial u}{\partial w}}_{x \,=\, 2} = 3 \cdot 1 \cdot 1 \cdot 2 = +6$$
+        <div class="math-hint">Verification check: if we nudge $w$ up by $+0.01$ (from $3$ to $3.01$), $z$ rises by $x \cdot 0.01 = +0.02$ (to $5.02$), and $L = \frac{1}{2}(3.02)^2 = 4.5602$ — an increase of $+0.0602 \approx (+6)(0.01)$.</div>
+      </div>
+
+      <p>
+        Step through the four discrete stages of the computation graph below. Each panel keeps prior numbers visible so you can trace how cached forward values turn into backward multipliers.
+      </p>
+
+      <div class="interactive-card" id="graph-stepper-widget">
+        <div class="widget-label">Stage 3A: Discrete Computation Graph Stepper</div>
+        <h3>Step-by-Step Forward Cache &amp; Backward Tape (<code>x=2, w=3, b=-1, y=2</code>)</h3>
+        <div class="control-row">
+          <button class="btn btn-small active" id="gstep-0" onclick="setGraphStep(0)">Step 1: Forward Pass</button>
+          <button class="btn btn-small" id="gstep-1" onclick="setGraphStep(1)">Step 2: Loss &amp; ReLU Grad</button>
+          <button class="btn btn-small" id="gstep-2" onclick="setGraphStep(2)">Step 3: Add Gate ($\bar{u}, \bar{b}$)</button>
+          <button class="btn btn-small" id="gstep-3" onclick="setGraphStep(3)">Step 4: Multiply Gate ($\bar{w}, \bar{x}$)</button>
+        </div>
+
+        <div class="figure-box">
+          <svg id="graph-svg" viewBox="0 0 540 205" width="540" height="205" role="img" aria-label="Computation graph forward and backward numbers"></svg>
+        </div>
+        <div class="readout" id="graph-step-explain"></div>
+
+        <div id="graph-slider-gate" class="locked-note">
+          Complete the Stage 1 prediction above (or step through all 4 graph stages) to unlock the live computation graph inspector.
+        </div>
+        <div id="graph-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
+          <div class="widget-label">Live Graph &amp; Dead-ReLU Explorer (Presets + Sliders)</div>
+          <div class="control-row">
+            <button class="btn btn-small" onclick="setGraphPreset(2, 3, -1, 2)">Preset: Active ReLU (z=+5)</button>
+            <button class="btn btn-small" onclick="setGraphPreset(2, -2, -1, 2)">Preset: Dead ReLU (z=-5)</button>
+            <button class="btn btn-small" onclick="setGraphPreset(0, 3, 2, 5)">Preset: Zero Input (x=0)</button>
+          </div>
+          <div class="control-row">
+            <label for="sl-x">Input $x$</label>
+            <input type="range" id="sl-x" min="-4" max="5" step="1" value="2" oninput="updateLiveGraph()">
+            <span class="val" id="val-x">2</span>
+          </div>
+          <div class="control-row">
+            <label for="sl-w">Weight $w$</label>
+            <input type="range" id="sl-w" min="-4" max="5" step="1" value="3" oninput="updateLiveGraph()">
+            <span class="val" id="val-w">3</span>
+          </div>
+          <div class="control-row">
+            <label for="sl-b">Bias $b$</label>
+            <input type="range" id="sl-b" min="-4" max="4" step="1" value="-1" oninput="updateLiveGraph()">
+            <span class="val" id="val-b">-1</span>
+          </div>
+          <div class="stat-grid">
+            <div class="stat"><div class="k">Pre-act $z = wx+b$</div><div class="v" id="st-z">5</div></div>
+            <div class="stat"><div class="k">Loss $L = \frac{1}{2}(a-2)^2$</div><div class="v" id="st-L">4.50</div></div>
+            <div class="stat"><div class="k">Weight Grad $\bar{w}$</div><div class="v" id="st-dw">+6</div></div>
+            <div class="stat"><div class="k">Bias Grad $\bar{b}$</div><div class="v" id="st-db">+3</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === STAGE 3B: MATRIX BACKPROP BY SHAPE MATCHING === -->
+    <h2 id="s3">3. Matrix backpropagation without index headaches</h2>
+    <p>
+      In real code, layers operate on vectors and matrices: <span class="term" data-term="sym-z">$z = Wx + b$</span>, where <span class="term" data-term="sym-W">$W$</span> has shape $(m \times n)$, <span class="term" data-term="sym-x">$x$</span> has shape $(n \times 1)$, and <span class="term" data-term="sym-z">$z$</span> and <span class="term" data-term="sym-dLdz">$\bar{z}$</span> have shape $(m \times 1)$.
+    </p>
+    <p>
+      You never need to memorize 4D tensor <span class="term" data-term="jacobian">Jacobians</span> to write the backward pass of a linear layer. Because <span class="term" data-term="sym-gbar">$\bar{W}$</span> must have the exact same shape as $W$ $(m \times n)$ and <span class="term" data-term="sym-gbar">$\bar{x}$</span> must have the exact same shape as $x$ $(n \times 1)$, there is only <strong>one way</strong> to multiply $\bar{z}$ $(m \times 1)$ with $x$ $(n \times 1)$ or $W$ $(m \times n)$ so the inner dimensions match:
+    </p>
+
+    <div class="math-block">
+      $$\underbrace{\bar{W}}_{(m \times n)} = \underbrace{\bar{z}}_{(m \times 1)} \underbrace{x^\top}_{(1 \times n)} \quad (\text{outer product}), \qquad \underbrace{\bar{x}}_{(n \times 1)} = \underbrace{W^\top}_{(n \times m)} \underbrace{\bar{z}}_{(m \times 1)}, \qquad \underbrace{\bar{b}}_{(m \times 1)} = \underbrace{\bar{z}}_{(m \times 1)}$$
+      <div class="math-hint">Scalar vs. matrix correspondence: in 1D, $\bar{w} = \bar{z} \cdot x$ and $\bar{x} = w \cdot \bar{z}$. In matrix form, transposing $x^\top$ and $W^\top$ is the only arrangement where matrix multiplication is legal.</div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked $2 \times 2$ matrix backprop trace (distinct, traceable numbers):</strong></p>
+      <p>
+        Let input vector $x$ have 2 features, weight matrix $W$ map 2 inputs to 2 outputs, and upstream gradient $\bar{z}$ arrive from the next layer:
+      </p>
+      <div class="math-block">
+        $$W = \begin{bmatrix} 1 &amp; 2 \\ 3 &amp; 4 \end{bmatrix}, \qquad x = \begin{bmatrix} 5 \\ 6 \end{bmatrix}, \qquad \bar{z} = \frac{\partial L}{\partial z} = \begin{bmatrix} 2 \\ -1 \end{bmatrix}$$
+      </div>
+      <p>
+        1. <strong>Weight gradient $\bar{W} = \bar{z} x^\top$ (each row $i$ scales $x^\top$ by $\bar{z}_i$):</strong>
+      </p>
+      <div class="math-block">
+        $$\bar{W} = \begin{bmatrix} 2 \\ -1 \end{bmatrix} \begin{bmatrix} 5 &amp; 6 \end{bmatrix} = \begin{bmatrix} 2 \times 5 &amp; 2 \times 6 \\ -1 \times 5 &amp; -1 \times 6 \end{bmatrix} = \begin{bmatrix} \mathbf{10} &amp; \mathbf{12} \\ \mathbf{-5} &amp; \mathbf{-6} \end{bmatrix}$$
+      </div>
+      <p>
+        2. <strong>Input gradient $\bar{x} = W^\top \bar{z}$ (each input $j$ sums downstream gradients weighted by column $j$ of $W$):</strong>
+      </p>
+      <div class="math-block">
+        $$\bar{x} = \begin{bmatrix} 1 &amp; 3 \\ 2 &amp; 4 \end{bmatrix} \begin{bmatrix} 2 \\ -1 \end{bmatrix} = \begin{bmatrix} 1(2) + 3(-1) \\ 2(2) + 4(-1) \end{bmatrix} = \begin{bmatrix} 2 - 3 \\ 4 - 4 \end{bmatrix} = \begin{bmatrix} \mathbf{-1} \\ \mathbf{0} \end{bmatrix}$$
+      </div>
+      <p>
+        Notice why $\bar{x}_1 = -1$ puts two numbers together: input $x_1 = 5$ fed <em>both</em> output $z_1$ (via $W_{11}=1$) and output $z_2$ (via $W_{21}=3$). Multiplying by $W^\top$ automatically sums both branches!
+      </p>
+    </div>
+
+    <!-- === STAGE 3C: VANISHING/EXPLODING GRADIENTS & RESIDUAL HIGHWAY === -->
+    <h2 id="s4">4. Why deep chains vanish or explode (and how residuals fix it)</h2>
+    <p>
+      In an $L$-layer plain network $h_\ell = f(w_\ell h_{\ell-1})$, the <span class="term" data-term="chain-rule">Chain Rule</span> multiplies $L$ local derivatives in a row:
+    </p>
+    <div class="math-block">
+      $$\frac{\partial L}{\partial h_0} = \frac{\partial L}{\partial h_L} \cdot \prod_{\ell=1}^{L} \frac{\partial h_\ell}{\partial h_{\ell-1}}$$
+    </div>
+    <p>
+      For a <span class="term" data-term="sigmoid">sigmoid</span> gate $\sigma(z) = \frac{1}{1+e^{-z}}$, the local derivative is $\sigma'(z) = \sigma(z)(1 - \sigma(z))$, which reaches a maximum of only $\mathbf{0.25}$ at $z = 0$ (and shrinks toward $0$ when saturated). Across $10$ layers with unit weights, multiplying $0.25^{10} \approx 9.5 \times 10^{-7}$ erases the gradient before it reaches early layers (<span class="term" data-term="vanishing-grad">vanishing gradient</span>). Conversely, if each layer's slope is $1.5$, then $1.5^{10} \approx 57.7$ grows exponentially (<span class="term" data-term="exploding-grad">exploding gradient</span>).
+    </p>
+    <p>
+      A <span class="term" data-term="residual">residual connection</span> changes each block from $h_\ell = F(h_{\ell-1})$ to $h_\ell = h_{\ell-1} + F(h_{\ell-1})$. By the Add Gate rule, the local derivative becomes $\mathbf{1 + F'(h_{\ell-1})}$, creating a direct additive highway that carries upstream gradients intact even when $F'$ is tiny.
+    </p>
+
+    <div class="interactive-card" id="depth-widget">
+      <div class="widget-label">Stage 3C: Persistent Small Multiples &mdash; Gradient Magnitude Across 8 Layers</div>
+      <h3>Compare Plain Sigmoid vs. Exploding Linear vs. Residual Highway</h3>
+      <div class="control-row">
+        <button class="btn btn-small active" id="dstep-0" onclick="setDepthRegime(0)">Regime 1: Sigmoid (slope 0.25)</button>
+        <button class="btn btn-small" id="dstep-1" onclick="setDepthRegime(1)">Regime 2: Exploding (slope 1.5)</button>
+        <button class="btn btn-small" id="dstep-2" onclick="setDepthRegime(2)">Regime 3: Residual (1 + F' = 1.05)</button>
+      </div>
+      <div class="small-multiples" id="depth-sm-grid"></div>
+      <div class="readout" id="depth-explain"></div>
+    </div>
+
+    <details>
+      <summary>Why the Cross-Entropy + Softmax backward pass simplifies to $\hat{p} - y$</summary>
+      <div class="detail-body">
+        <p>
+          At the output layer of a classifier, logits $z$ pass through <span class="term" data-term="softmax">softmax</span> $\hat{p}_i = \frac{e^{z_i}}{\sum_j e^{z_j}}$ into <span class="term" data-term="cross-entropy">cross-entropy</span> loss $L = -\sum_k y_k \ln \hat{p}_k$ (where $y$ is a one-hot target with $\sum_k y_k = 1$).
+        </p>
+        <p>
+          Taking the derivative of $L = -\sum_k y_k \left(z_k - \ln \sum_j e^{z_j}\right)$ with respect to logit $z_i$ directly:
+        </p>
+        <div class="math-block">
+          $$\frac{\partial L}{\partial z_i} = -y_i + \left(\sum_k y_k\right) \frac{e^{z_i}}{\sum_j e^{z_j}} = -y_i + 1 \cdot \hat{p}_i = \hat{p}_i - y_i$$
+        </div>
+        <p>
+          Instead of multiplying a tiny softmax slope by a huge $1/\hat{p}$ loss derivative (which risks numerical instability), the two cancel analytically into $\bar{z} = \hat{p} - y$. If the true class is $1$ and the model predicts $\hat{p}_1 = 0.80$, the gradient on logit $z_1$ is simply $0.80 - 1.00 = -0.20$.
+        </p>
+      </div>
+    </details>
+
+    <!-- === STAGE 4: BACKWARD-FADED PRACTICE + CLOSED-BOOK RETRIEVAL === -->
+    <h2 id="s5">5. Backward-faded practice &amp; closed-book retrieval</h2>
+    <p>
+      Finish the final step of the branched computation graph below in your head (no calculator needed), then test your blank-sheet recall.
+    </p>
+
+    <div class="interactive-card" id="faded-widget">
+      <div class="widget-label">Stage 4A: Backward-Faded Worked Example (Fan-Out Branch)</div>
+      <h3>Compute $\bar{w} = \frac{\partial L}{\partial w}$ When $w$ Feeds Two Branches</h3>
+      <p>
+        Suppose weight $w = 2$ feeds <strong>two</strong> paths that add together: $u = 3w$, $v = w^2$, and $L = u + v$.<br>
+        <strong>Step 1 (Forward pass at $w = 2$):</strong> $u = 3(2) = 6$, $v = (2)^2 = 4$, so $L = 6 + 4 = 10$.<br>
+        <strong>Step 2 (Upstream gradients from Add gate $L = u + v$):</strong> $\bar{u} = 1$ and $\bar{v} = 1$.<br>
+        <strong>Step 3 (Your turn &mdash; sum both branches into $\bar{w}$):</strong> Branch 1 contributes $\bar{u} \cdot \frac{\partial u}{\partial w} = 1 \cdot 3 = 3$. Branch 2 contributes $\bar{v} \cdot \frac{\partial v}{\partial w} = 1 \cdot (2w)$. At $w = 2$, what is the total gradient $\bar{w}$?
+      </p>
+      <div class="control-row">
+        <label for="fade-input">$\bar{w} = \frac{\partial L}{\partial w} =$</label>
+        <input type="number" id="fade-input" step="1" placeholder="Integer" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+      </div>
+      <div id="fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-widget">
+      <div class="widget-label">Stage 4B: Closed-Book Retrieval (Blank-Sheet Test)</div>
+      <h3>Why Does Training Use 3&ndash;4x More Memory Than Inference?</h3>
+      <p>
+        Without scrolling up, explain in one or two sentences why a neural network must keep intermediate forward activations $x_\ell$ in GPU/RAM during the forward pass when training, whereas inference can discard each layer's activations immediately.
+      </p>
+      <textarea id="recall-input" placeholder="Type your explanation from memory (hint: look at the formula for dW in a multiply/linear gate)..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-feedback" class="readout" style="display:none;">
+        <strong>Canonical answer:</strong> At every linear or multiply gate $z_\ell = W_\ell x_\ell + b_\ell$, the local derivative with respect to the weights is the forward activation itself ($\bar{W}_\ell = \bar{z}_\ell x_\ell^\top$), and the derivative through nonlinearities like ReLU or Sigmoid depends on the forward pre-activation $z_\ell$. During training, every layer's forward activations $x_\ell$ must stay cached in memory until the backward pass reaches layer $\ell$ (unless <span class="term" data-term="grad-checkpoint">activation checkpointing</span> recomputes them), whereas inference never runs a backward pass and overwrites activation buffers immediately.
+      </div>
+    </div>
+
+    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
+    <h2 id="s6">6. Contrastive matrix, interleaved checks &amp; spaced recall</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Gradient Method</th>
+            <th>Cost for $d$ Weights $\to 1$ Loss</th>
+            <th>Precision / Failure Mode</th>
+            <th>Memory Footprint</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="finite-diff">Finite Differences</span></strong><br>$\frac{L(w+\epsilon e_i) - L(w-\epsilon e_i)}{2\epsilon}$</td>
+            <td class="num">$O(d)$ forward passes ($2d$ evaluations)</td>
+            <td>Approximate; roundoff noise if $\epsilon$ too small, truncation error if $\epsilon$ too large</td>
+            <td>Tiny ($O(1)$ extra)</td>
+            <td>Unit-testing custom backward code on tiny tensors ($d &lt; 100$)</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="forward-autodiff">Forward-Mode Autodiff</span></strong><br>(Dual numbers $v + \dot{v}\epsilon$)</td>
+            <td class="num">$O(d)$ passes (1 pass per input, all outputs at once)</td>
+            <td>Exact to machine precision</td>
+            <td>Low (no activation tape needed)</td>
+            <td>Few inputs to many outputs ($f: \mathbb{R}^1 \to \mathbb{R}^m$), Jacobian-vector products</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="backprop">Backpropagation</span></strong><br>(<span class="term" data-term="reverse-autodiff">Reverse-Mode Autodiff</span>)</td>
+            <td class="num">$O(1)$ passes (1 forward + 1 backward gets all $d$ grads)</td>
+            <td>Exact to machine precision; can vanish/explode across deep chains</td>
+            <td>High (must cache all forward <span class="term" data-term="activations">activations</span>)</td>
+            <td>All neural network training ($f: \mathbb{R}^d \to \mathbb{R}^1$ scalar loss)</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="grad-checkpoint">Checkpointed Backprop</span></strong></td>
+            <td class="num">$\approx 1.33\times$ compute (recomputes segments forward)</td>
+            <td>Exact to machine precision (identical gradients to standard backprop)</td>
+            <td>Sublinear ($O(\sqrt{L})$ layers cached)</td>
+            <td>Long-context LLM training where activations exceed VRAM</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="mcq-box" data-correct="C" data-topic="Interleaved 1: Computational complexity of Backprop vs Finite Differences">
+      <p>A small model has $d = 1{,}000{,}000$ weights and outputs a single scalar loss $L$. Roughly how many forward-pass equivalents does central finite differences take to compute the full gradient $\nabla_w L$, compared to backpropagation?</p>
+      <label class="mcq-option" data-explain="Both methods compute all 1,000,000 partial derivatives, not just 1; the difference is how many passes they need.">Both take roughly 2 passes because the loss $L$ is a single scalar.</label>
+      <label class="mcq-option" data-explain="Backpropagation takes ~2 forward-pass equivalents (1 forward + 1 backward), not 1,000,000.">Both take roughly $1{,}000{,}000$ passes because there are $1{,}000{,}000$ weights.</label>
+      <label class="mcq-option" data-explain="Correct. Perturbing each weight individually requires O(d) forward passes (~1–2 million passes), whereas reverse-mode autodiff (backprop) computes all 1,000,000 partials in 1 forward pass + 1 backward pass (~2–3 forward-pass equivalents).">Finite differences takes $\sim 2{,}000{,}000$ forward passes, while backpropagation takes $1$ forward + $1$ backward pass ($\sim 2\text{–}3$ forward-pass equivalents total).</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Interleaved 2: Zero activation vs Zero weight">
+      <p>In a linear + ReLU layer $z = w \cdot x + b$, $a = \max(0, z)$, suppose on the forward pass $x = 0$, $w = 4$, $b = 3$, and the upstream gradient arriving at $a$ is $\bar{a} = +5$. What are the gradients $\bar{w} = \frac{\partial L}{\partial w}$ and $\bar{x} = \frac{\partial L}{\partial x}$?</p>
+      <label class="mcq-option" data-explain="Correct. Since z = 4(0) + 3 = +3 &gt; 0, ReLU is active (slope = 1), so z_bar = +5. At the multiply gate u = w*x, partners swap: w_bar = x * z_bar = 0 * 5 = 0, while x_bar = w * z_bar = 4 * 5 = +20.">$\bar{w} = 0$ and $\bar{x} = +20$.</label>
+      <label class="mcq-option" data-explain="That reverses the multiply-gate swap! w_bar multiplies by x (= 0), and x_bar multiplies by w (= 4).">$\bar{w} = +20$ and $\bar{x} = 0$.</label>
+      <label class="mcq-option" data-explain="ReLU checks whether z = wx + b &gt; 0, not whether x &gt; 0. Here z = +3 &gt; 0, so ReLU is open.">$\bar{w} = 0$ and $\bar{x} = 0$ because $x = 0$ kills the ReLU gate.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Interleaved 3: Dead ReLU vs Vanishing Sigmoid">
+      <p>You initialize a single ReLU neuron $a = \max(0, wx + b)$ with bias $b = -10$ so that for every training example in your dataset, $z = wx + b &lt; 0$. What happens during gradient descent?</p>
+      <label class="mcq-option" data-explain="Sigmoid has a small nonzero slope everywhere, so it recovers slowly; ReLU has an exact 0 slope for z &lt; 0.">The neuron recovers slowly over a few thousand steps because the gradient is small ($\approx 10^{-4}$) but nonzero.</label>
+      <label class="mcq-option" data-explain="Correct. Because z &lt; 0 on every example, the local ReLU derivative is exactly 0 everywhere, making w_bar = 0 and b_bar = 0 on every batch. The neuron is permanently dead.">$\bar{w} = 0$ and $\bar{b} = 0$ on every batch, so the weights and bias never update (&ldquo;dead ReLU&rdquo;).</label>
+      <label class="mcq-option" data-explain="The Add gate has local derivative 1, so b_bar = z_bar. Because z_bar = a_bar * 0 = 0 after the closed ReLU switch, b_bar is also 0.">$\bar{w} = 0$, but $\bar{b}$ still receives the upstream gradient $\bar{a}$ and pushes $b$ positive.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Interleaved 4: Matrix Backprop Shape Matching">
+      <p>A linear layer computes $z = Wx + b$ where $W$ has shape $(4 \times 3)$, $x$ has shape $(3 \times 1)$, and $z$ has shape $(4 \times 1)$. Given upstream gradient $\bar{z}$ of shape $(4 \times 1)$, which expression computes $\bar{x} = \frac{\partial L}{\partial x}$?</p>
+      <label class="mcq-option" data-explain="W is (4x3) and z_bar is (4x1); inner dimensions 3 and 4 do not match.">$W \bar{z}$ of shape $(4 \times 1)$.</label>
+      <label class="mcq-option" data-explain="Correct. W^T has shape (3x4) and z_bar has shape (4x1), so W^T z_bar has shape (3x1), matching x."> $W^\top \bar{z}$ of shape $(3 \times 1)$.</label>
+      <label class="mcq-option" data-explain="z_bar x^T has shape (4x1)(1x3) = (4x3), which is the weight gradient W_bar, not the input gradient x_bar.">$\bar{z} x^\top$ of shape $(4 \times 3)$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="Interleaved 5: Shared / Tied Weights (Fan-Out Rule)">
+      <p>In a Recurrent Neural Network or a Transformer with tied weights, the <em>same</em> weight matrix $W$ is used at two different steps ($z_1 = W x_1$ and $z_2 = W x_2$). How does backpropagation compute the total gradient $\bar{W} = \frac{\partial L}{\partial W}$?</p>
+      <label class="mcq-option" data-explain="Multiplying gradients happens along a serial chain of different variables; branching from one shared variable adds the branches.">It multiplies the two step gradients elementwise: $\bar{W} = (\bar{z}_1 x_1^\top) \odot (\bar{z}_2 x_2^\top)$.</label>
+      <label class="mcq-option" data-explain="Ignoring the first branch violates the multivariable chain rule and gives the wrong gradient.">It only keeps the gradient from the most recent step $\bar{z}_2 x_2^\top$ and overwrites the earlier step.</label>
+      <label class="mcq-option" data-explain="Correct. A shared parameter is a fan-out node in the computation graph, so its total gradient is the sum of the gradients arriving from every place it was used: W_bar = z1_bar x1^T + z2_bar x2^T.">It adds the gradients from both usages: $\bar{W} = \bar{z}_1 x_1^\top + \bar{z}_2 x_2^\top$.</label>
+    </details>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'backprop': {
+        title: 'Backpropagation',
+        body: 'Algorithm that computes the <span class="term" data-term="gradient">gradient</span> $\\nabla_w L$ of a scalar <span class="term" data-term="loss">loss</span> with respect to all network weights in one backward sweep by applying the <span class="term" data-term="chain-rule">Chain Rule</span> from output to input.'
+      },
+      'reverse-autodiff': {
+        title: 'Reverse-Mode Automatic Differentiation',
+        body: 'General name in scientific computing for <span class="term" data-term="backprop">backpropagation</span>. It propagates derivatives backward from 1 output to $d$ inputs in $O(1)$ passes, whereas <span class="term" data-term="forward-autodiff">forward-mode</span> propagates from 1 input to all outputs.'
+      },
+      'forward-autodiff': {
+        title: 'Forward-Mode Automatic Differentiation',
+        body: 'Computes $\\frac{\\partial \\text{outputs}}{\\partial w_i}$ alongside the forward pass for a single input $w_i$. Efficient when inputs are few and outputs are many, but requires $d$ separate passes for $d$ neural network weights.'
+      },
+      'finite-diff': {
+        title: 'Finite Differences (Numerical Gradient)',
+        body: 'Approximating a derivative by nudging one weight $w_i$ by $\\pm \\epsilon$ and re-running the forward pass: $\\frac{L(w+\\epsilon e_i)-L(w-\\epsilon e_i)}{2\\epsilon}$. Requires $O(d)$ forward passes, so it is only used to unit-test <span class="term" data-term="backprop">backprop</span> on tiny models.'
+      },
+      'chain-rule': {
+        title: 'Multivariable Chain Rule',
+        body: 'If $L$ depends on $z$ and $z$ depends on $w$, then $\\frac{\\partial L}{\\partial w} = \\frac{\\partial L}{\\partial z} \\frac{\\partial z}{\\partial w}$ (multiply along serial paths). If $w$ feeds multiple branches $z_1, z_2$, sum across branches: $\\frac{\\partial L}{\\partial w} = \\sum_k \\frac{\\partial L}{\\partial z_k} \\frac{\\partial z_k}{\\partial w}$.'
+      },
+      'loss': {
+        title: 'Loss Function (L)',
+        body: 'A single scalar number measuring how wrong the model\'s prediction is compared to the target $y$ (for example, squared error $\\frac{1}{2}(\\hat{y}-y)^2$ or <span class="term" data-term="cross-entropy">cross-entropy</span>).'
+      },
+      'partial': {
+        title: 'Partial Derivative (∂L/∂wᵢ)',
+        body: 'Rate of change of the <span class="term" data-term="loss">loss</span> $L$ when you nudge weight $w_i$ while holding every other weight frozen.'
+      },
+      'gradient': {
+        title: 'Gradient Vector (∇L)',
+        body: 'Vector stacking all <span class="term" data-term="partial">partial derivatives</span> $[\\frac{\\partial L}{\\partial w_1}, \\dots, \\frac{\\partial L}{\\partial w_d}]^\\top$. Points in the direction of steepest loss increase; gradient descent steps in $-\\eta \\nabla L$.'
+      },
+      'upstream-grad': {
+        title: 'Upstream Gradient (z̄ = ∂L/∂z)',
+        body: 'The sensitivity of the final scalar <span class="term" data-term="loss">loss</span> $L$ to a node\'s output $z$, handed backward to that node from the layer immediately after it.'
+      },
+      'local-grad': {
+        title: 'Local Derivative (∂z/∂x)',
+        body: 'The derivative of a single elementary gate $z = f(x)$ with respect to its own immediate input $x$, evaluated at the forward pass values.'
+      },
+      'comp-graph': {
+        title: 'Computation Graph',
+        body: 'Directed acyclic graph (DAG) where nodes are inputs/parameters or elementary operations ($+, \\times, \\text{ReLU}, \\text{matmul}$) and edges carry intermediate <span class="term" data-term="activations">activations</span> forward and gradients backward.'
+      },
+      'forward-pass': {
+        title: 'Forward Pass',
+        body: 'Evaluating the <span class="term" data-term="comp-graph">computation graph</span> from inputs $x$ to <span class="term" data-term="loss">loss</span> $L$, caching intermediate <span class="term" data-term="activations">activations</span> needed to evaluate <span class="term" data-term="local-grad">local derivatives</span> during the <span class="term" data-term="backward-pass">backward pass</span>.'
+      },
+      'backward-pass': {
+        title: 'Backward Pass',
+        body: 'Sweeping the <span class="term" data-term="comp-graph">computation graph</span> in reverse topological order from $\\bar{L} = 1$ back to the parameters, multiplying each node\'s <span class="term" data-term="upstream-grad">upstream gradient</span> by its <span class="term" data-term="local-grad">local derivative</span>.'
+      },
+      'activations': {
+        title: 'Intermediate Activations',
+        body: 'Values output by hidden layers during the <span class="term" data-term="forward-pass">forward pass</span>. Because $\\bar{W}_\\ell = \\bar{z}_\\ell x_\\ell^\\top$, $x_\\ell$ must remain stored in memory until layer $\\ell$\'s backward pass runs.'
+      },
+      'inference': {
+        title: 'Inference (Evaluation Mode)',
+        body: 'Running only the <span class="term" data-term="forward-pass">forward pass</span> (`torch.no_grad()`) to get predictions without updating weights. Requires far less memory because intermediate <span class="term" data-term="activations">activations</span> can be discarded immediately.'
+      },
+      'relu': {
+        title: 'ReLU (Rectified Linear Unit)',
+        body: 'Activation function $\\text{ReLU}(z) = \\max(0, z)$. Its local derivative is $1$ when $z &gt; 0$ and $0$ when $z &lt; 0$, acting as an on/off switch for backward gradients.'
+      },
+      'dead-relu': {
+        title: 'Dead ReLU (Dying Neuron)',
+        body: 'A <span class="term" data-term="relu">ReLU</span> unit whose pre-activation $z = wx+b$ is negative for all training inputs. Because the local derivative is $0$, $\\bar{w} = 0$ and $\\bar{b} = 0$ permanently.'
+      },
+      'sigmoid': {
+        title: 'Sigmoid Activation σ(z)',
+        body: 'S-shaped squash function $\\sigma(z) = \\frac{1}{1+e^{-z}} \\in (0, 1)$. Its derivative is $\\sigma(z)(1-\\sigma(z)) \\le 0.25$, which causes <span class="term" data-term="vanishing-grad">vanishing gradients</span> when stacked across many layers.'
+      },
+      'vanishing-grad': {
+        title: 'Vanishing Gradient Problem',
+        body: 'Exponential shrinkage of gradients ($\\prod_\\ell \\text{slope}_\\ell \\to 0$) as they propagate backward through many layers with local derivatives $&lt; 1$ (such as <span class="term" data-term="sigmoid">sigmoid</span>), freezing early layers.'
+      },
+      'exploding-grad': {
+        title: 'Exploding Gradient Problem',
+        body: 'Exponential growth of gradients ($\\prod_\\ell \\text{slope}_\\ell \\to \\infty$) when local weight norms or slopes exceed $1$ across many layers, causing giant weight updates and <code>NaN</code> loss.'
+      },
+      'residual': {
+        title: 'Residual Connection (Skip Connection)',
+        body: 'Wiring block $h_\\ell = h_{\\ell-1} + F(h_{\\ell-1})$. Its local derivative is $I + \\frac{\\partial F}{\\partial h_{\\ell-1}}$, giving gradients a $+1$ additive highway backward so they do not vanish.'
+      },
+      'jacobian': {
+        title: 'Jacobian Matrix',
+        body: 'Matrix of all first-order partial derivatives of a vector output $z \\in \\mathbb{R}^m$ with respect to a vector input $x \\in \\mathbb{R}^n$: $J_{ij} = \\frac{\\partial z_i}{\\partial x_j}$.'
+      },
+      'grad-checkpoint': {
+        title: 'Activation Checkpointing (Gradient Checkpointing)',
+        body: 'Memory-saving technique that stores only every $k$-th layer\'s <span class="term" data-term="activations">activations</span> during the forward pass and recomputes intermediate layers on the fly during the backward pass.'
+      },
+      'softmax': {
+        title: 'Softmax',
+        body: 'Converts a vector of real logits $z$ into a probability distribution $\\hat{p}_i = \\frac{e^{z_i}}{\\sum_j e^{z_j}}$ summing to $1$.'
+      },
+      'cross-entropy': {
+        title: 'Cross-Entropy Loss',
+        body: 'Classification loss $L = -\\sum_k y_k \\ln \\hat{p}_k$. Combined with <span class="term" data-term="softmax">softmax</span>, its gradient with respect to the logits $z$ simplifies to $\\bar{z} = \\hat{p} - y$.'
+      },
+      'sym-L': {
+        title: 'Symbol: L (Scalar Loss)',
+        body: 'The single number at the root of the backward pass. Backpropagation always starts with seed $\\bar{L} = \\frac{\\partial L}{\\partial L} = 1$.'
+      },
+      'sym-d': {
+        title: 'Symbol: d (Parameter Count)',
+        body: 'Total number of trainable scalar weights and biases in the model.'
+      },
+      'sym-gbar': {
+        title: 'Notation: v̄ = ∂L/∂v (Adjoint)',
+        body: 'Compact bar notation for the partial derivative of the final scalar <span class="term" data-term="loss">loss</span> $L$ with respect to any variable, vector, or matrix $v$. $\\bar{v}$ always has the exact same shape as $v$.'
+      },
+      'sym-dLdz': {
+        title: 'Symbol: z̄ = ∂L/∂z',
+        body: '<span class="term" data-term="upstream-grad">Upstream gradient</span> arriving at node $z$ from downstream layers.'
+      },
+      'sym-dzdx': {
+        title: 'Symbol: ∂z/∂x',
+        body: '<span class="term" data-term="local-grad">Local derivative</span> of gate output $z$ with respect to gate input $x$.'
+      },
+      'sym-z': {
+        title: 'Symbol: z (Pre-Activation)',
+        body: 'Linear combination $z = wx + b$ (or $Wx + b$) before applying a nonlinear activation function.'
+      },
+      'sym-w': {
+        title: 'Symbol: w (Scalar Weight)',
+        body: 'Trainable multiplier on input $x$. Its gradient at a multiply gate $u = wx$ is $\\bar{w} = x \\cdot \\bar{u}$.'
+      },
+      'sym-W': {
+        title: 'Symbol: W (Weight Matrix)',
+        body: 'Matrix of shape $(m \\times n)$ mapping $n$-dimensional input $x$ to $m$-dimensional pre-activation $z = Wx + b$. Its gradient is the outer product $\\bar{W} = \\bar{z} x^\\top$.'
+      },
+      'sym-x': {
+        title: 'Symbol: x (Input / Activation)',
+        body: 'Input feature or previous layer activation feeding into a gate. At $u = wx$, $x$ becomes the backward multiplier for $\\bar{w} = x \\cdot \\bar{u}$.'
+      },
+      'sym-b': {
+        title: 'Symbol: b (Bias)',
+        body: 'Additive offset in $z = wx + b$. Because $\\frac{\\partial z}{\\partial b} = 1$, an add gate passes the upstream gradient straight into the bias: $\\bar{b} = \\bar{z}$.'
+      },
+      'sym-a': {
+        title: 'Symbol: a (Post-Activation)',
+        body: 'Output of an activation gate such as $a = \\text{ReLU}(z) = \\max(0, z)$.'
+      },
+      'sym-y': {
+        title: 'Symbol: y (Target / Ground Truth)',
+        body: 'True label or target value compared against the model prediction inside the <span class="term" data-term="loss">loss</span> function.'
+      }
+    };
+
+    var SPACED_CARDS = [
+      {
+        q: 'Why does backpropagation compute gradients for d = 1,000,000 weights in O(1) passes while finite differences requires O(d) passes?',
+        a: 'Finite differences perturbs one weight at a time Forward -> Loss (d + 1 forward passes). Backpropagation (reverse-mode autodiff) caches intermediate values in 1 forward pass and propagates sensitivities from the single scalar loss L backward to all d weights in 1 backward pass.'
+      },
+      {
+        q: 'At a multiply gate u = w * x receiving upstream gradient u_bar = dL/du, what are w_bar and x_bar?',
+        a: 'They swap partners: w_bar = x * u_bar and x_bar = w * u_bar. Consequently, a huge input x produces a huge gradient on the weight w, and x = 0 gives w_bar = 0.'
+      },
+      {
+        q: 'At an add gate z = u + b receiving upstream gradient z_bar, and at a fan-out branch where variable w feeds two paths z1 and z2, how do gradients flow backward?',
+        a: 'Add gate distributes (copies) the upstream gradient unchanged to each input: u_bar = z_bar and b_bar = z_bar. A fan-out branch adds the incoming gradients from all downstream paths: w_bar = w_bar_1 + w_bar_2.'
+      },
+      {
+        q: 'For a matrix linear layer z = W x + b with W in R^(m x n), x in R^(n x 1), and upstream gradient z_bar in R^(m x 1), what are the exact formulas for W_bar, x_bar, and b_bar?',
+        a: 'By shape matching: W_bar = z_bar * x^T (m x n outer product), x_bar = W^T * z_bar (n x 1), and b_bar = z_bar (m x 1).'
+      },
+      {
+        q: 'Why does neural network training require 3-4x more memory than inference?',
+        a: 'Because W_bar = z_bar * x^T and activation derivatives (like ReLU or Sigmoid) depend on the forward activations x and z. Training must keep every layer\'s intermediate forward activations cached in RAM/VRAM until the backward pass reaches that layer, whereas inference discards them immediately.'
+      },
+      {
+        q: 'What is the architectural difference between a Dead ReLU and a Vanishing Sigmoid gradient, and how does a residual connection h_l = h_{l-1} + F(h_{l-1}) prevent vanishing gradients?',
+        a: 'A Dead ReLU has z <= 0 so its local derivative is literally 0 (blocking all gradient in 1 step). Sigmoid has a max derivative of 0.25, so stacking L layers multiplies <= 0.25^L -> 0. A residual block has local derivative 1 + F\', creating a +1 additive highway that carries upstream gradients straight through.'
+      }
+    ];
+
+    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
+    function checkFastForward() {
+      var raw = document.getElementById('ff-input').value.trim().replace(/^\+/, '');
+      var fb = document.getElementById('ff-feedback');
+      fb.style.display = 'block';
+      if (raw === '-8' || raw === '-8.0') {
+        fb.innerHTML = '<strong>Verified.</strong> $\\bar{w} = x \\cdot \\bar{z} = 4 \\times (-2) = -8$. Stages 1&ndash;2 collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Stages 1&ndash;2</button>';
+        renderMathIn(fb);
+        toggleScaffolding(false);
+        unlockGraphSliders();
+      } else {
+        fb.innerHTML = 'Not quite (hint: at $z = w \\cdot x$, $\\frac{\\partial z}{\\partial w} = x = 4$, so multiply upstream $\\bar{z} = -2$ by $x = 4$). Work through Stage 1 below.';
+        renderMathIn(fb);
+      }
+    }
+
+    function toggleScaffolding(show) {
+      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
+    }
+
+    /* ---------- Stage 1 & 2: POE + Refutation + Slider Unlock ---------- */
+    var graphStepsVisited = { 0: true };
+
+    function unlockGraphSliders() {
+      var gate = document.getElementById('graph-slider-gate');
+      var box = document.getElementById('graph-slider-unlocked');
+      if (gate) { gate.style.display = 'none'; }
+      if (box) { box.style.display = 'block'; }
+      updateLiveGraph();
+    }
+
+    function runPOE(choice) {
+      document.getElementById('poe-reveal').style.display = 'block';
+      var svg = document.getElementById('poe-svg');
+      var youPicked = choice === 'A' ? 'Your guess: x̄=20, w̄=1 (same order)' :
+                      choice === 'B' ? 'Your guess: w̄=20, x̄=1 (partner swap — Correct!)' :
+                      choice === 'C' ? 'Your guess: w̄=2, x̄=2 (unscaled)' :
+                      'Skipped prediction — inspect partner swap below';
+
+      var html = '';
+      html += '<text x="12" y="22" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + youPicked + '</text>';
+      /* Inputs w and x */
+      html += '<rect x="14" y="38" width="128" height="44" fill="#fff" stroke="#000" stroke-width="2"/>';
+      html += '<text x="24" y="57" font-family="monospace" font-size="12" font-weight="bold" fill="#000">fwd: w = 0.5</text>';
+      html += '<text x="24" y="74" font-family="monospace" font-size="12" font-weight="bold" fill="#000">bwd: w̄ = 10×2 = 20</text>';
+
+      html += '<rect x="14" y="98" width="128" height="44" fill="#fff" stroke="#000" stroke-width="2"/>';
+      html += '<text x="24" y="117" font-family="monospace" font-size="12" font-weight="bold" fill="#000">fwd: x = 10</text>';
+      html += '<text x="24" y="134" font-family="monospace" font-size="12" font-weight="bold" fill="#000">bwd: x̄ = 0.5×2 = 1</text>';
+
+      /* Multiply gate circle */
+      html += '<circle cx="240" cy="90" r="28" fill="#e8e8e8" stroke="#000" stroke-width="2"/>';
+      html += '<text x="240" y="95" text-anchor="middle" font-family="monospace" font-size="16" font-weight="bold" fill="#000">× (z=wx)</text>';
+
+      /* Arrows to multiply gate */
+      html += '<line x1="142" y1="60" x2="212" y2="80" stroke="#000" stroke-width="2"/>';
+      html += '<line x1="142" y1="120" x2="212" y2="100" stroke="#000" stroke-width="2"/>';
+
+      /* Output z and upstream error */
+      html += '<line x1="268" y1="90" x2="335" y2="90" stroke="#000" stroke-width="2"/>';
+      html += '<rect x="335" y="64" width="150" height="52" fill="#fff" stroke="#000" stroke-width="2"/>';
+      html += '<text x="345" y="85" font-family="monospace" font-size="12" font-weight="bold" fill="#000">fwd: z = 5 (y = 3)</text>';
+      html += '<text x="345" y="105" font-family="monospace" font-size="12" font-weight="bold" fill="#000">bwd: z̄ = z - y = +2</text>';
+      svg.innerHTML = html;
+
+      var ref = document.getElementById('poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Misconception Refutation: The Multiply Gate Partner Swap</div>' +
+        '<p style="margin:0;">Most people guess that the huge variable ($x = 10$) gets the huge gradient. ' +
+        'That breaks because for $z = w \\cdot x$, the local slope with respect to $w$ is $\\frac{\\partial z}{\\partial w} = x = 10$, whereas the local slope with respect to $x$ is $\\frac{\\partial z}{\\partial x} = w = 0.5$. ' +
+        'Nudging $w$ by $+0.1$ gets amplified $10\\times$ by $x = 10$, so $\\bar{w} = x \\cdot \\bar{z} = 10 \\times 2 = \\mathbf{20}$, while $\\bar{x} = w \\cdot \\bar{z} = 0.5 \\times 2 = \\mathbf{1}$.</p>';
+      renderMathIn(ref);
+      unlockGraphSliders();
+    }
+
+    /* ---------- Stage 3A: Discrete Computation Graph Stepper ---------- */
+    var GRAPH_STEP_NOTES = [
+      'Step 1 (Forward Pass): Compute left-to-right and cache inputs. u = w*x = 3*2 = 6; z = u + b = 6 + (-1) = 5; a = ReLU(5) = 5; L = 0.5*(5 - 2)^2 = 4.5.',
+      'Step 2 (Loss & ReLU Backward): Start with L_bar = 1. Slope of 0.5*(a - y)^2 is (a - y) = 5 - 2 = +3, so a_bar = +3. Since forward z = 5 > 0, ReLU switch is open (local slope = 1), giving z_bar = +3 * 1 = +3.',
+      'Step 3 (Add Gate Backward): z = u + b has local slopes dz/du = 1 and dz/db = 1. The add gate copies z_bar = +3 unchanged to both branches: u_bar = +3 and b_bar = +3.',
+      'Step 4 (Multiply Gate Backward): u = w * x swaps partners! w_bar = x * u_bar = 2 * (+3) = +6, and x_bar = w * u_bar = 3 * (+3) = +9.'
+    ];
+
+    var currentGraphStep = 0;
+
+    function setGraphStep(idx) {
+      currentGraphStep = idx;
+      graphStepsVisited[idx] = true;
+      for (var i = 0; i < 4; i++) {
+        var btn = document.getElementById('gstep-' + i);
+        if (btn) { btn.classList.toggle('active', i === idx); }
+      }
+      drawComputationGraph(2, 3, -1, 2, idx);
+      document.getElementById('graph-step-explain').textContent = GRAPH_STEP_NOTES[idx];
+      if (Object.keys(graphStepsVisited).length === 4) {
+        unlockGraphSliders();
+      }
+    }
+
+    function drawComputationGraph(x, w, b, y, stepIdx) {
+      var svg = document.getElementById('graph-svg');
+      if (!svg) { return; }
+      var u = w * x;
+      var z = u + b;
+      var a = Math.max(0, z);
+      var L = 0.5 * (a - y) * (a - y);
+
+      var da = a - y;
+      var reluSlope = z > 0 ? 1 : 0;
+      var dz = da * reluSlope;
+      var du = dz;
+      var db = dz;
+      var dw = x * du;
+      var dx = w * du;
+
+      var showBwd1 = stepIdx >= 1;
+      var showBwd2 = stepIdx >= 2;
+      var showBwd3 = stepIdx >= 3;
+
+      function nodeBox(bx, by, bw, bh, title, fwdTxt, bwdTxt, showBwd, active) {
+        var fill = active ? '#e8e8e8' : '#ffffff';
+        var sw = active ? 3 : 1.8;
+        var s = '<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="' + bh + '" fill="' + fill + '" stroke="#000" stroke-width="' + sw + '"/>';
+        s += '<text x="' + (bx + 6) + '" y="' + (by + 16) + '" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000">' + title + '</text>';
+        s += '<text x="' + (bx + 6) + '" y="' + (by + 33) + '" font-family="monospace" font-size="11.5" fill="#000">fwd: ' + fwdTxt + '</text>';
+        s += '<text x="' + (bx + 6) + '" y="' + (by + 50) + '" font-family="monospace" font-size="11.5" font-weight="bold" fill="#000">' + (showBwd ? ('bwd: ' + bwdTxt) : 'bwd: ...') + '</text>';
+        return s;
+      }
+
+      var h = '';
+      /* Legend bar at top */
+      h += '<text x="10" y="16" font-family="monospace" font-size="11" fill="#000">Forward values (top)  |  Backward adjoints v̄ = ∂L/∂v (bottom)  |  Target y = ' + y + '</text>';
+
+      /* Edges */
+      h += '<line x1="112" y1="62" x2="140" y2="85" stroke="#000" stroke-width="2"/>';
+      h += '<line x1="112" y1="142" x2="140" y2="105" stroke="#000" stroke-width="2"/>';
+      h += '<line x1="238" y1="95" x2="262" y2="95" stroke="#000" stroke-width="2"/>';
+      h += '<line x1="238" y1="168" x2="262" y2="115" stroke="#000" stroke-width="2"/>';
+      h += '<line x1="352" y1="95" x2="374" y2="95" stroke="#000" stroke-width="2"/>';
+      h += '<line x1="446" y1="95" x2="464" y2="95" stroke="#000" stroke-width="2"/>';
+
+      /* Nodes */
+      h += nodeBox(8, 30, 104, 58, 'Weight w', 'w = ' + w, 'w̄ = ' + (dw >= 0 ? '+' : '') + dw, showBwd3, stepIdx === 3);
+      h += nodeBox(8, 112, 104, 58, 'Input x', 'x = ' + x, 'x̄ = ' + (dx >= 0 ? '+' : '') + dx, showBwd3, stepIdx === 3);
+      h += nodeBox(140, 66, 98, 58, 'Mul: u=wx', 'u = ' + u, 'ū = ' + (du >= 0 ? '+' : '') + du, showBwd2, stepIdx === 2 || stepIdx === 3);
+      h += nodeBox(140, 138, 98, 58, 'Bias b', 'b = ' + b, 'b̄ = ' + (db >= 0 ? '+' : '') + db, showBwd2, stepIdx === 2);
+      h += nodeBox(262, 66, 90, 58, 'Add: z=u+b', 'z = ' + z, 'z̄ = ' + (dz >= 0 ? '+' : '') + dz, showBwd1, stepIdx === 1 || stepIdx === 2);
+      h += nodeBox(374, 66, 72, 58, 'ReLU(z)', 'a = ' + a, 'ā = ' + (da >= 0 ? '+' : '') + da, showBwd1, stepIdx === 1);
+      h += nodeBox(464, 66, 70, 58, 'Loss L', 'L = ' + fmt(L, 1), 'L̄ = +1', showBwd1, stepIdx === 1);
+
+      svg.innerHTML = h;
+    }
+
+    function setGraphPreset(x, w, b, y) {
+      document.getElementById('sl-x').value = x;
+      document.getElementById('sl-w').value = w;
+      document.getElementById('sl-b').value = b;
+      updateLiveGraph();
+    }
+
+    function updateLiveGraph() {
+      var x = parseInt(document.getElementById('sl-x').value, 10);
+      var w = parseInt(document.getElementById('sl-w').value, 10);
+      var b = parseInt(document.getElementById('sl-b').value, 10);
+      var y = 2;
+
+      document.getElementById('val-x').textContent = String(x);
+      document.getElementById('val-w').textContent = String(w);
+      document.getElementById('val-b').textContent = String(b);
+
+      var u = w * x;
+      var z = u + b;
+      var a = Math.max(0, z);
+      var L = 0.5 * (a - y) * (a - y);
+      var da = a - y;
+      var dz = z > 0 ? da : 0;
+      var dw = x * dz;
+      var db = dz;
+
+      document.getElementById('st-z').textContent = (z >= 0 ? '+' : '') + z + (z <= 0 ? ' (Dead)' : ' (Open)');
+      document.getElementById('st-L').textContent = fmt(L, 2);
+      document.getElementById('st-dw').textContent = (dw >= 0 ? '+' : '') + dw;
+      document.getElementById('st-db').textContent = (db >= 0 ? '+' : '') + db;
+
+      drawComputationGraph(x, w, b, y, 3);
+      var noteEl = document.getElementById('graph-step-explain');
+      if (z <= 0) {
+        noteEl.textContent = 'Dead ReLU state: z = ' + z + ' <= 0, so ReLU slope = 0. Even though a - y = ' + da + ', the closed ReLU gate blocks all upstream signal: z_bar = 0, w_bar = 0, b_bar = 0.';
+      } else {
+        noteEl.textContent = 'Active ReLU state: z = +' + z + ' > 0 (slope = 1). Upstream a_bar = ' + (da >= 0 ? '+' : '') + da + ' passes straight to z_bar and b_bar, and multiplies by x = ' + x + ' to give w_bar = ' + (dw >= 0 ? '+' : '') + dw + '.';
+      }
+    }
+
+    /* ---------- Stage 3C: Depth Regime Small Multiples ---------- */
+    var DEPTH_REGIMES = [
+      {
+        title: 'Sigmoid Chain (slope = 0.25)',
+        factor: 0.25,
+        maxCap: 1.0,
+        note: 'At 0.25 per layer, layer 8 receives upstream gradient = 1.0, layer 6 receives 0.063, and layer 1 receives 0.25^7 = 0.00006 — early layers barely move.'
+      },
+      {
+        title: 'Exploding Chain (slope = 1.50)',
+        factor: 1.5,
+        maxCap: 18.0,
+        note: 'At 1.50 per layer, the gradient grows by 50% at every step backward, reaching 1.5^7 = 17.09 at layer 1 (and 3,325 across 20 layers).'
+      },
+      {
+        title: 'Residual Highway (1 + F\' = 1.05)',
+        factor: 1.05,
+        maxCap: 2.0,
+        note: 'Because h_l = h_{l-1} + F(h_{l-1}) has local derivative 1 + F\', the +1 identity path keeps layer 1\'s gradient near 1.05^7 = 1.41 even across deep stacks.'
+      }
+    ];
+
+    function setDepthRegime(idx) {
+      for (var i = 0; i < 3; i++) {
+        var btn = document.getElementById('dstep-' + i);
+        if (btn) { btn.classList.toggle('active', i === idx); }
+      }
+      renderDepthSmallMultiples(idx);
+      document.getElementById('depth-explain').textContent = DEPTH_REGIMES[idx].note;
+    }
+
+    function renderDepthSmallMultiples(activeIdx) {
+      var grid = document.getElementById('depth-sm-grid');
+      if (!grid) { return; }
+      var html = '';
+      var layers = [8, 6, 4, 2, 1];
+      DEPTH_REGIMES.forEach(function (reg, idx) {
+        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
+        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.84em; margin-bottom:4px;">' + reg.title + '</div>';
+        html += '<svg viewBox="0 0 215 118" width="215" height="118" role="img" aria-label="' + reg.title + '">';
+        layers.forEach(function (layerNum, rowIdx) {
+          var stepsBack = 8 - layerNum;
+          var grad = Math.pow(reg.factor, stepsBack);
+          var frac = clamp(grad / reg.maxCap, 0, 1);
+          var barW = Math.max(2, Math.round(frac * 96));
+          var y = 6 + rowIdx * 22;
+          var labelStr = grad < 0.01 ? grad.toExponential(1) : fmt(grad, 2);
+          html += '<text x="2" y="' + (y + 13) + '" font-family="monospace" font-size="10.5" fill="#000">L' + layerNum + '</text>';
+          html += '<rect x="26" y="' + y + '" width="96" height="15" fill="#fff" stroke="#000" stroke-width="1"/>';
+          html += '<rect x="26" y="' + y + '" width="' + barW + '" height="15" fill="#000"/>';
+          html += '<text x="127" y="' + (y + 13) + '" font-family="monospace" font-size="10.5" font-weight="bold" fill="#000">' + labelStr + '</text>';
+        });
+        html += '</svg></div>';
+      });
+      grid.innerHTML = html;
+    }
+
+    /* ---------- Stage 4: Backward-Faded Practice & Free Recall ---------- */
+    function checkFaded() {
+      var val = parseFloat(document.getElementById('fade-input').value);
+      var fb = document.getElementById('fade-feedback');
+      fb.style.display = 'block';
+      if (Math.abs(val - 7) < 0.01) {
+        fb.innerHTML = '<strong>Exact match ($\\bar{w} = 7$).</strong> Branch 1 gives $\\bar{u} \\cdot 3 = 3$ and Branch 2 gives $\\bar{v} \\cdot 2w = 1 \\cdot 2(2) = 4$. Because $w$ fanned out into two branches forward, backpropagation adds them backward: $3 + 4 = 7$. (Sanity check: $L = 3w + w^2 \\Rightarrow \\frac{dL}{dw} = 3 + 2w = 7$ at $w=2$.)';
+      } else if (Math.abs(val - 12) < 0.01) {
+        fb.innerHTML = 'You multiplied the two branches ($3 \\times 4 = 12$) instead of adding them. Remember: multiply along a single serial path, <strong>add</strong> when one variable branches into two paths ($3 + 4 = 7$).';
+      } else {
+        fb.innerHTML = 'Not quite. Branch 1 contributes $3$, and Branch 2 contributes $2w = 2(2) = 4$. Add both branches together: $3 + 4 = 7$.';
+      }
+      renderMathIn(fb);
+    }
+
+    function revealRecall() {
+      document.getElementById('recall-feedback').style.display = 'block';
+      renderMathIn(document.getElementById('recall-feedback'));
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      setGraphStep(0);
+      setDepthRegime(0);
+    });
+  </script>
+</body>
+</html>
