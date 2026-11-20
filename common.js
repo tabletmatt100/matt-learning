@@ -406,8 +406,61 @@ function copySpacedCards() {
   }
 }
 
-/* ---------- Article Completion Tracking (localStorage) ---------- */
+/* ---------- Article Completion Tracking + GitHub Gist Sync ---------- */
 var COMPLETED_KEY = 'matt_learning_completed_v1';
+var GIST_ID_KEY = 'matt_learning_gist_id';
+var GIST_TOKEN_KEY = 'matt_learning_gist_token';
+var GIST_UPDATED_KEY = 'matt_learning_gist_updated_at';
+var DEFAULT_GIST_ID = 'b270eaafff8dc051eca22cc33b394235';
+var GIST_FILENAME = 'matt_learning_state.json';
+
+function getGistId() {
+  try {
+    return (localStorage.getItem(GIST_ID_KEY) || DEFAULT_GIST_ID).trim();
+  } catch (e) {
+    return DEFAULT_GIST_ID;
+  }
+}
+
+function getGistToken() {
+  try {
+    return (localStorage.getItem(GIST_TOKEN_KEY) || '').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+function setGistToken(tok) {
+  try {
+    if (tok && tok.trim()) {
+      localStorage.setItem(GIST_TOKEN_KEY, tok.trim());
+    } else {
+      localStorage.removeItem(GIST_TOKEN_KEY);
+    }
+  } catch (e) {}
+}
+window.getGistToken = getGistToken;
+window.setGistToken = setGistToken;
+window.getGistId = getGistId;
+
+/* Capture #sync=<token> from URL hash so pairing Go 10.3 or Palma 3 is a 1-tap link */
+function captureSyncTokenFromHash() {
+  if (!location.hash) { return false; }
+  var m = location.hash.match(/[#&]sync=([^&]+)/);
+  if (m && m[1]) {
+    var tok = decodeURIComponent(m[1]).trim();
+    if (tok) {
+      setGistToken(tok);
+      try {
+        history.replaceState(null, document.title, location.pathname + location.search);
+      } catch (e) {
+        location.hash = '';
+      }
+      return true;
+    }
+  }
+  return false;
+}
 
 function getCompletedMap() {
   try {
@@ -423,16 +476,23 @@ function isArticleCompleted(file) {
   return Boolean(map[file]);
 }
 
+function setSyncStatus(msg) {
+  var el = document.getElementById('gist-sync-status');
+  if (el) { el.textContent = msg; }
+}
+
 function setArticleCompleted(file, done) {
   var map = getCompletedMap();
   if (done) {
-    map[file] = true;
+    map[file] = new Date().toISOString();
   } else {
     delete map[file];
   }
   try {
     localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
+    localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
   } catch (e) {}
+  pushStateToGist();
 }
 
 function toggleArticleCompleted(file) {
@@ -442,6 +502,106 @@ function toggleArticleCompleted(file) {
 }
 window.toggleArticleCompleted = toggleArticleCompleted;
 window.isArticleCompleted = isArticleCompleted;
+
+function pullStateFromGist(callback) {
+  var gistId = getGistId();
+  if (!gistId) { return; }
+  var headers = { 'Accept': 'application/vnd.github+json' };
+  var tok = getGistToken();
+  if (tok) { headers['Authorization'] = 'Bearer ' + tok; }
+
+  setSyncStatus('Syncing with Gist...');
+  fetch('https://api.github.com/gists/' + gistId + '?t=' + Date.now(), {
+    method: 'GET',
+    headers: headers,
+    cache: 'no-store'
+  })
+    .then(function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+      return res.json();
+    })
+    .then(function (data) {
+      if (!data || !data.files || !data.files[GIST_FILENAME]) {
+        setSyncStatus('Gist connected (empty)');
+        return;
+      }
+      var remoteState = JSON.parse(data.files[GIST_FILENAME].content || '{}');
+      var remoteCompleted = remoteState.completed || {};
+      var localCompleted = getCompletedMap();
+      var localUpdated = '';
+      try { localUpdated = localStorage.getItem(GIST_UPDATED_KEY) || ''; } catch (e) {}
+      var remoteUpdated = remoteState.updatedAt || '';
+
+      /* Reconcile: if remote is newer than local, adopt remote; if local has unpushed state and no remote timestamp, merge & push */
+      var chosen = remoteCompleted;
+      if (localUpdated && remoteUpdated && localUpdated > remoteUpdated) {
+        chosen = localCompleted;
+        pushStateToGist();
+      } else if (!remoteUpdated && Object.keys(localCompleted).length > 0) {
+        chosen = localCompleted;
+        pushStateToGist();
+      } else {
+        try {
+          localStorage.setItem(COMPLETED_KEY, JSON.stringify(remoteCompleted));
+          if (remoteUpdated) { localStorage.setItem(GIST_UPDATED_KEY, remoteUpdated); }
+        } catch (e) {}
+      }
+
+      var count = Object.keys(chosen).length;
+      setSyncStatus('Gist synced (' + count + ' completed)' + (tok ? ' \u00b7 R/W' : ' \u00b7 Read-only'));
+      updateArticleCompleteBox();
+      if (typeof renderHomeList === 'function') { renderHomeList(); }
+      if (typeof callback === 'function') { callback(chosen); }
+    })
+    .catch(function (err) {
+      setSyncStatus('Gist offline (' + (err && err.message ? err.message : 'cached') + ')');
+    });
+}
+
+function pushStateToGist(callback) {
+  var gistId = getGistId();
+  var tok = getGistToken();
+  if (!gistId || !tok) {
+    setSyncStatus('Local saved (Add token in Gist Sync to push)');
+    return;
+  }
+  var now = new Date().toISOString();
+  var map = getCompletedMap();
+  var payload = {
+    version: 1,
+    updatedAt: now,
+    completedCount: Object.keys(map).length,
+    completed: map
+  };
+  var body = { files: {} };
+  body.files[GIST_FILENAME] = { content: JSON.stringify(payload, null, 2) };
+
+  setSyncStatus('Saving to Gist...');
+  fetch('https://api.github.com/gists/' + gistId, {
+    method: 'PATCH',
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': 'Bearer ' + tok,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  })
+    .then(function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+      return res.json();
+    })
+    .then(function () {
+      try { localStorage.setItem(GIST_UPDATED_KEY, now); } catch (e) {}
+      setSyncStatus('Gist saved (' + Object.keys(map).length + ' completed) \u00b7 R/W');
+      if (typeof callback === 'function') { callback(true); }
+    })
+    .catch(function (err) {
+      setSyncStatus('Gist push failed (' + (err && err.message ? err.message : 'network') + ')');
+      if (typeof callback === 'function') { callback(false); }
+    });
+}
+window.pullStateFromGist = pullStateFromGist;
+window.pushStateToGist = pushStateToGist;
 
 function updateArticleCompleteBox() {
   var here = location.pathname.split('/').pop() || 'index.html';
@@ -533,9 +693,15 @@ function ensureHeaderAndFooter() {
 
 /* ---------- DOMContentLoaded Initialization ---------- */
 document.addEventListener('DOMContentLoaded', function () {
+  var capturedNewToken = captureSyncTokenFromHash();
   ensureHeaderAndFooter();
   ensurePopoverDOM();
   applyFontSize(currentFontSize);
+  pullStateFromGist(function () {
+    if (capturedNewToken) {
+      pushStateToGist();
+    }
+  });
 
   var inc = document.getElementById('font-inc');
   var dec = document.getElementById('font-dec');
