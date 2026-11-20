@@ -424,6 +424,60 @@ function copySpacedCards() {
   }
 }
 
+/* ---------- Article Completion Tracking (localStorage) ---------- */
+var COMPLETED_KEY = 'matt_learning_completed_v1';
+
+function getCompletedMap() {
+  try {
+    var raw = localStorage.getItem(COMPLETED_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function isArticleCompleted(file) {
+  var map = getCompletedMap();
+  return Boolean(map[file]);
+}
+
+function setArticleCompleted(file, done) {
+  var map = getCompletedMap();
+  if (done) {
+    map[file] = true;
+  } else {
+    delete map[file];
+  }
+  try {
+    localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
+  } catch (e) {}
+}
+
+function toggleArticleCompleted(file) {
+  var next = !isArticleCompleted(file);
+  setArticleCompleted(file, next);
+  return next;
+}
+window.toggleArticleCompleted = toggleArticleCompleted;
+window.isArticleCompleted = isArticleCompleted;
+
+function updateArticleCompleteBox() {
+  var here = location.pathname.split('/').pop() || 'index.html';
+  var btn = document.getElementById('article-complete-btn');
+  var statusEl = document.getElementById('article-complete-status');
+  if (!btn) { return; }
+  var done = isArticleCompleted(here);
+  if (done) {
+    btn.textContent = '\u2713 Completed (Tap to Undo)';
+    btn.className = 'btn is-complete';
+    if (statusEl) { statusEl.textContent = 'Moved to the Completed tab on the home screen.'; }
+  } else {
+    btn.textContent = 'Mark as Complete';
+    btn.className = 'btn';
+    if (statusEl) { statusEl.textContent = 'Finished reading this article?'; }
+  }
+}
+
 /* ---------- Shared Header & Footer Injection ---------- */
 function ensureHeaderAndFooter() {
   var here = location.pathname.split('/').pop() || 'index.html';
@@ -463,11 +517,35 @@ function ensureHeaderAndFooter() {
   }
 
   var mainEl = document.querySelector('main');
-  if (!isIndex && mainEl && !document.querySelector('footer.article-footer') && !document.getElementById('prev-next')) {
-    var ftr = document.createElement('footer');
-    ftr.className = 'article-footer';
-    ftr.innerHTML = '<a href="index.html">&larr; All Articles</a><a href="#top">&uarr; Back to top</a>';
-    mainEl.appendChild(ftr);
+  if (!isIndex && mainEl) {
+    if (!document.querySelector('footer.article-footer') && !document.getElementById('prev-next')) {
+      var ftr = document.createElement('footer');
+      ftr.className = 'article-footer';
+      ftr.innerHTML = '<a href="index.html">&larr; All Articles</a><a href="#top">&uarr; Back to top</a>';
+      mainEl.appendChild(ftr);
+    }
+    if (!document.getElementById('article-complete-box')) {
+      var cbox = document.createElement('div');
+      cbox.id = 'article-complete-box';
+      cbox.className = 'article-complete-box';
+      cbox.innerHTML =
+        '<span class="complete-status-text" id="article-complete-status">Finished reading this article?</span>' +
+        '<button type="button" class="btn" id="article-complete-btn">Mark as Complete</button>';
+      var anchor = document.getElementById('prev-next') || document.querySelector('footer.article-footer');
+      if (anchor && anchor.parentNode === mainEl) {
+        mainEl.insertBefore(cbox, anchor);
+      } else {
+        mainEl.appendChild(cbox);
+      }
+      var cbtn = document.getElementById('article-complete-btn');
+      if (cbtn) {
+        cbtn.addEventListener('click', function () {
+          toggleArticleCompleted(here);
+          updateArticleCompleteBox();
+        });
+      }
+      updateArticleCompleteBox();
+    }
   }
 }
 

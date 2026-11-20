@@ -3,12 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matt's Learning Library (Boox Go 10.3 Edition)</title>
-
-  <!-- KaTeX for crisp offline/online LaTeX math rendering (Boox Go 10.3 optimized) -->
-  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
-  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
-  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <title>Matt's Learning Library</title>
   <link rel="stylesheet" href="common.css">
   <script src="common.js"></script>
 </head>
@@ -26,100 +21,161 @@
     </div>
   </header>
 
-  <main>
-    <h1>Interactive Machine Learning Explainers</h1>
-    <p>
-      High-contrast, zero-flicker interactive explainer articles designed specifically for the <strong>Boox Go 10.3 E-ink tablet</strong> and the <strong>Boox Palma 3 pocket E-ink reader</strong> (300 PPI). Every article features worked-out math, clickable concept popovers, interactive calculators, collapsible derivations, and comprehension check quizzes.
-    </p>
-
-    <!-- ARTICLE 1 -->
-    <div class="article-card">
-      <h3>1. How Attention Works: From First Principles to Multi-Head Math</h3>
-      <p>
-        An exhaustive, intuitive guide to the Scaled Dot-Product and Multi-Head Attention mechanisms that power modern LLMs. Includes full step-by-step vector/matrix calculations for a 3-token sentence, interactive attention matrix heatmap inspector, and PyTorch implementations.
-      </p>
-      <a href="attention.html" class="read-btn">Read Attention Guide →</a>
+  <main style="padding-top: 1rem;">
+    <div class="home-tabs" role="tablist">
+      <button type="button" class="home-tab active" id="tab-unread" role="tab" aria-selected="true" onclick="switchHomeTab('unread')">
+        Articles (<span id="count-unread">0</span>)
+      </button>
+      <button type="button" class="home-tab" id="tab-completed" role="tab" aria-selected="false" onclick="switchHomeTab('completed')">
+        Completed (<span id="count-completed">0</span>)
+      </button>
     </div>
 
-    <!-- ARTICLE 2 -->
-    <div class="article-card">
-      <h3>2. Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</h3>
-      <p>
-        A deep breakdown of the DeepMind GKD paper. Explains why classical supervised distillation fails in autoregressive language generation due to exposure bias, the crucial difference between Forward KL (mode-covering) and Reverse KL (mode-seeking), and on-policy student trajectory rollouts.
-      </p>
-      <a href="gkd.html" class="read-btn">Read GKD Guide →</a>
-    </div>
+    <ul class="article-list" id="article-list">
+      <li class="article-row" data-article="attention.html">
+        <a class="article-row-title" href="attention.html">1. How Attention Works: From First Principles to Multi-Head Math</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('attention.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="gkd.html">
+        <a class="article-row-title" href="gkd.html">2. Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('gkd.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="class-imbalance.html">
+        <a class="article-row-title" href="class-imbalance.html">3. Dealing with Class Imbalance in Classification (Overview &amp; Diagnostic Quiz)</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('class-imbalance.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="imbalance-1-metrics.html">
+        <a class="article-row-title" href="imbalance-1-metrics.html">3.1 Class Imbalance Part 1: Why accuracy lies: metrics for rare classes</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('imbalance-1-metrics.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="imbalance-2-evaluation.html">
+        <a class="article-row-title" href="imbalance-2-evaluation.html">3.2 Class Imbalance Part 2: Honest evaluation: splits, folds and leakage</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('imbalance-2-evaluation.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="imbalance-3-thresholds.html">
+        <a class="article-row-title" href="imbalance-3-thresholds.html">3.3 Class Imbalance Part 3: Threshold moving and cost-based decisions</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('imbalance-3-thresholds.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="imbalance-4-weights.html">
+        <a class="article-row-title" href="imbalance-4-weights.html">3.4 Class Imbalance Part 4: Class weights and focal loss</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('imbalance-4-weights.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="imbalance-5-resampling.html">
+        <a class="article-row-title" href="imbalance-5-resampling.html">3.5 Class Imbalance Part 5: Resampling, SMOTE and balanced ensembles</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('imbalance-5-resampling.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="imbalance-6-probabilities.html">
+        <a class="article-row-title" href="imbalance-6-probabilities.html">3.6 Class Imbalance Part 6: Fixing probabilities, other angles, and a checklist</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('imbalance-6-probabilities.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="deepconf.html">
+        <a class="article-row-title" href="deepconf.html">4. DeepConf: Deep Think with Confidence</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('deepconf.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="reinforcement-learning.html">
+        <a class="article-row-title" href="reinforcement-learning.html">5. Reinforcement Learning From Scratch: Learning Without an Answer Key (Part 1)</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('reinforcement-learning.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="rl-algorithms.html">
+        <a class="article-row-title" href="rl-algorithms.html">6. Modern RL Algorithms: From Q* and PPO to GRPO in LLMs (Part 2)</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('rl-algorithms.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="training-hyperparameters.html">
+        <a class="article-row-title" href="training-hyperparameters.html">7. Training Hyperparameters: Why Runs Explode, Stall, or Overfit</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('training-hyperparameters.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="metrics-refresher.html">
+        <a class="article-row-title" href="metrics-refresher.html">8. Classification Metrics Refresher: Precision, Recall, Type I/II Errors, ROC-AUC &amp; PR-AUC</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('metrics-refresher.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="template.html">
+        <a class="article-row-title" href="template.html">9.1 Article Template 1 (Original E-ink Component Template)</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template.html')">Mark Complete</button>
+      </li>
+      <li class="article-row" data-article="template2.html">
+        <a class="article-row-title" href="template2.html">9.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
+        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template2.html')">Mark Complete</button>
+      </li>
+    </ul>
 
-    <!-- ARTICLE 3 -->
-    <div class="article-card">
-      <h3>3. Dealing with Class Imbalance in Classification (6-Part Series)</h3>
-      <p>
-        Split into six focused guides with interactive widgets, tappable term definitions, and 80+ comprehension checks:
-      </p>
-      <ol style="margin: 0.4rem 0 1rem 0; padding-left: 1.4rem;">
-        <li><a href="imbalance-1-metrics.html">Why accuracy lies: metrics for rare classes</a></li>
-        <li><a href="imbalance-2-evaluation.html">Honest evaluation: splits, folds and leakage</a></li>
-        <li><a href="imbalance-3-thresholds.html">Threshold moving and cost-based decisions</a></li>
-        <li><a href="imbalance-4-weights.html">Class weights and focal loss</a></li>
-        <li><a href="imbalance-5-resampling.html">Resampling, SMOTE and balanced ensembles</a></li>
-        <li><a href="imbalance-6-probabilities.html">Fixing probabilities, other angles, and a checklist</a></li>
-      </ol>
-      <a href="class-imbalance.html" class="read-btn">Open Series Overview &amp; Diagnostic Quiz →</a>
-    </div>
+    <div class="empty-tab-msg" id="empty-tab-msg" style="display: none;"></div>
+  </main>
 
-    <!-- ARTICLE 4 -->
-    <div class="article-card">
-      <h3>4. DeepConf: Deep Think with Confidence</h3>
-      <p>
-        How Meta's DeepConf uses token log-probabilities to drop or stop weak reasoning traces, beating plain majority voting while generating far fewer tokens. Covers group confidence, offline filtering, and online early stopping.
-      </p>
-      <a href="deepconf.html" class="read-btn">Read DeepConf Guide →</a>
-    </div>
+  <script>
+    var currentHomeTab = 'unread';
 
-    <!-- ARTICLE 5 -->
-    <div class="article-card">
-      <h3>5. Reinforcement Learning From Scratch: Learning Without an Answer Key (Part 1)</h3>
-      <p>
-        A story-driven introduction to reinforcement learning built around one warehouse hallway scenario: why supervised learning fails when rewards are delayed, how discounted returns ($G_t$) and Temporal-Difference bootstrapping ($\delta_t$) propagate value backward, and how $V(s)$ leads to $Q(s, a)$—all using mental-math numbers and tappable symbol popovers.
-      </p>
-      <a href="reinforcement-learning.html" class="read-btn">Read Part 1: RL From Scratch →</a>
-    </div>
+    function switchHomeTab(tab) {
+      currentHomeTab = tab;
+      var unreadTab = document.getElementById('tab-unread');
+      var completedTab = document.getElementById('tab-completed');
+      if (unreadTab && completedTab) {
+        unreadTab.className = 'home-tab' + (tab === 'unread' ? ' active' : '');
+        unreadTab.setAttribute('aria-selected', tab === 'unread' ? 'true' : 'false');
+        completedTab.className = 'home-tab' + (tab === 'completed' ? ' active' : '');
+        completedTab.setAttribute('aria-selected', tab === 'completed' ? 'true' : 'false');
+      }
+      renderHomeList();
+    }
 
-    <!-- ARTICLE 6 -->
-    <div class="article-card">
-      <h3>6. Modern RL Algorithms: From Q* and PPO to GRPO in LLMs (Part 2)</h3>
-      <p>
-        Continues the RL story from grid games to modern reasoning LLMs: what $Q^*$ ("Q-star") means in both classic Q-Learning/DQN and LLM tree search, why Actor-Critic uses Advantage ($A_t$) instead of raw reward, how PPO's $\pm 20\%$ clipping speed limit stops policy collapse, and how DeepSeek's GRPO eliminates the Critic network by comparing a group of sampled answers.
-      </p>
-      <a href="rl-algorithms.html" class="read-btn">Read Part 2: Q*, PPO &amp; GRPO →</a>
-    </div>
+    function toggleFromHome(file) {
+      toggleArticleCompleted(file);
+      renderHomeList();
+    }
 
-    <!-- ARTICLE 7 -->
-    <div class="article-card">
-      <h3>7. Training Hyperparameters: Why Runs Explode, Stall, or Overfit</h3>
-      <p>
-        An interactive guide to the core dials of neural network and LLM training: how learning rate ($\eta$) interacts with loss curvature ($2/H$), how mini-batch size ($B$) and gradient accumulation ($K$) trade steps for lower gradient noise, why warmup and gradient clipping ($c$) stop early spikes, and why AdamW decouples weight decay ($\lambda$) from $m_t / \sqrt{v_t}$.
-      </p>
-      <a href="training-hyperparameters.html" class="read-btn">Read Training Hyperparameters Guide →</a>
-    </div>
+    function renderHomeList() {
+      var rows = document.querySelectorAll('#article-list .article-row');
+      var unreadCount = 0;
+      var completedCount = 0;
+      var visibleCount = 0;
 
-    <!-- ARTICLE 8 -->
-    <div class="article-card">
-      <h3>8. Classification Metrics Refresher: Precision, Recall, Type I/II Errors, ROC-AUC &amp; PR-AUC</h3>
-      <p>
-        A fast, visual refresher on the 2&times;2 confusion matrix: Type I ($FP$) vs. Type II ($FN$) errors, why Recall and Sensitivity are identical ($\text{TPR}$) while Specificity ($\text{TNR}$) and Precision ($\text{PPV}$) use different denominators, and interactive side-by-side ROC-AUC and PR-AUC charts showing why PR-AUC exposes false-alarm flooding on rare classes.
-      </p>
-      <a href="metrics-refresher.html" class="read-btn">Read Metrics Refresher →</a>
-    </div>
+      rows.forEach(function (row) {
+        var file = row.getAttribute('data-article');
+        var done = isArticleCompleted(file);
+        if (done) {
+          completedCount++;
+        } else {
+          unreadCount++;
+        }
 
-    <!-- ARTICLE 9 -->
-    <div class="article-card">
-      <h3>9. How to Write an Article for This Repo (Templates)</h3>
-      <p>
-        Reference templates for future articles: the original E-ink component template and the new Stage 0&ndash;5 constructive learning template.
-      </p>
-      <a href="template.html" class="read-btn">Open Template 1 →</a>
-      <a href="template2.html" class="read-btn">Open Template 2 →</a>
-    </div>
-  </main></body>
+        var btn = row.querySelector('.complete-toggle-btn');
+        if (btn) {
+          if (done) {
+            btn.textContent = 'Undo';
+            btn.setAttribute('aria-label', 'Move back to Articles');
+          } else {
+            btn.textContent = 'Complete';
+            btn.setAttribute('aria-label', 'Mark complete');
+          }
+        }
+
+        var show = (currentHomeTab === 'completed') ? done : !done;
+        row.style.display = show ? 'flex' : 'none';
+        if (show) { visibleCount++; }
+      });
+
+      var uEl = document.getElementById('count-unread');
+      var cEl = document.getElementById('count-completed');
+      if (uEl) { uEl.textContent = String(unreadCount); }
+      if (cEl) { cEl.textContent = String(completedCount); }
+
+      var emptyEl = document.getElementById('empty-tab-msg');
+      var listEl = document.getElementById('article-list');
+      if (emptyEl && listEl) {
+        if (visibleCount === 0) {
+          listEl.style.display = 'none';
+          emptyEl.style.display = 'block';
+          emptyEl.textContent = (currentHomeTab === 'completed')
+            ? 'No completed articles yet. Tap "Complete" next to any article or at the bottom of an article page.'
+            : 'All articles completed!';
+        } else {
+          listEl.style.display = 'block';
+          emptyEl.style.display = 'none';
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', renderHomeList);
+    window.addEventListener('pageshow', renderHomeList);
+  </script>
+</body>
 </html>
