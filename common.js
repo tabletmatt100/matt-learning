@@ -1035,24 +1035,64 @@ window.getGistToken = getGistToken;
 window.setGistToken = setGistToken;
 window.getGistId = getGistId;
 
-/* Capture #sync=<token> from URL hash so pairing Go 10.3 or Palma 3 is a 1-tap link */
+/* Capture #sync=<token> or ?sync=<token> from URL so pairing Go 10.3 or Palma 3 is a 1-tap link */
 function captureSyncTokenFromHash() {
-  if (!location.hash) { return false; }
-  var m = location.hash.match(/[#&]sync=([^&]+)/);
-  if (m && m[1]) {
-    var tok = decodeURIComponent(m[1]).trim();
-    if (tok) {
-      setGistToken(tok);
-      try {
-        history.replaceState(null, document.title, location.pathname + location.search);
-      } catch (e) {
-        location.hash = '';
-      }
-      return true;
+  var tok = '';
+  if (location.hash) {
+    var m = location.hash.match(/[#&]sync=([^&]+)/);
+    if (m && m[1]) { tok = decodeURIComponent(m[1]).trim(); }
+  }
+  if (!tok && location.search) {
+    var q = location.search.match(/[?&]sync=([^&]+)/);
+    if (q && q[1]) { tok = decodeURIComponent(q[1]).trim(); }
+  }
+  if (tok) {
+    setGistToken(tok);
+    try {
+      history.replaceState(null, document.title, location.pathname);
+    } catch (e) {
+      location.hash = '';
     }
+    return true;
   }
   return false;
 }
+
+function promptGistTokenSetup() {
+  var current = getGistToken();
+  var val = window.prompt('Paste your GitHub token (or open your #sync=... pairing link) to enable 2-way Gist sync:', current || '');
+  if (val !== null) {
+    setGistToken(val);
+    ensureGistWarningBanner();
+    pullStateFromGist(function () {
+      if (getGistToken()) { pushStateToGist(); }
+    });
+  }
+}
+window.promptGistTokenSetup = promptGistTokenSetup;
+
+function ensureGistWarningBanner() {
+  var existing = document.getElementById('gist-setup-banner');
+  var tok = getGistToken();
+  if (tok) {
+    if (existing) { existing.style.display = 'none'; }
+    return;
+  }
+  var mainEl = document.querySelector('main');
+  if (!mainEl) { return; }
+  if (!existing) {
+    existing = document.createElement('div');
+    existing.id = 'gist-setup-banner';
+    existing.style.cssText = 'border:2px solid #000;background:#e8e8e8;padding:0.55rem 0.75rem;margin-bottom:0.75rem;font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;';
+    existing.innerHTML =
+      '<span><strong>Gist sync not set up on this browser</strong> (read-only mode — changes won\'t sync to cloud).Open your <code>#sync=...</code> pairing link or add a token.</span>' +
+      '<button type="button" class="srs-btn" style="background:#000;color:#fff;padding:4px 10px;font-weight:bold;" onclick="promptGistTokenSetup()">Set Token</button>';
+    mainEl.insertBefore(existing, mainEl.firstChild);
+  } else {
+    existing.style.display = 'flex';
+  }
+}
+window.ensureGistWarningBanner = ensureGistWarningBanner;
 
 function getCompletedMap() {
   try {
@@ -1312,6 +1352,7 @@ function ensureHeaderAndFooter() {
 document.addEventListener('DOMContentLoaded', function () {
   var capturedNewToken = captureSyncTokenFromHash();
   ensureHeaderAndFooter();
+  ensureGistWarningBanner();
   ensurePopoverDOM();
   applyFontSize(currentFontSize);
   syncAiCardsFromRepo(function () {
