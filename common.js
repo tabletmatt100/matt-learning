@@ -1478,20 +1478,96 @@ function isTypingInEditable(target) {
   return false;
 }
 
+function extractCleanText(node) {
+  if (!node) { return ''; }
+  var clone = node.cloneNode(true);
+  if (clone.querySelectorAll) {
+    clone.querySelectorAll('#gemini-ask-overlay, #gemini-ask-fab, #popover-box, script, style, .katex-html').forEach(function (n) {
+      n.remove();
+    });
+    /* Include live input/select/slider values inline */
+    var origInputs = node.querySelectorAll ? node.querySelectorAll('input, select, textarea') : [];
+    var cloneInputs = clone.querySelectorAll('input, select, textarea');
+    for (var i = 0; i < origInputs.length && i < cloneInputs.length; i++) {
+      var oi = origInputs[i];
+      var ci = cloneInputs[i];
+      var t = (oi.getAttribute('type') || '').toLowerCase();
+      if (t === 'radio' || t === 'checkbox') {
+        if (oi.checked) {
+          ci.replaceWith(document.createTextNode('[SELECTED: ' + (oi.value || 'checked') + '] '));
+        } else {
+          ci.remove();
+        }
+      } else if (oi.value) {
+        ci.replaceWith(document.createTextNode('[VALUE: ' + oi.value + '] '));
+      }
+    }
+  }
+  return (clone.textContent || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function getVisibleViewportContext() {
+  var root = document.querySelector('main') || document.body;
+  var vh = window.innerHeight || document.documentElement.clientHeight || 800;
+  var blocks = root.querySelectorAll('h1, h2, h3, p, li, .tldr, .worked, .math-block, .refutation, .callout, .interactive-card, .mcq-box, .srs-list-item, .article-row, table');
+  var visibleLines = [];
+  var currentHeading = '';
+  var seen = [];
+
+  for (var i = 0; i < blocks.length; i++) {
+    var el = blocks[i];
+    if (el.closest('#gemini-ask-overlay') || el.closest('#gemini-ask-fab')) { continue; }
+    var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    if (style && (style.display === 'none' || style.visibility === 'hidden')) { continue; }
+    var rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) { continue; }
+
+    var tag = el.tagName.toLowerCase();
+    if ((tag === 'h1' || tag === 'h2' || tag === 'h3') && rect.top <= vh * 0.7) {
+      currentHeading = extractCleanText(el);
+    }
+
+    /* Element overlaps the current viewport */
+    if (rect.bottom > 0 && rect.top < vh) {
+      /* Skip if an ancestor is already in seen[] to avoid duplicating text */
+      var hasAncestor = seen.some(function (anc) { return anc !== el && anc.contains(el); });
+      if (hasAncestor) { continue; }
+      seen.push(el);
+      var txt = extractCleanText(el);
+      if (txt) { visibleLines.push(txt); }
+    }
+  }
+
+  var out = '';
+  if (currentHeading) {
+    out += 'Active Section Heading: ' + currentHeading + '\n';
+  }
+  if (popBox && popBox.style.display === 'block') {
+    var popTxt = extractCleanText(popBox);
+    if (popTxt) { out += 'Currently Open Glossary Popover: ' + popTxt + '\n'; }
+  }
+  out += visibleLines.join('\n\n');
+  if (out.length > 4500) {
+    out = out.slice(0, 4500) + '\n...[viewport truncated]';
+  }
+  return out.trim();
+}
+
 function getPageContextForGemini() {
-  if (geminiCachedPageContext) { return geminiCachedPageContext; }
   var title = document.title || '';
   var h1 = document.querySelector('h1');
   if (h1 && h1.textContent) { title = h1.textContent.trim(); }
   var root = document.querySelector('main') || document.body;
-  var clone = root.cloneNode(true);
-  clone.querySelectorAll('#gemini-ask-overlay, #gemini-ask-fab, #popover-box, script, style, .katex-html').forEach(function (n) {
-    n.remove();
-  });
-  var rawText = (clone.textContent || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-  if (rawText.length > 12000) {
-    rawText = rawText.slice(0, 12000) + '\n...[truncated]';
+  var rawText = extractCleanText(root);
+  if (rawText.length > 24000) {
+    rawText = rawText.slice(0, 24000) + '\n...[truncated]';
   }
+  var viewportText = getVisibleViewportContext();
+  var sel = '';
+  try {
+    sel = (window.getSelection && String(window.getSelection()).trim()) || '';
+  } catch (e) {}
+
   var glossLines = [];
   if (typeof GLOSSARY === 'object' && GLOSSARY) {
     Object.keys(GLOSSARY).forEach(function (k) {
@@ -1502,11 +1578,20 @@ function getPageContextForGemini() {
       }
     });
   }
-  var ctx = 'Page Title: ' + title + '\nURL: ' + (location.pathname.split('/').pop() || 'index.html') + '\n\nPage Content:\n' + rawText;
-  if (glossLines.length) {
-    ctx += '\n\nPage Glossary:\n' + glossLines.join('\n');
+
+  var ctx = 'Page Title: ' + title + '\nURL: ' + (location.pathname.split('/').pop() || 'index.html');
+  if (sel) {
+    ctx += '\n\n=== USER SELECTED TEXT ===\n' + sel;
   }
-  geminiCachedPageContext = ctx;
+  if (viewportText) {
+    ctx += '\n\n=== CURRENTLY VISIBLE ON USER\'S SCREEN (VIEWPORT) ===\n' +
+      '(When the user says "this", "here", "this equation", "this question", or "this widget", prioritize what is currently on their screen below):\n' +
+      viewportText;
+  }
+  ctx += '\n\n=== FULL PAGE CONTENT ===\n' + rawText;
+  if (glossLines.length) {
+    ctx += '\n\n=== PAGE GLOSSARY ===\n' + glossLines.join('\n');
+  }
   return ctx;
 }
 
