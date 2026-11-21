@@ -1206,9 +1206,6 @@ function pullStateFromGist(callback) {
         return;
       }
       var remoteState = JSON.parse(data.files[GIST_FILENAME].content || '{}');
-      if (remoteState.geminiApiKey && typeof remoteState.geminiApiKey === 'string') {
-        setGeminiApiKey(remoteState.geminiApiKey);
-      }
       var remoteCompleted = remoteState.completed || {};
       var remoteUncompleted = remoteState.uncompleted || {};
       var remoteDeck = remoteState.srsDeck || {};
@@ -1343,7 +1340,6 @@ function pushStateToGist(callback) {
   var srsDeck = getSrsDeck();
   var srsRemoved = getSrsRemovedMap();
   var payload = {
-    geminiApiKey: getGeminiApiKey(),
     version: 2,
     updatedAt: now,
     completedCount: Object.keys(map).length,
@@ -1493,8 +1489,8 @@ function getPageContextForGemini() {
     n.remove();
   });
   var rawText = (clone.textContent || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-  if (rawText.length > 26000) {
-    rawText = rawText.slice(0, 26000) + '\n...[truncated]';
+  if (rawText.length > 12000) {
+    rawText = rawText.slice(0, 12000) + '\n...[truncated]';
   }
   var glossLines = [];
   if (typeof GLOSSARY === 'object' && GLOSSARY) {
@@ -1661,13 +1657,17 @@ window.toggleGeminiAskModal = toggleGeminiAskModal;
 
 function callGeminiGenerate(modelName, apiKey, systemText, contents, attempt) {
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelName) + ':generateContent?key=' + encodeURIComponent(apiKey);
+  var genCfg = { temperature: 0.3 };
+  if (modelName.indexOf('hydrogen') !== -1 || modelName.indexOf('gemini-4') !== -1 || modelName.indexOf('gemini-3') !== -1) {
+    genCfg.thinkingConfig = { thinkingLevel: 'LOW' };
+  }
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemText }] },
       contents: contents,
-      generationConfig: { temperature: 0.3 }
+      generationConfig: genCfg
     })
   }).then(function (res) {
     return res.json().catch(function () { return {}; }).then(function (data) {
@@ -1707,11 +1707,10 @@ function submitGeminiQuestion() {
 
   var apiKey = getGeminiApiKey();
   if (!apiKey || q.toLowerCase() === '/key') {
-    var entered = window.prompt('Paste your Gemini API key (starts with AIza... — saved to localStorage & private Gist, never public GitHub):', apiKey || '');
+    var entered = window.prompt('Paste your Gemini API key (saved ONLY to this device\'s localStorage, never GitHub or Gist):', apiKey || '');
     if (!entered || !entered.trim()) { return; }
     apiKey = entered.trim();
     setGeminiApiKey(apiKey);
-    pushStateToGist();
     if (q.toLowerCase() === '/key') {
       inp.value = '';
       return;
