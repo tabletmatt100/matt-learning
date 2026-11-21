@@ -1306,6 +1306,30 @@ footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-bloc
   cursor: default;
 }
 
+#gemini-ask-close {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+  font-size: 1.2rem;
+  font-weight: bold;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#gemini-ask-close:active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+
 @media (max-width: 520px) {
   #gemini-ask-fab {
     right: 10px;

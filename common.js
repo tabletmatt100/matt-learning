@@ -1596,9 +1596,11 @@ function ensureGeminiAskDOM() {
             '<polyline points="5 12 12 5 19 12"></polyline>' +
           '</svg>' +
         '</button>' +
+        '<button type="button" id="gemini-ask-close" aria-label="Close" title="Close (c)">&times;</button>' +
       '</form>';
     document.body.appendChild(ov);
 
+    document.getElementById('gemini-ask-close').addEventListener('click', closeGeminiAskModal);
     var form = document.getElementById('gemini-ask-form');
     form.addEventListener('submit', function (e) {
       e.preventDefault();
