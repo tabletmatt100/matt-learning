@@ -750,6 +750,36 @@ details.mcq-box[open] > summary.mcq-title {
   padding: 1rem 1.15rem;
   width: min(92vw, 320px);
 }
+.srs-info-modal-box {
+  width: min(94vw, 400px);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 0.85rem 0.95rem;
+}
+.srs-info-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.82rem;
+  font-weight: bold;
+  font-style: italic;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.srs-info-btn:active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
 .srs-modal-actions {
   display: flex;
   justify-content: flex-end;

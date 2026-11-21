@@ -102,7 +102,8 @@
 
     <!-- Questions View -->
     <div id="questions-view" style="display: none;">
-      <div class="slide-toggle-bar">
+      <div class="slide-toggle-bar" style="justify-content: space-between; align-items: center;">
+        <button type="button" class="srs-info-btn" onclick="openSrsInfoModal()" aria-label="How question scheduling works" title="How question scheduling works">i</button>
         <div class="slide-toggle" role="switch" tabindex="0" aria-label="Toggle To Do or Scheduled questions" onclick="toggleQuestionFilter()">
           <span class="slide-toggle-opt active" id="q-opt-todo">To Do</span>
           <span class="slide-toggle-opt" id="q-opt-other">Scheduled</span>
@@ -110,6 +111,54 @@
       </div>
 
       <div id="srs-questions-list" style="border-top: 2px solid var(--border);"></div>
+    </div>
+
+    <!-- Scheduling Algorithm Info Modal -->
+    <div id="srs-info-modal" class="srs-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="srs-info-title" onclick="if(event.target===this)closeSrsInfoModal()">
+      <div class="srs-modal-box srs-info-modal-box">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid var(--border); padding-bottom:0.4rem; margin-bottom:0.55rem;">
+          <div id="srs-info-title" style="font-weight:bold; font-size:0.95rem;">How Scheduling Works (SM-2)</div>
+          <button type="button" class="srs-remove-icon-btn" style="position:static;" onclick="closeSrsInfoModal()" aria-label="Close">&times;</button>
+        </div>
+        <div style="font-size:0.82rem; line-height:1.45;">
+          <p style="margin:0 0 0.5rem 0;">Each question tracks its streak (<strong>reps</strong>), current delay in days (<strong>interval</strong> $I$), and an <strong>ease</strong> multiplier ($E$, starting at $2.50$, min $1.30$).</p>
+          <table class="data-table" style="font-size:0.78rem; margin:0.4rem 0;">
+            <thead>
+              <tr>
+                <th style="text-align:left;">Button</th>
+                <th>Next Shown ($I_{\text{next}}$)</th>
+                <th>Ease ($E$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="text-align:left;"><strong>Easy</strong></td>
+                <td>1st: <strong>4d</strong> &middot; 2nd: <strong>9d</strong><br>3rd+: $\text{round}(I \times E \times 1.3)$</td>
+                <td>$+0.15$</td>
+              </tr>
+              <tr>
+                <td style="text-align:left;"><strong>Good</strong></td>
+                <td>1st: <strong>2d</strong> &middot; 2nd: <strong>5d</strong><br>3rd+: $\text{round}(I \times E)$</td>
+                <td>unchanged</td>
+              </tr>
+              <tr>
+                <td style="text-align:left;"><strong>Hard</strong></td>
+                <td>New: <strong>1d</strong><br>Review: $\max(I+1,\text{round}(1.2I))$</td>
+                <td>$-0.15$</td>
+              </tr>
+              <tr>
+                <td style="text-align:left;"><strong>Forgot</strong></td>
+                <td>Resets streak to 0 &rarr; <strong>1d</strong> (Tomorrow)</td>
+                <td>$-0.20$</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="margin:0.45rem 0 0 0;">Questions with due date $\le$ today appear in <strong>To Do</strong>; future questions move to <strong>Scheduled</strong>.</p>
+        </div>
+        <div class="srs-modal-actions" style="margin-top:0.65rem;">
+          <button type="button" class="srs-btn" style="background:var(--active-bg);color:var(--active-text);padding:4px 12px;" onclick="closeSrsInfoModal()">Got it</button>
+        </div>
+      </div>
     </div>
 
     <!-- Remove Question Confirmation Modal -->
@@ -147,6 +196,19 @@
         removeQuestionFromSrs(pendingRemoveCardId);
       }
       closeSrsRemoveModal();
+    }
+
+    function openSrsInfoModal() {
+      var m = document.getElementById('srs-info-modal');
+      if (m) {
+        m.classList.add('open');
+        renderMathIn(m);
+      }
+    }
+
+    function closeSrsInfoModal() {
+      var m = document.getElementById('srs-info-modal');
+      if (m) { m.classList.remove('open'); }
     }
 
     function updateUrlFromState() {
