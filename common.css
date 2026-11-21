@@ -600,6 +600,7 @@ svg, .figure-box svg, .diagram-svg, .chart {
 /* ---------- MCQs & Comprehension Checks ---------- */
 details.mcq-box, .mcq-box {
   border: var(--border-thick);
+  border-radius: 4px;
   padding: 0.9rem 1.3rem;
   margin: 1.3rem 0;
   background: var(--bg);
@@ -622,6 +623,7 @@ details.mcq-box[open] > summary.mcq-title {
 .mcq-option {
   display: block;
   border: var(--border-thin);
+  border-radius: 4px;
   padding: 0.75rem 0.9rem;
   margin: 0.55rem 0;
   cursor: pointer;
@@ -656,7 +658,7 @@ details.mcq-box[open] > summary.mcq-title {
   gap: 10px;
 }
 
-.recall-card { border: var(--border-thin); padding: 0.8rem 1rem; margin: 0.8rem 0; }
+.recall-card { border: var(--border-thin); border-radius: 4px; padding: 0.8rem 1rem; margin: 0.8rem 0; }
 
 /* ---------- Spaced Repetition System (SRS) Components ---------- */
 .srs-badge {
@@ -808,6 +810,7 @@ details.mcq-box[open] > summary.mcq-title {
   color: var(--text);
   border: 2px solid var(--border);
   border-bottom: none;
+  border-radius: 4px 4px 0 0;
   padding: 8px 14px;
   font-size: 0.95rem;
   font-weight: bold;
@@ -952,6 +955,7 @@ details.mcq-box[open] > summary.mcq-title {
 
 .article-complete-box {
   border: 2px solid var(--border);
+  border-radius: 4px;
   padding: 1rem 1.2rem;
   margin: 2.2rem 0 1rem 0;
   background: var(--highlight-bg);
@@ -973,6 +977,7 @@ details.mcq-box[open] > summary.mcq-title {
 
 .article-card, .part-card {
   border: var(--border-thick);
+  border-radius: 4px;
   padding: 1.3rem;
   margin: 1.5rem 0;
   background: var(--bg);
