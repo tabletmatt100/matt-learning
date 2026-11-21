@@ -4,13 +4,14 @@
    plus dynamically discovers any new articles listed in index.html.
    ========================================================================== */
 
-var CACHE_NAME = 'matt-learning-v8';
+var CACHE_NAME = 'matt-learning-v9';
 
 var CORE_ASSETS = [
   './',
   './index.html',
   './common.css',
   './common.js',
+  './srs-cards.json',
   './manifest.json',
   './icon.svg',
   /* Articles */
@@ -28,7 +29,6 @@ var CORE_ASSETS = [
   './metrics-refresher.html',
   './reinforcement-learning.html',
   './rl-algorithms.html',
-  './spaced-repetition.html',
   './template.html',
   './template2.html',
   './training-hyperparameters.html',

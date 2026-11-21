@@ -98,71 +98,62 @@
         <a class="article-row-title" href="lora.html">15. LoRA &amp; QLoRA From Scratch: Low-Rank Adaptation Without Full Fine-Tuning</a>
         <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('lora.html')">Mark Complete</button>
       </li>
-      <li class="article-row" data-article="spaced-repetition.html">
-        <a class="article-row-title" href="spaced-repetition.html">16. Spaced Repetition Systems (SRS) From Scratch: Forgetting Curves, SM-2 &amp; FSRS Math</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('spaced-repetition.html')">Mark Complete</button>
-      </li>
       <li class="article-row" data-article="template.html">
-        <a class="article-row-title" href="template.html">16.1 Article Template 1 (Original E-ink Component Template)</a>
+        <a class="article-row-title" href="template.html">15.1 Article Template 1 (Original E-ink Component Template)</a>
         <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template.html')">Mark Complete</button>
       </li>
       <li class="article-row" data-article="template2.html">
-        <a class="article-row-title" href="template2.html">16.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
+        <a class="article-row-title" href="template2.html">15.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
         <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template2.html')">Mark Complete</button>
       </li>
     </ul>
 
     <div class="empty-tab-msg" id="empty-tab-msg" style="display: none;"></div>
 
-    <!-- Embedded Spaced Repetition Review Deck (Tab 3) -->
+    <!-- Spaced Repetition Tab (Tab 3) -->
     <section id="srs-home-panel" style="display: none;">
-      <div class="control-row" style="margin-top:0.4rem;">
-        <label for="srs-deck-filter">Deck source:</label>
-        <select id="srs-deck-filter" onchange="onHomeSrsFilterChange()">
-          <option value="all">All 16 Articles (Full Library)</option>
-          <option value="completed">Completed Articles Only</option>
-        </select>
-        <a class="btn btn-small" href="spaced-repetition.html" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">How SRS Math Works &rarr;</a>
-      </div>
-
       <div class="stat-grid">
-        <div class="stat"><div class="k">Due Now</div><div class="v" id="srs-stat-due">0</div></div>
-        <div class="stat"><div class="k">New Cards</div><div class="v" id="srs-stat-new">0</div></div>
-        <div class="stat"><div class="k">Scheduled</div><div class="v" id="srs-stat-sched">0</div></div>
-        <div class="stat"><div class="k">Sim Clock</div><div class="v" id="srs-stat-clock">Day +0</div></div>
+        <div class="stat"><div class="k">Due Today</div><div class="v" id="srs-stat-due">0</div></div>
+        <div class="stat"><div class="k">Total in List</div><div class="v" id="srs-stat-total">0</div></div>
+        <div class="stat"><div class="k">Scheduled Later</div><div class="v" id="srs-stat-sched">0</div></div>
+        <div class="stat"><div class="k">Clock</div><div class="v" id="srs-stat-clock">Today</div></div>
       </div>
 
+      <h2 style="margin-top:1.2rem;">1. Questions Due Today (<span id="srs-due-heading-count">0</span>)</h2>
       <div id="srs-reviewer-box" class="srs-flashcard-stage"></div>
 
       <div class="control-row">
-        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(1)">Sim +1 Day</button>
-        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(4)">Sim +4 Days</button>
-        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(14)">Sim +14 Days</button>
-        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(0)">Reset Clock</button>
-        <button type="button" class="btn btn-small" onclick="if(confirm('Reset all flashcard intervals to NEW?')){resetSrsState();}">Reset Deck</button>
+        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(1)">+1 Day (Test Schedule)</button>
+        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(4)">+4 Days</button>
+        <button type="button" class="btn btn-small" onclick="stepSrsDayOffset(0)">Reset to Today</button>
       </div>
+
+      <h2 style="margin-top:2rem;">2. All Saved Questions &amp; Review Schedule (<span id="srs-all-heading-count">0</span>)</h2>
+      <p style="margin-top:0.2rem; font-size:0.92em;">Add questions by tapping <strong>+ Add to SRS</strong> on any question inside an article, by asking the AI in chat to add questions for you, or using the custom form below.</p>
+
+      <details style="margin: 1rem 0;">
+        <summary>+ Add a Custom Question Manually</summary>
+        <div style="margin-top:0.8rem;">
+          <label for="custom-srs-q"><strong>Question:</strong></label>
+          <textarea id="custom-srs-q" placeholder="e.g. Why does AdamW decouple weight decay from the adaptive gradient step?"></textarea>
+          <label for="custom-srs-a" style="display:block; margin-top:0.6rem;"><strong>Answer:</strong></label>
+          <textarea id="custom-srs-a" placeholder="e.g. Standard L2 inside Adam divides lambda*w by sqrt(v_t), weakening decay on high-gradient weights."></textarea>
+          <label for="custom-srs-src" style="display:block; margin-top:0.6rem;"><strong>Topic / Source (optional):</strong></label>
+          <input type="text" id="custom-srs-src" placeholder="e.g. Training Hyperparameters">
+          <div class="control-row">
+            <button type="button" class="btn btn-small" onclick="addCustomSrsFromForm()">Add Question to SRS List</button>
+          </div>
+        </div>
+      </details>
+
+      <div id="srs-all-list"></div>
     </section>
   </main>
 
   <script>
     var currentHomeTab = 'unread';
     var homeSrsAnswerShown = false;
-
-    function populateHomeSrsFilter() {
-      var sel = document.getElementById('srs-deck-filter');
-      if (!sel || sel.options.length > 2 || typeof SRS_LIBRARY !== 'object') { return; }
-      Object.keys(SRS_LIBRARY).forEach(function (file) {
-        var opt = document.createElement('option');
-        opt.value = file;
-        opt.textContent = SRS_LIBRARY[file].title;
-        sel.appendChild(opt);
-      });
-    }
-
-    function onHomeSrsFilterChange() {
-      homeSrsAnswerShown = false;
-      renderHomeSrsPanel();
-    }
+    var forcedReviewCardId = null;
 
     function switchHomeTab(tab) {
       currentHomeTab = tab;
@@ -192,95 +183,152 @@
 
     function gradeFromHomeSrs(cardId, grade) {
       homeSrsAnswerShown = false;
+      forcedReviewCardId = null;
       gradeSrsCard(cardId, grade);
     }
 
+    function reviewCardEarly(cardId) {
+      forcedReviewCardId = cardId;
+      homeSrsAnswerShown = false;
+      renderHomeSrsPanel();
+      var box = document.getElementById('srs-reviewer-box');
+      if (box && typeof box.scrollIntoView === 'function') {
+        box.scrollIntoView();
+      }
+    }
+
+    function removeFromHomeSrs(cardId) {
+      if (forcedReviewCardId === cardId) {
+        forcedReviewCardId = null;
+      }
+      homeSrsAnswerShown = false;
+      removeQuestionFromSrs(cardId);
+    }
+
+    function addCustomSrsFromForm() {
+      var qEl = document.getElementById('custom-srs-q');
+      var aEl = document.getElementById('custom-srs-a');
+      var sEl = document.getElementById('custom-srs-src');
+      var q = qEl ? qEl.value.trim() : '';
+      var a = aEl ? aEl.value.trim() : '';
+      var src = (sEl && sEl.value.trim()) ? sEl.value.trim() : 'Custom Question';
+      if (!q) { return; }
+      var id = 'custom-' + Date.now();
+      addQuestionToSrs(id, q, a || '(No answer entered)', src);
+      if (qEl) { qEl.value = ''; }
+      if (aEl) { aEl.value = ''; }
+      if (sEl) { sEl.value = ''; }
+    }
+
     function renderHomeSrsPanel() {
-      populateHomeSrsFilter();
-      var sel = document.getElementById('srs-deck-filter');
-      var filter = sel ? sel.value : 'all';
-      var cards = typeof getAllSrsCards === 'function' ? getAllSrsCards(filter) : [];
-      var dueCards = [];
-      var newCount = 0;
-      var schedCount = 0;
-
-      cards.forEach(function (c) {
-        if (c.info.status === 'new') { newCount++; }
-        else { schedCount++; }
-        if (c.info.isDue) { dueCards.push(c); }
-      });
-
-      /* Prefer due reviewed cards first, then new cards */
-      dueCards.sort(function (a, b) {
-        if (a.info.status !== b.info.status) {
-          return a.info.status === 'due' ? -1 : 1;
-        }
-        return a.info.diffDays - b.info.diffDays;
-      });
+      var cards = typeof getAllSrsCards === 'function' ? getAllSrsCards() : [];
+      var dueCards = cards.filter(function (c) { return c.info.isDue; });
+      var schedCount = cards.length - dueCards.length;
 
       var dueBadge = document.getElementById('count-srs-due');
       if (dueBadge) {
-        var allCards = typeof getAllSrsCards === 'function' ? getAllSrsCards('all') : [];
-        var totalDue = allCards.filter(function (c) { return c.info.isDue; }).length;
-        dueBadge.textContent = String(totalDue);
+        dueBadge.textContent = dueCards.length + '/' + cards.length;
       }
 
       var elDue = document.getElementById('srs-stat-due');
-      var elNew = document.getElementById('srs-stat-new');
+      var elTotal = document.getElementById('srs-stat-total');
       var elSched = document.getElementById('srs-stat-sched');
       var elClock = document.getElementById('srs-stat-clock');
+      var hDue = document.getElementById('srs-due-heading-count');
+      var hAll = document.getElementById('srs-all-heading-count');
       if (elDue) { elDue.textContent = String(dueCards.length); }
-      if (elNew) { elNew.textContent = String(newCount); }
+      if (elTotal) { elTotal.textContent = String(cards.length); }
       if (elSched) { elSched.textContent = String(schedCount); }
+      if (hDue) { hDue.textContent = String(dueCards.length); }
+      if (hAll) { hAll.textContent = String(cards.length); }
       if (elClock && typeof getSrsDayOffset === 'function') {
-        elClock.textContent = 'Day +' + getSrsDayOffset();
+        var off = getSrsDayOffset();
+        elClock.textContent = off === 0 ? 'Today' : 'Today +' + off + 'd';
       }
 
+      /* 1. Render Due Today Reviewer Box */
       var box = document.getElementById('srs-reviewer-box');
-      if (!box) { return; }
+      if (box) {
+        var activeCard = null;
+        if (forcedReviewCardId) {
+          for (var i = 0; i < cards.length; i++) {
+            if (cards[i].id === forcedReviewCardId) { activeCard = cards[i]; break; }
+          }
+        }
+        if (!activeCard && dueCards.length > 0) {
+          activeCard = dueCards[0];
+        }
 
-      if (cards.length === 0) {
-        box.innerHTML =
-          '<p style="margin:0;"><strong>No cards in this filter yet.</strong> Mark an article Complete first, or switch Deck Source to <strong>All 16 Articles</strong>.</p>';
-        return;
+        if (cards.length === 0) {
+          box.innerHTML =
+            '<p style="margin:0;"><strong>Your SRS list is empty.</strong> Open any article and tap <strong>+ Add to SRS</strong> on a question, or ask the AI in chat to add questions to your list.</p>';
+        } else if (!activeCard) {
+          var nextCard = cards[0];
+          box.innerHTML =
+            '<p style="margin:0 0 0.5rem 0;"><strong>No questions due right now!</strong> All ' + cards.length + ' saved questions are scheduled for future dates (next due: <strong>' + nextCard.info.dateLabel + '</strong>).</p>' +
+            '<p style="margin:0;">See all scheduled dates in Section 2 below, or tap <strong>Review Now</strong> on any question below to practice it early.</p>';
+        } else {
+          var prev = previewSm2Intervals(activeCard.card);
+          var html =
+            '<div class="srs-card-meta">' +
+              '<span><strong>' + activeCard.source + '</strong></span>' +
+              '<span><span class="srs-badge ' + (activeCard.info.isDue ? 'is-due' : 'is-scheduled') + '">' + activeCard.info.dateLabel + '</span></span>' +
+            '</div>' +
+            '<div class="srs-card-q">' + activeCard.q + '</div>';
+
+          if (!homeSrsAnswerShown) {
+            html +=
+              '<div class="control-row" style="margin-bottom:0;">' +
+                '<button type="button" class="btn" style="flex:1;" onclick="revealHomeSrsAnswer()">Show Answer</button>' +
+                '<button type="button" class="btn btn-small" onclick="removeFromHomeSrs(\'' + activeCard.id + '\')">Remove from SRS</button>' +
+              '</div>';
+          } else {
+            html +=
+              '<div class="srs-card-a">' + activeCard.a + '</div>' +
+              '<div class="srs-grade-row">' +
+                '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + activeCard.id + '\', \'again\')">Again<span class="srs-int">' + prev.again + 'd</span></button>' +
+                '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + activeCard.id + '\', \'hard\')">Hard<span class="srs-int">' + prev.hard + 'd</span></button>' +
+                '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + activeCard.id + '\', \'good\')">Good<span class="srs-int">' + prev.good + 'd</span></button>' +
+                '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + activeCard.id + '\', \'easy\')">Easy<span class="srs-int">' + prev.easy + 'd</span></button>' +
+              '</div>' +
+              '<div class="control-row" style="margin-bottom:0;">' +
+                '<button type="button" class="btn btn-small" onclick="removeFromHomeSrs(\'' + activeCard.id + '\')">Remove Question from SRS</button>' +
+              '</div>';
+          }
+          box.innerHTML = html;
+          renderMathIn(box);
+        }
       }
 
-      if (dueCards.length === 0) {
-        var nextIn = 9999;
-        cards.forEach(function (c) {
-          if (c.info.diffDays > 0 && c.info.diffDays < nextIn) { nextIn = c.info.diffDays; }
-        });
-        box.innerHTML =
-          '<p style="margin:0 0 0.6rem 0;"><strong>All caught up for today!</strong> Every card in this deck is scheduled for a future day (next card due in <strong>' + (nextIn < 9999 ? nextIn : 1) + 'd</strong>).</p>' +
-          '<p style="margin:0;">Tap <strong>Sim +1 Day</strong> or <strong>Sim +4 Days</strong> below to fast-forward the clock and test future reviews.</p>';
-        return;
+      /* 2. Render All Saved Questions & Schedule List */
+      var allEl = document.getElementById('srs-all-list');
+      if (allEl) {
+        if (cards.length === 0) {
+          allEl.innerHTML = '<div class="empty-tab-msg">No questions in your SRS list yet.</div>';
+        } else {
+          allEl.innerHTML = cards.map(function (c, idx) {
+            var badgeClass = 'srs-badge ' + (c.info.isDue ? 'is-due' : 'is-scheduled');
+            var schedMeta = 'Scheduled: <strong>' + c.info.dateLabel + '</strong> &middot; Interval: ' + c.interval + 'd &middot; Reps: ' + c.reps + ' &middot; Ease: ' + Number(c.ease).toFixed(2);
+            return '<div class="srs-list-item">' +
+              '<div class="srs-list-header">' +
+                '<div class="srs-list-meta">#' + (idx + 1) + ' &middot; <strong>' + c.source + '</strong></div>' +
+                '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
+              '</div>' +
+              '<div style="font-weight:bold; margin:0.35rem 0;">' + c.q + '</div>' +
+              '<div style="font-size:0.85em; font-family:var(--font-mono); margin-bottom:0.4rem;">' + schedMeta + '</div>' +
+              '<details style="margin:0.4rem 0; padding:0.45rem 0.7rem;">' +
+                '<summary style="font-size:0.88em;">Peek Answer</summary>' +
+                '<div style="margin-top:0.4rem;">' + c.a + '</div>' +
+              '</details>' +
+              '<div class="srs-list-actions">' +
+                '<button type="button" class="btn btn-small" onclick="reviewCardEarly(\'' + c.id + '\')">Review Now</button>' +
+                '<button type="button" class="btn btn-small" onclick="removeFromHomeSrs(\'' + c.id + '\')">Remove</button>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+          renderMathIn(allEl);
+        }
       }
-
-      var curr = dueCards[0];
-      var prev = previewSm2Intervals(curr.state);
-      var html =
-        '<div class="srs-card-meta">' +
-          '<span><a href="' + curr.file + '">' + curr.articleTitle + '</a> &middot; Card #' + (curr.index + 1) + '</span>' +
-          '<span class="srs-badge is-due">' + curr.info.label + '</span>' +
-        '</div>' +
-        '<div class="srs-card-q">' + curr.q + '</div>';
-
-      if (!homeSrsAnswerShown) {
-        html +=
-          '<button type="button" class="btn" style="width:100%;" onclick="revealHomeSrsAnswer()">Show Answer</button>';
-      } else {
-        html +=
-          '<div class="srs-card-a">' + curr.a + '</div>' +
-          '<div class="srs-grade-row">' +
-            '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + curr.id + '\', \'again\')">Again<span class="srs-int">' + prev.again + 'd</span></button>' +
-            '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + curr.id + '\', \'hard\')">Hard<span class="srs-int">' + prev.hard + 'd</span></button>' +
-            '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + curr.id + '\', \'good\')">Good<span class="srs-int">' + prev.good + 'd</span></button>' +
-            '<button type="button" class="srs-grade-btn" onclick="gradeFromHomeSrs(\'' + curr.id + '\', \'easy\')">Easy<span class="srs-int">' + prev.easy + 'd</span></button>' +
-          '</div>';
-      }
-
-      box.innerHTML = html;
-      renderMathIn(box);
     }
 
     function renderHomeList() {

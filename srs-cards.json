@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "cards": [
+    {
+      "id": "example-ai-1",
+      "q": "Why does Scaled Dot-Product Attention divide $QK^\\top$ by $\\sqrt{d_k}$ before applying softmax?",
+      "a": "If $q$ and $k$ have mean $0$ and variance $1$, their dot product has variance $d_k$. Dividing by $\\sqrt{d_k}$ keeps variance at $1$ so softmax does not saturate into one-hot probabilities with near-zero gradients.",
+      "source": "AI Example (Attention)"
+    },
+    {
+      "id": "example-ai-2",
+      "q": "In LoRA ($h = W_0 x + \\frac{\\alpha}{r} B A x$), how are $A$ and $B$ initialized at step 0, and why?",
+      "a": "$A$ is initialized with Gaussian noise and $B = 0$. That ensures $\\Delta W = BA = 0$ at step $0$ (no change to the base model) while giving $B$ a nonzero gradient on the very first backward pass.",
+      "source": "AI Example (LoRA)"
+    }
+  ]
+}

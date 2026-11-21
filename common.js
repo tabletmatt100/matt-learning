@@ -533,17 +533,11 @@ var SRS_LIBRARY = {
       { q: 'Why does LoRA multiply $BAx$ by $\\frac{\\alpha}{r}$ instead of a fixed constant?', a: 'Summing $r$ rank-$1$ terms in $B A x$ causes the output and gradient magnitude to scale proportionally with $r$. Dividing by $r$ normalizes update magnitude so you can sweep $r$ without retuning the learning rate.' },
       { q: 'How does QLoRA reduce the VRAM required to fine-tune a 7B model from $\\sim 60+\\text{ GB}$ down to $\\sim 5\\text{–}7\\text{ GB}$?', a: '1) Freezes $W_0$ so $99\\%$ of weights need zero AdamW optimizer states. 2) Compresses frozen $W_0$ from 16-bit ($14\\text{ GB}$) to 4-bit NormalFloat4 (NF4) with double quantization ($\\sim 3.9\\text{ GB}$), dequantizing blocks to BF16 on the fly.' }
     ]
-  },
-  'spaced-repetition.html': {
-    title: '16. Spaced Repetition Systems (SRS) From Scratch',
-    cards: [
-      { q: 'In the forgetting curve $R(t) = 0.9^{t / S}$, what do Retrievability $R(t)$ and Stability $S$ represent?', a: 'Retrievability $R(t) \\in [0, 1]$ is the probability of recalling a card after $t$ days elapsed. Stability $S$ (in days) is the exact interval at which recall probability drops to $90\\%$ ($R(S) = 0.90$).' },
-      { q: 'In the SM-2 algorithm, how does the Ease Factor $EF$ update after a review of quality $q \\in \\{0..5\\}$, and what is "Ease Hell"?', a: '$EF\' = \\max(1.30,\\ EF + 0.1 - (5 - q)(0.08 + (5 - q)\\cdot 0.02))$. Because grades $q < 4$ reduce $EF$ and only "Easy" ($q=5$) raises it, a few hard reviews permanently trap a card near $EF = 1.30$ ("Ease Hell").' },
-      { q: 'How does FSRS ( the DSR model) decouple Difficulty $D$ from Stability $S$, and why does waiting longer ($R$ lower) produce a larger stability boost on a successful recall?', a: 'FSRS tracks Difficulty $D \\in [1, 10]$ and Stability $S$ separately. When you succeed at a lower retrievability $R$ (higher desirable difficulty / surprise), the factor $(e^{w_{10}(1 - R)} - 1)$ boosts post-review stability $S\'$ more than reviewing early when $R \\approx 1$.' },
-      { q: 'If your target retention is $R^* = 90\\%$ under $R(t) = (1 + \\frac{19}{81}\\frac{t}{S})^{-0.5}$, how does the optimal scheduled interval $I(R^*)$ scale with Stability $S$?', a: 'At $R^* = 0.90$, the scheduled interval equals Stability directly: $I(0.90) = S$ days. Raising target retention to $95\\%$ shortens intervals to $\\approx 0.46 S$, roughly doubling review workload.' }
-    ]
   }
 };
+
+var SRS_DECK_KEY = 'matt_learning_srs_deck_v2';
+var SRS_REMOVED_KEY = 'matt_learning_srs_removed_v2';
 
 function getSrsDayOffset() {
   try {
@@ -563,23 +557,162 @@ function getSrsTodayDay() {
   return Math.floor(Date.now() / MS_PER_DAY) + getSrsDayOffset();
 }
 
-function getSrsState() {
+function formatSrsDueDate(dueDay) {
+  var today = getSrsTodayDay();
+  var diff = dueDay - today;
+  var d = new Date(dueDay * MS_PER_DAY);
+  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var dateStr = months[d.getMonth()] + ' ' + d.getDate();
+  if (diff <= 0) {
+    return 'Due Today (' + dateStr + ')';
+  }
+  if (diff === 1) {
+    return 'Tomorrow (' + dateStr + ' \u00b7 in 1d)';
+  }
+  return dateStr + ' (in ' + diff + 'd)';
+}
+
+/* Explicit user/AI SRS deck: { [id]: { id, q, a, source, reps, interval, ease, lapses, dueDay, addedAt, updatedAt } } */
+function getSrsDeck() {
   try {
-    var raw = localStorage.getItem(SRS_KEY);
+    var raw = localStorage.getItem(SRS_DECK_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch (e) {
     return {};
   }
 }
 
-function saveSrsState(stateMap) {
+function saveSrsDeck(deckMap) {
   try {
-    localStorage.setItem(SRS_KEY, JSON.stringify(stateMap));
+    localStorage.setItem(SRS_DECK_KEY, JSON.stringify(deckMap));
     localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
   } catch (e) {}
 }
 
-/* SM-2 / FSRS-inspired 4-button scheduler:
+function getSrsRemovedMap() {
+  try {
+    var raw = localStorage.getItem(SRS_REMOVED_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveSrsRemovedMap(remMap) {
+  try {
+    localStorage.setItem(SRS_REMOVED_KEY, JSON.stringify(remMap));
+  } catch (e) {}
+}
+
+function isCardInSrs(cardId) {
+  var deck = getSrsDeck();
+  return Boolean(deck[cardId]);
+}
+
+function addQuestionToSrs(cardId, qText, aText, sourceLabel) {
+  var deck = getSrsDeck();
+  var rem = getSrsRemovedMap();
+  delete rem[cardId];
+  saveSrsRemovedMap(rem);
+
+  var today = getSrsTodayDay();
+  var nowIso = new Date().toISOString();
+  if (!deck[cardId]) {
+    deck[cardId] = {
+      id: cardId,
+      q: qText,
+      a: aText,
+      source: sourceLabel || 'Article',
+      reps: 0,
+      interval: 0,
+      ease: 2.50,
+      lapses: 0,
+      dueDay: today,
+      lastGrade: null,
+      addedAt: nowIso,
+      updatedAt: nowIso
+    };
+  } else {
+    deck[cardId].q = qText;
+    deck[cardId].a = aText;
+    if (sourceLabel) { deck[cardId].source = sourceLabel; }
+    deck[cardId].updatedAt = nowIso;
+  }
+  saveSrsDeck(deck);
+  pushStateToGist();
+  refreshAllSrsButtons();
+  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(cardId); }
+  return deck[cardId];
+}
+
+function removeQuestionFromSrs(cardId) {
+  var deck = getSrsDeck();
+  var rem = getSrsRemovedMap();
+  delete deck[cardId];
+  rem[cardId] = new Date().toISOString();
+  saveSrsRemovedMap(rem);
+  saveSrsDeck(deck);
+  pushStateToGist();
+  refreshAllSrsButtons();
+  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(cardId); }
+}
+
+function toggleArticleCardSrs(cardId, qText, aText, sourceLabel) {
+  if (isCardInSrs(cardId)) {
+    removeQuestionFromSrs(cardId);
+    return false;
+  } else {
+    addQuestionToSrs(cardId, qText, aText, sourceLabel);
+    return true;
+  }
+}
+
+/* Pull AI-added cards from srs-cards.json in the repository */
+function syncAiCardsFromRepo(callback) {
+  fetch('srs-cards.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+      return res.json();
+    })
+    .then(function (data) {
+      if (!data || !Array.isArray(data.cards)) { return; }
+      var deck = getSrsDeck();
+      var rem = getSrsRemovedMap();
+      var today = getSrsTodayDay();
+      var changed = false;
+      data.cards.forEach(function (c) {
+        if (!c || !c.id || !c.q) { return; }
+        if (rem[c.id]) { return; } /* User explicitly removed this card */
+        if (!deck[c.id]) {
+          deck[c.id] = {
+            id: c.id,
+            q: c.q,
+            a: c.a || '',
+            source: c.source || 'AI Added',
+            reps: 0,
+            interval: 0,
+            ease: 2.50,
+            lapses: 0,
+            dueDay: today,
+            lastGrade: null,
+            addedAt: c.addedAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveSrsDeck(deck);
+      }
+      if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
+      if (typeof callback === 'function') { callback(); }
+    })
+    .catch(function () {
+      if (typeof callback === 'function') { callback(); }
+    });
+}
+
+/* SM-2 4-button scheduler:
    grade: 'again' (1), 'hard' (2), 'good' (3), 'easy' (4) */
 function computeSm2Next(prev, grade) {
   var reps = (prev && prev.reps) ? prev.reps : 0;
@@ -634,38 +767,50 @@ function previewSm2Intervals(prev) {
   };
 }
 
-function getCardStatusInfo(cardState) {
+function getCardStatusInfo(card) {
   var today = getSrsTodayDay();
-  if (!cardState || !cardState.dueDay) {
-    return { status: 'new', isDue: true, label: 'NEW', diffDays: 0 };
+  if (!card) {
+    return { status: 'not-added', isDue: false, label: 'Not in SRS', diffDays: 9999, dateLabel: '' };
   }
-  var diff = cardState.dueDay - today;
+  var dueDay = card.dueDay || today;
+  var diff = dueDay - today;
+  var dateLabel = formatSrsDueDate(dueDay);
   if (diff <= 0) {
     return {
       status: 'due',
       isDue: true,
-      label: 'DUE NOW \u00b7 EF ' + Number(cardState.ease || 2.5).toFixed(2),
-      diffDays: diff
+      label: 'DUE TODAY',
+      diffDays: diff,
+      dateLabel: dateLabel
     };
   }
   return {
     status: 'scheduled',
     isDue: false,
-    label: 'IN ' + diff + 'd \u00b7 EF ' + Number(cardState.ease || 2.5).toFixed(2),
-    diffDays: diff
+    label: 'Due ' + dateLabel,
+    diffDays: diff,
+    dateLabel: dateLabel
   };
 }
 
 function gradeSrsCard(cardId, grade) {
-  var state = getSrsState();
-  var prev = state[cardId] || null;
-  var next = computeSm2Next(prev, grade);
-  state[cardId] = next;
-  saveSrsState(state);
+  var deck = getSrsDeck();
+  var card = deck[cardId];
+  if (!card) { return null; }
+  var next = computeSm2Next(card, grade);
+  card.reps = next.reps;
+  card.interval = next.interval;
+  card.ease = next.ease;
+  card.lapses = next.lapses;
+  card.dueDay = next.dueDay;
+  card.lastGrade = next.lastGrade;
+  card.updatedAt = next.updatedAt;
+  deck[cardId] = card;
+  saveSrsDeck(deck);
   pushStateToGist();
-  renderSpacedCards();
-  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(cardId, next); }
-  return next;
+  refreshAllSrsButtons();
+  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(cardId, card); }
+  return card;
 }
 
 function stepSrsDayOffset(deltaDays) {
@@ -674,59 +819,54 @@ function stepSrsDayOffset(deltaDays) {
   } else {
     setSrsDayOffset(getSrsDayOffset() + deltaDays);
   }
-  renderSpacedCards();
+  refreshAllSrsButtons();
   if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
 }
 
-function resetSrsState() {
-  try {
-    localStorage.removeItem(SRS_KEY);
-    localStorage.removeItem(SRS_OFFSET_KEY);
-    localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
-  } catch (e) {}
-  pushStateToGist();
-  renderSpacedCards();
-  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
-}
-
-function getAllSrsCards(filterMode) {
-  var state = getSrsState();
-  var completed = getCompletedMap();
+function getAllSrsCards() {
+  var deck = getSrsDeck();
   var out = [];
-  var files = Object.keys(SRS_LIBRARY);
-  files.forEach(function (file) {
-    var isComp = Boolean(completed[file]);
-    if (filterMode === 'completed' && !isComp) { return; }
-    if (filterMode && filterMode !== 'all' && filterMode !== 'completed' && filterMode !== file) { return; }
-    var entry = SRS_LIBRARY[file];
-    entry.cards.forEach(function (c, i) {
-      var id = file + '::' + i;
-      var cState = state[id] || null;
-      var info = getCardStatusInfo(cState);
-      out.push({
-        id: id,
-        file: file,
-        articleTitle: entry.title,
-        index: i,
-        q: c.q.replace(/^\[[0-9]+d\]\s*/, ''),
-        a: c.a,
-        state: cState,
-        info: info
-      });
+  Object.keys(deck).forEach(function (id) {
+    var c = deck[id];
+    if (!c || !c.q) { return; }
+    var info = getCardStatusInfo(c);
+    out.push({
+      id: id,
+      q: c.q,
+      a: c.a || '',
+      source: c.source || 'Custom',
+      reps: c.reps || 0,
+      interval: c.interval || 0,
+      ease: c.ease || 2.50,
+      dueDay: c.dueDay || getSrsTodayDay(),
+      info: info,
+      card: c
     });
+  });
+  /* Sort due cards first, then soonest scheduled due date */
+  out.sort(function (a, b) {
+    if (a.info.isDue !== b.info.isDue) {
+      return a.info.isDue ? -1 : 1;
+    }
+    return a.dueDay - b.dueDay;
   });
   return out;
 }
 
 window.SRS_LIBRARY = SRS_LIBRARY;
-window.getSrsState = getSrsState;
+window.getSrsDeck = getSrsDeck;
 window.getSrsDayOffset = getSrsDayOffset;
+window.formatSrsDueDate = formatSrsDueDate;
+window.isCardInSrs = isCardInSrs;
+window.addQuestionToSrs = addQuestionToSrs;
+window.removeQuestionFromSrs = removeQuestionFromSrs;
+window.toggleArticleCardSrs = toggleArticleCardSrs;
+window.syncAiCardsFromRepo = syncAiCardsFromRepo;
 window.computeSm2Next = computeSm2Next;
 window.previewSm2Intervals = previewSm2Intervals;
 window.getCardStatusInfo = getCardStatusInfo;
 window.gradeSrsCard = gradeSrsCard;
 window.stepSrsDayOffset = stepSrsDayOffset;
-window.resetSrsState = resetSrsState;
 window.getAllSrsCards = getAllSrsCards;
 
 function getActivePageCards() {
@@ -740,33 +880,104 @@ function getActivePageCards() {
   return null;
 }
 
+function getCurrentArticleSourceTitle() {
+  var here = location.pathname.split('/').pop() || 'article.html';
+  if (SRS_LIBRARY[here] && SRS_LIBRARY[here].title) {
+    return SRS_LIBRARY[here].title;
+  }
+  var h1 = document.querySelector('h1');
+  return h1 ? h1.textContent.trim() : here;
+}
+
+/* Toggle an article recall card (by index) into/out of the user's SRS list */
+function toggleRecallCardInSrs(idx) {
+  var cards = getActivePageCards();
+  if (!cards || !cards[idx]) { return; }
+  var here = location.pathname.split('/').pop() || 'article.html';
+  var cardId = here + '::card-' + idx;
+  var cleanQ = cards[idx].q.replace(/^\[[0-9]+d\]\s*/, '');
+  toggleArticleCardSrs(cardId, cleanQ, cards[idx].a, getCurrentArticleSourceTitle());
+}
+window.toggleRecallCardInSrs = toggleRecallCardInSrs;
+
+/* Toggle an article MCQ comprehension check into/out of the user's SRS list */
+function extractMcqQA(box) {
+  var ps = box.querySelectorAll('p');
+  var qText = '';
+  for (var i = 0; i < ps.length; i++) {
+    if (!ps[i].closest('.mcq-feedback') && !ps[i].closest('.mcq-option')) {
+      qText = ps[i].innerHTML.trim();
+      if (qText) { break; }
+    }
+  }
+  var correctVal = box.getAttribute('data-correct');
+  var rightOpt = correctVal ? box.querySelector('input[value="' + correctVal + '"]') : null;
+  var optLabel = rightOpt ? rightOpt.closest('.mcq-option') : box.querySelector('.mcq-option[data-correct="true"]');
+  var aText = '';
+  if (optLabel) {
+    var clone = optLabel.cloneNode(true);
+    var inp = clone.querySelector('input');
+    if (inp) { inp.remove(); }
+    var why = (rightOpt && rightOpt.getAttribute('data-explain')) || optLabel.getAttribute('data-explain') || optLabel.getAttribute('data-why') || '';
+    aText = '<strong>' + clone.innerHTML.trim() + '</strong>' + (why ? '<br>' + why : '');
+  }
+  return { q: qText || 'Comprehension Check', a: aText || 'See article check.' };
+}
+
+function toggleMcqInSrs(boxId) {
+  var box = document.getElementById(boxId);
+  if (!box) { return; }
+  var here = location.pathname.split('/').pop() || 'article.html';
+  var cardId = here + '::' + boxId;
+  var qa = extractMcqQA(box);
+  toggleArticleCardSrs(cardId, qa.q, qa.a, getCurrentArticleSourceTitle());
+}
+window.toggleMcqInSrs = toggleMcqInSrs;
+
+function refreshAllSrsButtons() {
+  renderSpacedCards();
+  var here = location.pathname.split('/').pop() || 'article.html';
+  var deck = getSrsDeck();
+  document.querySelectorAll('.mcq-srs-btn').forEach(function (btn) {
+    var boxId = btn.getAttribute('data-box-id');
+    var cardId = here + '::' + boxId;
+    var inSrs = Boolean(deck[cardId]);
+    if (inSrs) {
+      var info = getCardStatusInfo(deck[cardId]);
+      btn.textContent = '\u2713 In SRS (' + info.dateLabel + ') \u00b7 Remove';
+      btn.className = 'btn btn-small mcq-srs-btn srs-toggle-btn in-srs';
+    } else {
+      btn.textContent = '+ Add to SRS';
+      btn.className = 'btn btn-small mcq-srs-btn srs-toggle-btn';
+    }
+  });
+}
+
 function renderSpacedCards() {
   var listEl = document.getElementById('spaced-list');
   var cards = getActivePageCards();
   if (!listEl || !cards) { return; }
   var here = location.pathname.split('/').pop() || 'article.html';
-  var state = getSrsState();
+  var deck = getSrsDeck();
 
   listEl.innerHTML = cards.map(function (c, i) {
-    var id = here + '::' + i;
-    var cState = state[id] || null;
+    var id = here + '::card-' + i;
+    var cState = deck[id] || null;
+    var inSrs = Boolean(cState);
     var info = getCardStatusInfo(cState);
-    var prev = previewSm2Intervals(cState);
-    var badgeClass = 'srs-badge ' + (info.isDue ? 'is-due' : 'is-scheduled');
     var cleanQ = c.q.replace(/^\[[0-9]+d\]\s*/, '');
-    var lastG = cState && cState.lastGrade ? cState.lastGrade : '';
+    var badgeHtml = inSrs
+      ? ' <span class="srs-badge ' + (info.isDue ? 'is-due' : 'is-scheduled') + '">IN SRS \u00b7 ' + info.label + '</span>'
+      : '';
+    var btnLabel = inSrs
+      ? '\u2713 In SRS (' + info.dateLabel + ') \u2014 Tap to Remove'
+      : '+ Add Question to SRS List';
+    var btnClass = 'btn btn-small srs-toggle-btn' + (inSrs ? ' in-srs' : '');
 
     return '<details class="recall-card" id="recall-card-' + i + '">' +
-      '<summary>Card ' + (i + 1) + ': ' + cleanQ +
-        ' <span class="' + badgeClass + '">' + info.label + '</span>' +
-      '</summary>' +
-      '<p style="margin:0.65rem 0 0 0;">' + c.a + '</p>' +
-      '<div class="srs-grade-row">' +
-        '<button type="button" class="srs-grade-btn' + (lastG === 'again' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'again\')">Again<span class="srs-int">' + prev.again + 'd</span></button>' +
-        '<button type="button" class="srs-grade-btn' + (lastG === 'hard' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'hard\')">Hard<span class="srs-int">' + prev.hard + 'd</span></button>' +
-        '<button type="button" class="srs-grade-btn' + (lastG === 'good' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'good\')">Good<span class="srs-int">' + prev.good + 'd</span></button>' +
-        '<button type="button" class="srs-grade-btn' + (lastG === 'easy' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'easy\')">Easy<span class="srs-int">' + prev.easy + 'd</span></button>' +
-      '</div>' +
+      '<summary>Card ' + (i + 1) + ': ' + cleanQ + badgeHtml + '</summary>' +
+      '<p style="margin:0.65rem 0 0.65rem 0;">' + c.a + '</p>' +
+      '<button type="button" class="' + btnClass + '" onclick="toggleRecallCardInSrs(' + i + ')">' + btnLabel + '</button>' +
     '</details>';
   }).join('');
   renderMathIn(listEl);
@@ -911,35 +1122,56 @@ function pullStateFromGist(callback) {
       }
       var remoteState = JSON.parse(data.files[GIST_FILENAME].content || '{}');
       var remoteCompleted = remoteState.completed || {};
-      var remoteSrs = remoteState.srs || {};
+      var remoteDeck = remoteState.srsDeck || {};
+      var remoteRemoved = remoteState.srsRemoved || {};
       var localCompleted = getCompletedMap();
-      var localSrs = getSrsState();
+      var localDeck = getSrsDeck();
+      var localRemoved = getSrsRemovedMap();
       var localUpdated = '';
       try { localUpdated = localStorage.getItem(GIST_UPDATED_KEY) || ''; } catch (e) {}
       var remoteUpdated = remoteState.updatedAt || '';
 
-      /* Reconcile: if remote is newer than local, adopt remote; if local has unpushed state and no remote timestamp, merge & push */
+      /* Merge removed tombstones first */
+      var mergedRemoved = {};
+      var k;
+      for (k in remoteRemoved) { if (Object.prototype.hasOwnProperty.call(remoteRemoved, k)) { mergedRemoved[k] = remoteRemoved[k]; } }
+      for (k in localRemoved) { if (Object.prototype.hasOwnProperty.call(localRemoved, k)) { mergedRemoved[k] = localRemoved[k]; } }
+      saveSrsRemovedMap(mergedRemoved);
+
+      /* Merge SRS deck items (newest updatedAt wins, respecting tombstones) */
+      var mergedDeck = {};
+      for (k in remoteDeck) {
+        if (Object.prototype.hasOwnProperty.call(remoteDeck, k) && !mergedRemoved[k]) {
+          mergedDeck[k] = remoteDeck[k];
+        }
+      }
+      for (k in localDeck) {
+        if (Object.prototype.hasOwnProperty.call(localDeck, k) && !mergedRemoved[k]) {
+          if (!mergedDeck[k] || (localDeck[k].updatedAt || '') >= (mergedDeck[k].updatedAt || '')) {
+            mergedDeck[k] = localDeck[k];
+          }
+        }
+      }
+      saveSrsDeck(mergedDeck);
+
       var chosen = remoteCompleted;
       if (localUpdated && remoteUpdated && localUpdated > remoteUpdated) {
         chosen = localCompleted;
         pushStateToGist();
-      } else if (!remoteUpdated && (Object.keys(localCompleted).length > 0 || Object.keys(localSrs).length > 0)) {
+      } else if (!remoteUpdated && (Object.keys(localCompleted).length > 0 || Object.keys(mergedDeck).length > 0)) {
         chosen = localCompleted;
         pushStateToGist();
       } else {
         try {
           localStorage.setItem(COMPLETED_KEY, JSON.stringify(remoteCompleted));
-          if (remoteState.srs) {
-            localStorage.setItem(SRS_KEY, JSON.stringify(remoteSrs));
-          }
           if (remoteUpdated) { localStorage.setItem(GIST_UPDATED_KEY, remoteUpdated); }
         } catch (e) {}
       }
 
       var count = Object.keys(chosen).length;
-      setSyncStatus('Gist synced (' + count + ' completed)' + (tok ? ' \u00b7 R/W' : ' \u00b7 Read-only'));
+      setSyncStatus('Gist synced (' + count + ' completed, ' + Object.keys(mergedDeck).length + ' SRS)' + (tok ? ' \u00b7 R/W' : ' \u00b7 Read-only'));
       updateArticleCompleteBox();
-      renderSpacedCards();
+      refreshAllSrsButtons();
       if (typeof renderHomeList === 'function') { renderHomeList(); }
       if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
       if (typeof callback === 'function') { callback(chosen); }
@@ -958,14 +1190,16 @@ function pushStateToGist(callback) {
   }
   var now = new Date().toISOString();
   var map = getCompletedMap();
-  var srsMap = getSrsState();
+  var srsDeck = getSrsDeck();
+  var srsRemoved = getSrsRemovedMap();
   var payload = {
-    version: 1,
+    version: 2,
     updatedAt: now,
     completedCount: Object.keys(map).length,
     completed: map,
-    srsCount: Object.keys(srsMap).length,
-    srs: srsMap
+    srsCount: Object.keys(srsDeck).length,
+    srsDeck: srsDeck,
+    srsRemoved: srsRemoved
   };
   var body = { files: {} };
   body.files[GIST_FILENAME] = { content: JSON.stringify(payload, null, 2) };
@@ -1091,10 +1325,12 @@ document.addEventListener('DOMContentLoaded', function () {
   ensureHeaderAndFooter();
   ensurePopoverDOM();
   applyFontSize(currentFontSize);
-  pullStateFromGist(function () {
-    if (capturedNewToken) {
-      pushStateToGist();
-    }
+  syncAiCardsFromRepo(function () {
+    pullStateFromGist(function () {
+      if (capturedNewToken) {
+        pushStateToGist();
+      }
+    });
   });
   window.addEventListener('online', function () {
     pullStateFromGist();
@@ -1233,13 +1469,26 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /* 4. Auto-create "Check answer" button if missing on standard radio MCQs */
-    if (!isInstant && box.hasAttribute('data-correct') && !box.querySelector('button')) {
+    if (!isInstant && box.hasAttribute('data-correct') && !box.querySelector('button:not(.mcq-srs-btn)')) {
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn';
       btn.textContent = 'Check answer';
       btn.addEventListener('click', function () { checkMCQ(boxId); });
       box.insertBefore(btn, fb);
+    }
+
+    /* 4b. Add "+ Add to SRS" toggle button on every MCQ comprehension check */
+    if (!box.querySelector('.mcq-srs-btn')) {
+      var srsBtn = document.createElement('button');
+      srsBtn.type = 'button';
+      srsBtn.className = 'btn btn-small mcq-srs-btn srs-toggle-btn';
+      srsBtn.setAttribute('data-box-id', boxId);
+      srsBtn.style.marginLeft = '8px';
+      srsBtn.addEventListener('click', function () {
+        toggleMcqInSrs(boxId);
+      });
+      box.insertBefore(srsBtn, fb);
     }
 
     /* 5. Bind radio selection highlight */
@@ -1304,17 +1553,17 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (sw && !sw.querySelector('#spaced-list')) {
     sw.innerHTML =
-      '<div class="widget-label">Interactive Spaced Recall (SM-2 Scheduler)</div>' +
+      '<div class="widget-label">Article Questions &amp; Spaced Repetition</div>' +
       '<h3>Core Retrieval Prompts</h3>' +
-      '<p>Tap any card to reveal its answer and grade recall (<strong>Again</strong>, <strong>Hard</strong>, <strong>Good</strong>, <strong>Easy</strong>). Schedule syncs with the Home <strong>SRS Review</strong> tab and <a href="spaced-repetition.html">Article 16 (SRS Explainer)</a>.</p>' +
+      '<p>Questions are <strong>not</strong> added to your SRS list automatically. Tap any card below and press <strong>+ Add Question to SRS List</strong> to add it to your <a href="index.html#srs">Home SRS Tab</a>.</p>' +
       '<div id="spaced-list"></div>' +
       '<div class="control-row">' +
         '<button type="button" class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>' +
-        '<a class="btn btn-small" href="index.html#srs" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">Open Full SRS Deck &rarr;</a>' +
+        '<a class="btn btn-small" href="index.html#srs" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">Open Home SRS Tab &rarr;</a>' +
         '<span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>' +
       '</div>';
   }
-  renderSpacedCards();
+  refreshAllSrsButtons();
   updateScore();
   ensureMathRendered(10);
 });

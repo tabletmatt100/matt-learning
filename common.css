@@ -738,12 +738,47 @@ details.mcq-box[open] > summary.mcq-title {
   background: var(--highlight-bg);
   padding: 0.9rem;
 }
+.srs-list-item {
+  border: var(--border-thick);
+  padding: 0.85rem 1rem;
+  margin: 0.75rem 0;
+  background: var(--bg);
+}
+.srs-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.srs-list-meta {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  margin-bottom: 0.35rem;
+}
+.srs-list-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+.srs-toggle-btn {
+  margin-top: 0.5rem;
+}
+.srs-toggle-btn.in-srs {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
 @media (max-width: 520px) {
   .srs-grade-row {
     grid-template-columns: repeat(2, 1fr);
   }
   .srs-flashcard-stage {
     padding: 0.9rem;
+  }
+  .srs-list-actions .btn {
+    flex: 1;
+    text-align: center;
   }
 }
 
