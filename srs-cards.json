@@ -2,16 +2,88 @@
   "version": 1,
   "cards": [
     {
-      "id": "example-ai-1",
-      "q": "Why does Scaled Dot-Product Attention divide $QK^\\top$ by $\\sqrt{d_k}$ before applying softmax?",
-      "a": "If $q$ and $k$ have mean $0$ and variance $1$, their dot product has variance $d_k$. Dividing by $\\sqrt{d_k}$ keeps variance at $1$ so softmax does not saturate into one-hot probabilities with near-zero gradients.",
-      "source": "AI Example (Attention)"
+      "id": "gkd.html::card-0",
+      "q": "What is exposure bias in standard supervised Knowledge Distillation ($\\lambda = 0$)?",
+      "a": "During offline KD, the student only sees gold/teacher prefixes, but at inference it conditions on its own imperfect tokens, entering unfamiliar states where errors compound.",
+      "source": "2. Generalized Knowledge Distillation (GKD)"
     },
     {
-      "id": "example-ai-2",
-      "q": "In LoRA ($h = W_0 x + \\frac{\\alpha}{r} B A x$), how are $A$ and $B$ initialized at step 0, and why?",
-      "a": "$A$ is initialized with Gaussian noise and $B = 0$. That ensures $\\Delta W = BA = 0$ at step $0$ (no change to the base model) while giving $B$ a nonzero gradient on the very first backward pass.",
-      "source": "AI Example (LoRA)"
+      "id": "gkd.html::card-1",
+      "q": "How does On-Policy GKD ($\\lambda > 0$) fix exposure bias without needing ground-truth reward verifiers?",
+      "a": "With probability $\\lambda$, the student generates its own rollout $y \\sim p_\\theta(\\cdot|x)$, and the teacher provides dense per-token probability targets $p_T(\\cdot | x, y_{<t})$ on the exact states the student actually visits.",
+      "source": "2. Generalized Knowledge Distillation (GKD)"
+    },
+    {
+      "id": "gkd.html::card-2",
+      "q": "How do Forward KL ($D_{\\text{KL}}(P_T \\parallel P_S)$) and Reverse KL ($D_{\\text{KL}}(P_S \\parallel P_T)$) differ in behavior?",
+      "a": "Forward KL is mode-covering (penalizes student wherever $P_T > 0$, spreading mass across all teacher modes). Reverse KL is mode-seeking (penalizes student wherever $P_T \\approx 0$, locking onto the teacher's single sharpest mode).",
+      "source": "2. Generalized Knowledge Distillation (GKD)"
+    },
+    {
+      "id": "gkd.html::card-3",
+      "q": "Why does raising distillation temperature $T > 1$ help a smaller student learn from teacher logits?",
+      "a": "Dividing logits by $T > 1$ softens the distribution and boosts \"dark knowledge\" in runner-up tokens, teaching relative token similarities instead of a near-one-hot argmax.",
+      "source": "2. Generalized Knowledge Distillation (GKD)"
+    },
+    {
+      "id": "linear-algebra-refresher.html::card-0",
+      "q": "What is the geometric formula connecting the dot product $a \\cdot b$ to cosine similarity?",
+      "a": "$a \\cdot b = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$, so cosine similarity is $\\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2}$, which removes vector lengths and compares direction only.",
+      "source": "9. Linear Algebra for ML Refresher"
+    },
+    {
+      "id": "linear-algebra-refresher.html::card-1",
+      "q": "Why does $L_1$ regularization produce sparse (exact-zero) weights while $L_2$ weight decay does not?",
+      "a": "The derivative of $w^2$ is $2w$ (which vanishes near $0$), whereas the derivative of $|w|$ is $\\pm 1$ all the way to $0$, pushing small weights to exact zero.",
+      "source": "9. Linear Algebra for ML Refresher"
+    },
+    {
+      "id": "linear-algebra-refresher.html::card-2",
+      "q": "If $Y = XW$ with $X$ of shape $(B, d_{\\text{in}})$ and $W$ of shape $(d_{\\text{in}}, d_{\\text{out}})$, what are the backprop shapes for $dX$ and $dW$?",
+      "a": "$dX = dY\\,W^\\top$ has shape $(B, d_{\\text{out}}) \\times (d_{\\text{out}}, d_{\\text{in}}) \\to (B, d_{\\text{in}})$, and $dW = X^\\top dY$ has shape $(d_{\\text{in}}, B) \\times (B, d_{\\text{out}}) \\to (d_{\\text{in}}, d_{\\text{out}})$.",
+      "source": "9. Linear Algebra for ML Refresher"
+    },
+    {
+      "id": "linear-algebra-refresher.html::card-3",
+      "q": "How many parameters and what maximum rank does a LoRA update $\\Delta W = B A$ have when $B$ is $(d, r)$ and $A$ is $(r, d)$?",
+      "a": "It has $2dr$ parameters (instead of $d^2$) and rank at most $r$, because every input passes through an $r$-dimensional bottleneck.",
+      "source": "9. Linear Algebra for ML Refresher"
+    },
+    {
+      "id": "linear-algebra-refresher.html::card-4",
+      "q": "What is an eigenvector $v$ and eigenvalue $\\lambda$ of a square matrix $A$ in plain geometry?",
+      "a": "A direction $v$ that does not rotate when multiplied by $A$ ($Av = \\lambda v$); $A$ simply stretches or shrinks $v$ by the factor $\\lambda$.",
+      "source": "9. Linear Algebra for ML Refresher"
+    },
+    {
+      "id": "calculus-refresher.html::card-0",
+      "q": "Why does Gradient Descent subtract the gradient ($w \\leftarrow w - \\eta \\nabla_w L$)?",
+      "a": "Because the directional derivative $\\nabla L \\cdot u = \\|\\nabla L\\|_2 \\cos\\theta$ is maximized at $\\theta = 0^\\circ$ (steepest uphill) and most negative at $\\theta = 180^\\circ$ ($-\\nabla L$, steepest downhill).",
+      "source": "13. Calculus for ML Refresher"
+    },
+    {
+      "id": "calculus-refresher.html::card-1",
+      "q": "In the multivariable chain rule, when do you multiply local derivatives vs. add them?",
+      "a": "You multiply local derivatives along a sequential chain ($w \\to z \\to \\hat{y} \\to L$), and you add derivatives whenever a variable branches to feed multiple downstream paths.",
+      "source": "13. Calculus for ML Refresher"
+    },
+    {
+      "id": "calculus-refresher.html::card-2",
+      "q": "What is the derivative of $\\sigma(z)$, and why does it cause vanishing gradients in deep networks?",
+      "a": "$\\sigma'(z) = \\sigma(z)(1 - \\sigma(z))$, which is at most $0.25$ (at $z = 0$) and near $0$ for large $|z|$. Multiplying numbers $\\le 0.25$ across many layers shrinks gradients exponentially.",
+      "source": "13. Calculus for ML Refresher"
+    },
+    {
+      "id": "calculus-refresher.html::card-3",
+      "q": "What is the gradient $\\frac{\\partial L}{\\partial z}$ of Cross-Entropy loss combined with Sigmoid or Softmax logits $z$?",
+      "a": "$\\frac{\\partial L}{\\partial z} = \\hat{p} - y$ (predicted probability minus true label), because the $1/\\hat{p}$ derivative of $-\\ln \\hat{p}$ cancels the $\\hat{p}(1 - \\hat{p})$ factor from sigmoid/softmax.",
+      "source": "13. Calculus for ML Refresher"
+    },
+    {
+      "id": "calculus-refresher.html::card-4",
+      "q": "If a loss valley has second-derivative curvature $h = L''(w) > 0$, what is the optimal 1-step learning rate and the maximum stable learning rate?",
+      "a": "Optimal 1-step Newton learning rate is $\\eta = 1/h$; maximum stable learning rate before steps overshoot and diverge is $\\eta_{\\max} = 2/h$.",
+      "source": "13. Calculus for ML Refresher"
     }
   ]
 }
