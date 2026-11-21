@@ -702,6 +702,9 @@ document.addEventListener('DOMContentLoaded', function () {
       pushStateToGist();
     }
   });
+  window.addEventListener('online', function () {
+    pullStateFromGist();
+  });
 
   var inc = document.getElementById('font-inc');
   var dec = document.getElementById('font-dec');

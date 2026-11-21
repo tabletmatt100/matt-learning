@@ -106,24 +106,6 @@
     </ul>
 
     <div class="empty-tab-msg" id="empty-tab-msg" style="display: none;"></div>
-
-    <details class="gist-sync-box" id="gist-sync-details">
-      <summary>Cloud Sync &amp; Agent State (GitHub Gist) &middot; <span id="gist-sync-status">Checking...</span></summary>
-      <div class="gist-sync-inner">
-        <p style="margin: 0.4rem 0 0.6rem 0; font-size: 0.9em;">
-          Syncs completed articles across <strong>Boox Go 10.3</strong>, <strong>Boox Palma 3</strong>, and your Termux agent via Gist <code id="gist-id-label">b270eaafff8dc051eca22cc33b394235</code>.
-        </p>
-        <div class="control-row">
-          <input type="password" id="gist-token-input" placeholder="Paste GitHub Token (with gist scope) for write sync" autocomplete="off">
-        </div>
-        <div class="control-row">
-          <button type="button" class="btn btn-small" onclick="saveTokenAndSync()">Save Token &amp; Push</button>
-          <button type="button" class="btn btn-small" onclick="pullStateFromGist()">Pull from Gist</button>
-          <button type="button" class="btn btn-small" onclick="copyDevicePairLink()">Copy Pair Link</button>
-        </div>
-        <div id="pair-link-msg" style="font-family: var(--font-mono); font-size: 0.82em; margin-top: 0.4rem;"></div>
-      </div>
-    </details>
   </main>
 
   <script>
@@ -145,47 +127,6 @@
     function toggleFromHome(file) {
       toggleArticleCompleted(file);
       renderHomeList();
-    }
-
-    function initGistSyncUI() {
-      var inp = document.getElementById('gist-token-input');
-      if (inp && typeof getGistToken === 'function') {
-        var t = getGistToken();
-        if (t) { inp.value = t; }
-      }
-      var gidLbl = document.getElementById('gist-id-label');
-      if (gidLbl && typeof getGistId === 'function') {
-        gidLbl.textContent = getGistId();
-      }
-    }
-
-    function saveTokenAndSync() {
-      var inp = document.getElementById('gist-token-input');
-      if (inp && typeof setGistToken === 'function') {
-        setGistToken(inp.value);
-      }
-      if (typeof pushStateToGist === 'function') {
-        pushStateToGist();
-      }
-    }
-
-    function copyDevicePairLink() {
-      var tok = (typeof getGistToken === 'function') ? getGistToken() : '';
-      var msg = document.getElementById('pair-link-msg');
-      if (!tok) {
-        if (msg) { msg.textContent = 'Save a token first to generate a pairing link.'; }
-        return;
-      }
-      var url = 'https://tabletmatt100.github.io/matt-learning/#sync=' + encodeURIComponent(tok);
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(function () {
-          if (msg) { msg.textContent = 'Copied 1-tap pairing URL to clipboard.'; }
-        }, function () {
-          if (msg) { msg.textContent = url; }
-        });
-      } else if (msg) {
-        msg.textContent = url;
-      }
     }
 
     function renderHomeList() {
@@ -240,10 +181,7 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
-      initGistSyncUI();
-      renderHomeList();
-    });
+    document.addEventListener('DOMContentLoaded', renderHomeList);
     window.addEventListener('pageshow', renderHomeList);
   </script>
 </body>
