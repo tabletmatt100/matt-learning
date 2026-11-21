@@ -379,25 +379,409 @@ function resetMCQs() {
   updateScore();
 }
 
-/* ---------- Spaced Recall Flashcards ---------- */
+/* ---------- Spaced Repetition System (SRS) Engine & Master Deck ---------- */
+var SRS_KEY = 'matt_learning_srs_v1';
+var SRS_OFFSET_KEY = 'matt_learning_srs_offset_days';
+var MS_PER_DAY = 86400000;
+
+var SRS_LIBRARY = {
+  'attention.html': {
+    title: '1. How Attention Works',
+    cards: [
+      { q: 'Write the Scaled Dot-Product Attention formula and explain why we divide by $\\sqrt{d_k}$.', a: '$\\text{Attention}(Q,K,V) = \\text{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$. If $q_i, k_j$ have unit variance, their dot product has variance $d_k$; dividing by $\\sqrt{d_k}$ keeps variance at $1$ so softmax does not saturate into near-zero gradients.' },
+      { q: 'What are the exact roles of Query ($Q$), Key ($K$), and Value ($V$) in self-attention?', a: 'Query $Q = XW_Q$ asks "what am I looking for?", Key $K = XW_K$ advertises "what do I contain?" (matched via $QK^\\top$), and Value $V = XW_V$ holds the payload vectors blended by the attention weights.' },
+      { q: 'How does a causal attention mask prevent future-token leakage during autoregressive training?', a: 'It adds $-\\infty$ (or $-10^9$) to every upper-triangular score $(i < j)$ before softmax, forcing $\\exp(-\\infty) = 0$ so token $i$ puts $0\\%$ weight on any future token $j > i$.' },
+      { q: 'Why use Multi-Head Attention with $h$ heads of dimension $d_k = d_{\\text{model}}/h$ instead of one big head?', a: 'Each head projects into a distinct $d_k$-dimensional subspace at the same total FLOP cost, letting the layer attend to syntax, coreference, and position simultaneously before concatenating and projecting via $W_O$.' },
+      { q: 'Why does standard self-attention scale quadratically $O(T^2)$ in sequence length $T$?', a: 'Because every one of the $T$ queries computes a dot product against all $T$ keys, forming a $T \\times T$ attention matrix per head.' }
+    ]
+  },
+  'gkd.html': {
+    title: '2. Generalized Knowledge Distillation (GKD)',
+    cards: [
+      { q: 'What is exposure bias in standard supervised Knowledge Distillation ($\lambda = 0$)?', a: 'During offline KD, the student only sees gold/teacher prefixes, but at inference it conditions on its own imperfect tokens, entering unfamiliar states where errors compound.' },
+      { q: 'How does On-Policy GKD ($\lambda > 0$) fix exposure bias without needing ground-truth reward verifiers?', a: 'With probability $\\lambda$, the student generates its own rollout $y \\sim p_\\theta(\\cdot|x)$, and the teacher provides dense per-token probability targets $p_T(\\cdot | x, y_{<t})$ on the exact states the student actually visits.' },
+      { q: 'How do Forward KL ($D_{\\text{KL}}(P_T \\parallel P_S)$) and Reverse KL ($D_{\\text{KL}}(P_S \\parallel P_T)$) differ in behavior?', a: 'Forward KL is mode-covering (penalizes student wherever $P_T > 0$, spreading mass across all teacher modes). Reverse KL is mode-seeking (penalizes student wherever $P_T \\approx 0$, locking onto the teacher\'s single sharpest mode).' },
+      { q: 'Why does raising distillation temperature $T > 1$ help a smaller student learn from teacher logits?', a: 'Dividing logits by $T > 1$ softens the distribution and boosts "dark knowledge" in runner-up tokens, teaching relative token similarities instead of a near-one-hot argmax.' }
+    ]
+  },
+  'class-imbalance.html': {
+    title: '3. Dealing with Class Imbalance',
+    cards: [
+      { q: 'On a $1\\%$ fraud dataset ($100$ frauds, $9{,}900$ legit), a classifier has $90\\%$ recall ($\\text{TPR} = 0.90$) and $95\\%$ specificity ($\\text{FPR} = 0.05$). What is its precision, and why?', a: 'It catches $0.90 \\times 100 = 90$ frauds ($TP = 90$), but triggers $0.05 \\times 9{,}900 = 495$ false alarms ($FP = 495$). $\\text{Precision} = 90 / (90 + 495) = 15.4\\%$, because the $5\\%$ FPR multiplies a $99\\times$ larger negative pool.' },
+      { q: 'Why is PR-AUC preferred over ROC-AUC when positives are rare (e.g. $\\pi = 1\\%$)?', a: 'ROC-AUC uses $\\text{FPR} = FP / (FP + TN)$, where massive $TN$ hides hundreds of false alarms. PR-AUC plots Precision vs Recall, comparing false alarms directly against true catches. Random guessing scores $0.50$ on ROC-AUC but $\\pi$ ($0.01$) on PR-AUC.' },
+      { q: 'Given false-positive cost $C_{FP}$ and false-negative cost $C_{FN}$, what is the Bayes-optimal probability threshold $t^*$ for a calibrated classifier?', a: '$t^* = \\frac{C_{FP}}{C_{FP} + C_{FN}}$. For example, if a review costs $\\$10$ and a missed fraud costs $\\$90$, flag whenever $\\hat{p} \\ge \\frac{10}{10 + 90} = 0.10$.' },
+      { q: 'What happens if you run SMOTE or oversampling before splitting into train and validation folds?', a: 'Data leakage: copies/interpolations of the same minority examples land in both train and validation folds, inflating validation recall. Always resample strictly inside the training fold.' },
+      { q: 'How do class weights $w_+$ and focal loss $-(1 - p_t)^\\gamma \\ln p_t$ differ in how they reweight training examples?', a: 'Class weights multiply all positive examples by a constant $w_+$. Focal loss scales every example by $(1 - p_t)^\\gamma$, shrinking well-classified examples so gradients focus on hard examples.' },
+      { q: 'If you train with positive class weight $w_+$ and the model outputs raw probability $\\tilde{p}$, how do you recover the calibrated probability $\\hat{p}$?', a: 'Divide the raw odds by $w_+$: $\\hat{p} = \\frac{\\tilde{p}}{\\tilde{p} + w_+(1 - \\tilde{p})}$, or in log-odds: $\\text{logit}(\\hat{p}) = \\text{logit}(\\tilde{p}) - \\ln w_+$.' }
+    ]
+  },
+  'deepconf.html': {
+    title: '4. DeepConf: Deep Think with Confidence',
+    cards: [
+      { q: 'How does DeepConf define token confidence $C_t$ from next-token distribution $P_t$?', a: 'As the average log-probability of the top-$k$ candidate tokens at step $t$ (or negative local entropy), measuring how sharply peaked the model\'s belief is at that step.' },
+      { q: 'Why does DeepConf use Lowest Group Confidence (sliding window minimum) instead of average trace confidence?', a: 'A long reasoning chain is a weakest-link process: one hallucinated algebraic step ruins the final answer even if the other $95\\%$ of tokens have high confidence. A sliding window catches localized collapses.' },
+      { q: 'How does DeepConf Online early stopping save $40\\text{–}70\\%$ of test-time compute tokens?', a: 'After $N_0$ warmup traces establish a confidence threshold $\\tau$, subsequent parallel traces are aborted mid-generation the moment their sliding-window confidence drops below $\\tau$.' },
+      { q: 'In confidence-weighted majority voting, how are surviving traces aggregated?', a: 'Instead of $1$ vote per trace, each trace\'s vote for final answer $a$ is weighted by its softmax-normalized trace confidence (after filtering out the bottom percentile).' }
+    ]
+  },
+  'reinforcement-learning.html': {
+    title: '5. Reinforcement Learning From Scratch (Part 1)',
+    cards: [
+      { q: 'What is the Credit Assignment Problem in RL?', a: 'When a reward arrives after a sequence of moves, figuring out which earlier actions actually caused that outcome.' },
+      { q: 'If a $+80$ reward is delayed by $2$ steps and $\\gamma = 0.5$, what is it worth today?', a: '$20$ (step $1$ cuts $80$ in half to $40$; step $2$ cuts $40$ in half to $20$).' },
+      { q: 'What is the 1-step TD error ($\\delta_t$) in plain English?', a: 'The surprise between the 1-step target $R_{t+1} + \\gamma V(S_{t+1})$ and your old scorecard estimate $V(S_t)$.' },
+      { q: 'What does bootstrapping mean in TD learning?', a: 'Updating a state\'s scorecard after one step using the neighboring state\'s current scorecard estimate $V(S_{t+1})$ instead of waiting for the episode to end.' },
+      { q: 'Why do we need $Q(s, a)$ instead of just $V(s)$ to pick actions?', a: '$V(s)$ only scores how good a tile is; $Q(s, a)$ scores each specific move from that tile so you can pick the move with the highest score.' }
+    ]
+  },
+  'rl-algorithms.html': {
+    title: '6. Modern RL Algorithms: Q*, PPO & GRPO (Part 2)',
+    cards: [
+      { q: 'What does $Q^*(s, a)$ ("Q-star") mean in plain English?', a: 'The expected discounted return of taking action $a$ in state $s$, assuming you play $100\\%$ optimally on every step after that.' },
+      { q: 'Why do Actor-Critic algorithms use Advantage ($A_t = R - V(s)$) instead of raw reward $R$?', a: 'So they only reinforce actions that scored better than the expected baseline $V(s)$ for that state/prompt, rather than rewarding below-average answers on easy prompts.' },
+      { q: 'What problem does PPO\'s clipping range $[1 - \\epsilon, 1 + \\epsilon]$ solve?', a: 'It puts a speed limit (e.g. $\\pm 20\\%$) on how far the new policy probabilities can move from the old policy in a single update, preventing policy collapse.' },
+      { q: 'How does GRPO compute Advantage without a Critic neural network?', a: 'It samples a group of $G$ answers for the same prompt, computes their average reward $\\mu$, and scores each answer relative to that group average: $A_i = (R_i - \\mu) / \\sigma$.' },
+      { q: 'When should you pick DPO vs. GRPO for an LLM?', a: 'Use DPO for fast offline tuning on fixed (chosen, rejected) preference pairs; use GRPO when the model needs online practice and verification (like solving math or code problems).' }
+    ]
+  },
+  'training-hyperparameters.html': {
+    title: '7. Training Hyperparameters',
+    cards: [
+      { q: 'Above what threshold does gradient descent diverge on a valley with curvature $H$?', a: 'When learning rate $\\eta > 2 / H$. Each step jumps past the minimum and lands higher up the opposite wall.' },
+      { q: 'How does Gradient Accumulation ($K$ steps) achieve a large effective batch size $B_{\\text{eff}}$ on a small GPU?', a: 'It runs $K$ forward/backward passes of micro-batch $B_{\\text{micro}}$ and averages their gradients before updating weights once, giving $B_{\\text{eff}} = B_{\\text{micro}} \\times K$ without storing all $B_{\\text{eff}}$ activations at once.' },
+      { q: 'If you quadruple effective batch size $B_{\\text{eff}}$ for a fixed number of epochs, why must you adjust the learning rate $\\eta$?', a: 'Because $4\\times$ larger batches take $4\\times$ fewer optimizer steps per epoch (and have $2\\times$ lower gradient noise std), so $\\eta$ must be scaled up (linearly for SGD, or by $\\sqrt{4} = 2\\times$ for AdamW) to cover the same progress.' },
+      { q: 'Why does AdamW need linear warmup during the first $W$ steps of Transformer training?', a: 'Because at step $0$ the second-moment variance estimate $v_t$ has almost no sample history, so taking full peak-LR steps immediately produces erratic adaptive jumps.' },
+      { q: 'How does Gradient Norm Clipping at threshold $c$ protect training without distorting the update direction?', a: 'Whenever $\\lVert g \\rVert_2 > c$, it multiplies the entire gradient vector by the scalar $c / \\lVert g \\rVert_2$, shrinking its length to $c$ while preserving the exact ratio between all coordinates.' },
+      { q: 'What is the mathematical difference between AdamW and Adam + L2 regularization?', a: 'Adam + L2 adds $\\lambda w$ into the gradient, where it gets divided by $\\sqrt{\\hat{v}_t}$ (weakening decay on high-gradient weights). AdamW decouples weight decay outside the adaptive term: $w \\leftarrow w - \\eta \\lambda w$.' }
+    ]
+  },
+  'metrics-refresher.html': {
+    title: '8. Classification Metrics Refresher',
+    cards: [
+      { q: 'State the conditioning difference between Precision and Recall in terms of $TP, FP, FN$.', a: 'Precision conditions on predicted positives: $P(\\text{true}+ \\mid \\text{pred}+) = TP/(TP+FP)$. Recall conditions on actual positives: $P(\\text{pred}+ \\mid \\text{true}+) = TP/(TP+FN)$.' },
+      { q: 'What is a Type I error ($\\alpha$) vs. a Type II error ($\\beta$), and how do they connect to FPR and Recall?', a: 'Type I error is a False Positive ($\\alpha = \\text{FPR} = FP/(FP+TN)$). Type II error is a False Negative ($\\beta = \\text{FNR} = FN/(TP+FN) = 1 - \\text{Recall}$).' },
+      { q: 'Why does F1 use the harmonic mean $\\frac{2PR}{P+R}$ instead of the arithmetic mean $\\frac{P+R}{2}$?', a: 'A classifier that predicts positive on everything gets $R = 1.0, P \\approx 0$, which still scores $0.50$ under arithmetic mean but $\\approx 0$ under harmonic mean; harmonic mean punishes extreme imbalance between $P$ and $R$.' },
+      { q: 'What is the probabilistic interpretation of ROC-AUC?', a: 'ROC-AUC equals the probability $P(s(x_+) > s(x_-))$ that a randomly chosen positive example receives a higher model score than a randomly chosen negative example.' }
+    ]
+  },
+  'linear-algebra-refresher.html': {
+    title: '9. Linear Algebra for ML Refresher',
+    cards: [
+      { q: 'What is the geometric formula connecting the dot product $a \\cdot b$ to cosine similarity?', a: '$a \\cdot b = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$, so cosine similarity is $\\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2}$, which removes vector lengths and compares direction only.' },
+      { q: 'Why does $L_1$ regularization produce sparse (exact-zero) weights while $L_2$ weight decay does not?', a: 'The derivative of $w^2$ is $2w$ (which vanishes near $0$), whereas the derivative of $|w|$ is $\\pm 1$ all the way to $0$, pushing small weights to exact zero.' },
+      { q: 'If $Y = XW$ with $X$ of shape $(B, d_{\\text{in}})$ and $W$ of shape $(d_{\\text{in}}, d_{\\text{out}})$, what are the backprop shapes for $dX$ and $dW$?', a: '$dX = dY\\,W^\\top$ has shape $(B, d_{\\text{out}}) \\times (d_{\\text{out}}, d_{\\text{in}}) \\to (B, d_{\\text{in}})$, and $dW = X^\\top dY$ has shape $(d_{\\text{in}}, B) \\times (B, d_{\\text{out}}) \\to (d_{\\text{in}}, d_{\\text{out}})$.' },
+      { q: 'How many parameters and what maximum rank does a LoRA update $\\Delta W = B A$ have when $B$ is $(d, r)$ and $A$ is $(r, d)$?', a: 'It has $2dr$ parameters (instead of $d^2$) and rank at most $r$, because every input passes through an $r$-dimensional bottleneck.' },
+      { q: 'What is an eigenvector $v$ and eigenvalue $\\lambda$ of a square matrix $A$ in plain geometry?', a: 'A direction $v$ that does not rotate when multiplied by $A$ ($Av = \\lambda v$); $A$ simply stretches or shrinks $v$ by the factor $\\lambda$.' }
+    ]
+  },
+  'feature-engineering.html': {
+    title: '10. Feature Engineering',
+    cards: [
+      { q: 'Why do decision trees struggle with raw ratio relationships like $x_1 / x_2$ unless you engineer the ratio column explicitly?', a: 'Decision trees only make axis-aligned splits ($x_1 > c$ or $x_2 > d$), so approximating a diagonal slope $x_1 / x_2 > k$ requires a jagged staircase of dozens of splits that generalizes poorly.' },
+      { q: 'Which models require feature standardization ($z = (x - \\mu)/\\sigma$) or log-transforms, and which are invariant to monotonic rescaling?', a: 'Linear/logistic regression, neural nets, SVMs, and k-NN depend on distances and gradients so they require scaling. Tree ensembles (XGBoost, Random Forest) only rank split order and are invariant to monotonic rescaling of single columns.' },
+      { q: 'Write the smoothed Out-of-Fold Target Encoding formula for category $c$ and explain why both parts are required.', a: '$\\text{TE}(c) = \\frac{\\sum_{i \\in c_{\\text{oof}}} y_i + m \\cdot \\bar{y}}{n_c + m}$. Out-of-fold exclusion prevents target self-leakage, while $m$ virtual prior rows shrink rare categories toward the global mean $\\bar{y}$.' },
+      { q: 'Why must cyclical features like hour-of-day $h \\in [0, 24)$ be encoded as $(\\sin(2\\pi h/24), \\cos(2\\pi h/24))$?', a: 'Raw integers place $23{:}00$ and $00{:}00$ at opposite ends ($|23-0|=23$). Mapping onto the unit circle makes adjacent hours close across midnight while $(\\sin, \\cos)$ uniquely identifies every angle.' }
+    ]
+  },
+  'calibration.html': {
+    title: '11. Probability Calibration',
+    cards: [
+      { q: 'What does it mean for a classifier\'s probabilities $\\hat{p}$ to be calibrated, and why can a model have ROC-AUC $= 0.95$ while being badly miscalibrated?', a: 'Calibration means $P(Y=1 \\mid \\hat{p} = p) = p$. ROC-AUC only checks pairwise rank order, so multiplying all probabilities by $0.1$ or pushing them to $0.001 / 0.999$ leaves ROC-AUC unchanged while ruining calibration.' },
+      { q: 'How do Brier Score and Expected Calibration Error (ECE) measure probability quality?', a: 'Brier Score $\\frac{1}{N}\\sum (\\hat{p}_i - y_i)^2$ combines calibration and refinement (discrimination). ECE $\\sum_b \\frac{n_b}{N} |\\text{acc}(b) - \\text{conf}(b)|$ measures the weighted vertical gap between the reliability curve and the $y = x$ diagonal.' },
+      { q: 'When should you choose Platt Scaling (Sigmoid / Temperature Scaling) vs. Isotonic Regression (PAVA)?', a: 'Use Platt/Temperature Scaling (1–2 parameters) when calibration data is small ($N < 1{,}000$) or distortion is sigmoidal. Use Isotonic Regression (non-parametric piecewise-constant) only when you have $N > 1{,}000\\text{–}2{,}000$ held-out samples.' },
+      { q: 'Why do boosted trees and deep neural nets distort probabilities in opposite ways before calibration?', a: 'Boosted/bagged trees average or sum restricted votes, pushing scores away from $0$ and $1$ (under-confident, needing $a > 1$ Platt slope). Over-parameterized deep nets keep growing logits on separable training data, making softmax over-confident (needing Temperature $T > 1$).' }
+    ]
+  },
+  'bias-variance.html': {
+    title: '12. Overfitting, Underfitting & Bias-Variance',
+    cards: [
+      { q: 'Write the 3-term Bias-Variance decomposition of Expected Test MSE at input $x$.', a: '$\\mathbb{E}[(y - \\hat{f}(x))^2] = \\text{Bias}^2 + \\text{Variance} + \\sigma^2$, where $\\text{Bias}^2 = (\\bar{f}(x) - f(x))^2$, $\\text{Variance} = \\mathbb{E}[(\\hat{f}(x) - \\bar{f}(x))^2]$, and $\\sigma^2$ is irreducible noise.' },
+      { q: 'How do you distinguish Underfitting from Overfitting using Training Error and Validation Error?', a: 'Underfitting (high bias): BOTH training and validation errors are high (tiny gap). Overfitting (high variance): training error is very low while validation error is high (wide generalization gap).' },
+      { q: 'Why does adding $10\\times$ more training rows fail to fix an underfit (high-bias) model?', a: 'More rows only reduce Variance ($\\sim 1/N$) so the model estimates its best straight line more precisely, but a rigid model still cannot bend to match a curved true signal $f(x)$.' },
+      { q: 'Across repeated training sets, a model predicts an average of $7$ for a true target of $10$, with prediction variance $2$ and noise variance $1$. What is its Expected Test MSE?', a: '$\\text{Bias}^2 = (7 - 10)^2 = 9$. Expected Test MSE $= 9\\ (\\text{Bias}^2) + 2\\ (\\text{Variance}) + 1\\ (\\text{Noise}) = 12$.' },
+      { q: 'Why do Random Forests (bagging) use deep trees while Gradient Boosting uses shallow trees?', a: 'Averaging independent trees cuts Variance but leaves Bias unchanged, so Random Forests must start with low-bias deep trees. Boosting sequentially fixes errors to cut Bias, so it starts with low-variance shallow trees.' }
+    ]
+  },
+  'calculus-refresher.html': {
+    title: '13. Calculus for ML Refresher',
+    cards: [
+      { q: 'Why does Gradient Descent subtract the gradient ($w \\leftarrow w - \\eta \\nabla_w L$)?', a: 'Because the directional derivative $\\nabla L \\cdot u = \\|\\nabla L\\|_2 \\cos\\theta$ is maximized at $\\theta = 0^\\circ$ (steepest uphill) and most negative at $\\theta = 180^\\circ$ ($-\\nabla L$, steepest downhill).' },
+      { q: 'In the multivariable chain rule, when do you multiply local derivatives vs. add them?', a: 'You multiply local derivatives along a sequential chain ($w \\to z \\to \\hat{y} \\to L$), and you add derivatives whenever a variable branches to feed multiple downstream paths.' },
+      { q: 'What is the derivative of $\\sigma(z)$, and why does it cause vanishing gradients in deep networks?', a: '$\\sigma\'(z) = \\sigma(z)(1 - \\sigma(z))$, which is at most $0.25$ (at $z = 0$) and near $0$ for large $|z|$. Multiplying numbers $\\le 0.25$ across many layers shrinks gradients exponentially.' },
+      { q: 'What is the gradient $\\frac{\\partial L}{\\partial z}$ of Cross-Entropy loss combined with Sigmoid or Softmax logits $z$?', a: '$\\frac{\\partial L}{\\partial z} = \\hat{p} - y$ (predicted probability minus true label), because the $1/\\hat{p}$ derivative of $-\\ln \\hat{p}$ cancels the $\\hat{p}(1 - \\hat{p})$ factor from sigmoid/softmax.' },
+      { q: 'If a loss valley has second-derivative curvature $h = L\'\'(w) > 0$, what is the optimal 1-step learning rate and the maximum stable learning rate?', a: 'Optimal 1-step Newton learning rate is $\\eta = 1/h$; maximum stable learning rate before steps overshoot and diverge is $\\eta_{\\max} = 2/h$.' }
+    ]
+  },
+  'backpropagation.html': {
+    title: '14. Backpropagation From Scratch',
+    cards: [
+      { q: 'Why does backpropagation compute gradients for $d = 1{,}000{,}000$ weights in $O(1)$ passes while finite differences requires $O(d)$ passes?', a: 'Finite differences perturbs one weight at a time Forward $\\to$ Loss ($d + 1$ forward passes). Backpropagation caches intermediate values in $1$ forward pass and propagates sensitivities from the scalar loss $L$ backward to all $d$ weights in $1$ backward pass.' },
+      { q: 'At a multiply gate $u = w \\cdot x$ receiving upstream gradient $\\bar{u} = \\frac{\\partial L}{\\partial u}$, what are $\\bar{w}$ and $\\bar{x}$?', a: 'They swap partners: $\\bar{w} = x \\cdot \\bar{u}$ and $\\bar{x} = w \\cdot \\bar{u}$. Consequently, a huge input $x$ produces a huge gradient on the weight $w$, and $x = 0$ gives $\\bar{w} = 0$.' },
+      { q: 'At an add gate $z = u + b$ receiving upstream gradient $\\bar{z}$, and at a fan-out branch where variable $w$ feeds two paths $z_1$ and $z_2$, how do gradients flow backward?', a: 'Add gate distributes (copies) the upstream gradient unchanged to each input: $\\bar{u} = \\bar{z}$ and $\\bar{b} = \\bar{z}$. A fan-out branch adds the incoming gradients from all downstream paths: $\\bar{w} = \\bar{w}_1 + \\bar{w}_2$.' },
+      { q: 'For a matrix linear layer $z = W x + b$ with $W \\in \\mathbb{R}^{m \\times n}$, $x \\in \\mathbb{R}^{n \\times 1}$, and upstream gradient $\\bar{z} \\in \\mathbb{R}^{m \\times 1}$, what are the exact formulas for $\\bar{W}$, $\\bar{x}$, and $\\bar{b}$?', a: 'By shape matching: $\\bar{W} = \\bar{z} x^\\top$ ($m \\times n$ outer product), $\\bar{x} = W^\\top \\bar{z}$ ($n \\times 1$), and $\\bar{b} = \\bar{z}$ ($m \\times 1$).' },
+      { q: 'Why does neural network training require 3–4x more memory than inference?', a: 'Because $\\bar{W} = \\bar{z} x^\\top$ and activation derivatives depend on the forward activations $x$ and $z$. Training must keep every layer\'s intermediate forward activations cached in RAM/VRAM until the backward pass reaches that layer.' },
+      { q: 'What is the architectural difference between a Dead ReLU and a Vanishing Sigmoid gradient, and how does a residual connection $h_\\ell = h_{\\ell-1} + F(h_{\\ell-1})$ prevent vanishing gradients?', a: 'A Dead ReLU has $z \\le 0$ so its local derivative is $0$. Sigmoid has max derivative $0.25$, so $L$ layers multiply $\\le 0.25^L \\to 0$. A residual block has local derivative $1 + F\'$, creating a $+1$ additive highway that carries upstream gradients straight through.' }
+    ]
+  },
+  'lora.html': {
+    title: '15. LoRA & QLoRA From Scratch',
+    cards: [
+      { q: 'Write the LoRA forward pass equation for a linear layer with frozen base weights $W_0 \\in \\mathbb{R}^{d \\times k}$, and state the shapes of $B$ and $A$.', a: '$h = W_0 x + \\frac{\\alpha}{r} B (A x)$, where $A$ has shape $(r \\times k)$ (down-projection) and $B$ has shape $(d \\times r)$ (up-projection), with rank $r \\ll \\min(d, k)$.' },
+      { q: 'How are LoRA matrices $A$ and $B$ initialized at step 0, and why cannot both be initialized to zero?', a: '$A$ is initialized with random Gaussian/Kaiming noise and $B = 0$. That makes $\\Delta W = B A = 0$ at step $0$ while giving $B$ a nonzero gradient $\\bar{B} = \\frac{\\alpha}{r} \\bar{h} (Ax)^\\top$ on step $1$. If both $A=0$ and $B=0$, both gradients are $0$ forever.' },
+      { q: 'Why does LoRA add zero inference latency after training, whereas classical serial bottleneck adapters add latency?', a: 'Because $B A x$ has no nonlinearity between $A$ and $B$. By linearity, $W_0 x + \\frac{\\alpha}{r} B A x = (W_0 + \\frac{\\alpha}{r} B A) x$, so we merge $W_{\\text{merged}} = W_0 + \\frac{\\alpha}{r} B A$ once offline.' },
+      { q: 'For a $4096 \\times 4096$ matrix ($16{,}777{,}216$ weights), what is the parameter compression ratio of a rank $r = 8$ LoRA adapter?', a: '$\\text{Compression ratio} = \\frac{d \\cdot k}{r(d + k)} = \\frac{4096 \\times 4096}{8 \\times 8192} = 256\\times$ fewer trainable parameters ($65{,}536$ vs $16{,}777{,}216$).' },
+      { q: 'Why does LoRA multiply $BAx$ by $\\frac{\\alpha}{r}$ instead of a fixed constant?', a: 'Summing $r$ rank-$1$ terms in $B A x$ causes the output and gradient magnitude to scale proportionally with $r$. Dividing by $r$ normalizes update magnitude so you can sweep $r$ without retuning the learning rate.' },
+      { q: 'How does QLoRA reduce the VRAM required to fine-tune a 7B model from $\\sim 60+\\text{ GB}$ down to $\\sim 5\\text{–}7\\text{ GB}$?', a: '1) Freezes $W_0$ so $99\\%$ of weights need zero AdamW optimizer states. 2) Compresses frozen $W_0$ from 16-bit ($14\\text{ GB}$) to 4-bit NormalFloat4 (NF4) with double quantization ($\\sim 3.9\\text{ GB}$), dequantizing blocks to BF16 on the fly.' }
+    ]
+  },
+  'spaced-repetition.html': {
+    title: '16. Spaced Repetition Systems (SRS) From Scratch',
+    cards: [
+      { q: 'In the forgetting curve $R(t) = 0.9^{t / S}$, what do Retrievability $R(t)$ and Stability $S$ represent?', a: 'Retrievability $R(t) \\in [0, 1]$ is the probability of recalling a card after $t$ days elapsed. Stability $S$ (in days) is the exact interval at which recall probability drops to $90\\%$ ($R(S) = 0.90$).' },
+      { q: 'In the SM-2 algorithm, how does the Ease Factor $EF$ update after a review of quality $q \\in \\{0..5\\}$, and what is "Ease Hell"?', a: '$EF\' = \\max(1.30,\\ EF + 0.1 - (5 - q)(0.08 + (5 - q)\\cdot 0.02))$. Because grades $q < 4$ reduce $EF$ and only "Easy" ($q=5$) raises it, a few hard reviews permanently trap a card near $EF = 1.30$ ("Ease Hell").' },
+      { q: 'How does FSRS ( the DSR model) decouple Difficulty $D$ from Stability $S$, and why does waiting longer ($R$ lower) produce a larger stability boost on a successful recall?', a: 'FSRS tracks Difficulty $D \\in [1, 10]$ and Stability $S$ separately. When you succeed at a lower retrievability $R$ (higher desirable difficulty / surprise), the factor $(e^{w_{10}(1 - R)} - 1)$ boosts post-review stability $S\'$ more than reviewing early when $R \\approx 1$.' },
+      { q: 'If your target retention is $R^* = 90\\%$ under $R(t) = (1 + \\frac{19}{81}\\frac{t}{S})^{-0.5}$, how does the optimal scheduled interval $I(R^*)$ scale with Stability $S$?', a: 'At $R^* = 0.90$, the scheduled interval equals Stability directly: $I(0.90) = S$ days. Raising target retention to $95\\%$ shortens intervals to $\\approx 0.46 S$, roughly doubling review workload.' }
+    ]
+  }
+};
+
+function getSrsDayOffset() {
+  try {
+    return parseInt(localStorage.getItem(SRS_OFFSET_KEY) || '0', 10) || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function setSrsDayOffset(days) {
+  try {
+    localStorage.setItem(SRS_OFFSET_KEY, String(Math.max(0, Math.round(days))));
+  } catch (e) {}
+}
+
+function getSrsTodayDay() {
+  return Math.floor(Date.now() / MS_PER_DAY) + getSrsDayOffset();
+}
+
+function getSrsState() {
+  try {
+    var raw = localStorage.getItem(SRS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveSrsState(stateMap) {
+  try {
+    localStorage.setItem(SRS_KEY, JSON.stringify(stateMap));
+    localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
+  } catch (e) {}
+}
+
+/* SM-2 / FSRS-inspired 4-button scheduler:
+   grade: 'again' (1), 'hard' (2), 'good' (3), 'easy' (4) */
+function computeSm2Next(prev, grade) {
+  var reps = (prev && prev.reps) ? prev.reps : 0;
+  var interval = (prev && prev.interval) ? prev.interval : 0;
+  var ease = (prev && prev.ease) ? prev.ease : 2.50;
+  var lapses = (prev && prev.lapses) ? prev.lapses : 0;
+  var nextReps = reps;
+  var nextInt = 1;
+  var nextEase = ease;
+  var nextLapses = lapses;
+
+  if (grade === 'again') {
+    nextReps = 0;
+    nextInt = 1;
+    nextEase = Math.max(1.30, Number((ease - 0.20).toFixed(2)));
+    nextLapses = lapses + 1;
+  } else if (grade === 'hard') {
+    nextReps = Math.max(1, reps);
+    nextInt = (reps === 0) ? 2 : Math.max(interval + 1, Math.round(interval * 1.2));
+    nextEase = Math.max(1.30, Number((ease - 0.15).toFixed(2)));
+  } else if (grade === 'good') {
+    nextReps = reps + 1;
+    if (nextReps === 1) { nextInt = 1; }
+    else if (nextReps === 2) { nextInt = 4; }
+    else { nextInt = Math.max(interval + 1, Math.round(interval * ease)); }
+  } else if (grade === 'easy') {
+    nextReps = reps + 1;
+    nextEase = Number((ease + 0.15).toFixed(2));
+    if (nextReps === 1) { nextInt = 4; }
+    else if (nextReps === 2) { nextInt = 8; }
+    else { nextInt = Math.max(interval + 2, Math.round(interval * nextEase * 1.3)); }
+  }
+
+  var today = getSrsTodayDay();
+  return {
+    reps: nextReps,
+    interval: nextInt,
+    ease: nextEase,
+    lapses: nextLapses,
+    dueDay: today + nextInt,
+    lastGrade: grade,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function previewSm2Intervals(prev) {
+  return {
+    again: computeSm2Next(prev, 'again').interval,
+    hard: computeSm2Next(prev, 'hard').interval,
+    good: computeSm2Next(prev, 'good').interval,
+    easy: computeSm2Next(prev, 'easy').interval
+  };
+}
+
+function getCardStatusInfo(cardState) {
+  var today = getSrsTodayDay();
+  if (!cardState || !cardState.dueDay) {
+    return { status: 'new', isDue: true, label: 'NEW', diffDays: 0 };
+  }
+  var diff = cardState.dueDay - today;
+  if (diff <= 0) {
+    return {
+      status: 'due',
+      isDue: true,
+      label: 'DUE NOW \u00b7 EF ' + Number(cardState.ease || 2.5).toFixed(2),
+      diffDays: diff
+    };
+  }
+  return {
+    status: 'scheduled',
+    isDue: false,
+    label: 'IN ' + diff + 'd \u00b7 EF ' + Number(cardState.ease || 2.5).toFixed(2),
+    diffDays: diff
+  };
+}
+
+function gradeSrsCard(cardId, grade) {
+  var state = getSrsState();
+  var prev = state[cardId] || null;
+  var next = computeSm2Next(prev, grade);
+  state[cardId] = next;
+  saveSrsState(state);
+  pushStateToGist();
+  renderSpacedCards();
+  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(cardId, next); }
+  return next;
+}
+
+function stepSrsDayOffset(deltaDays) {
+  if (deltaDays === 0) {
+    setSrsDayOffset(0);
+  } else {
+    setSrsDayOffset(getSrsDayOffset() + deltaDays);
+  }
+  renderSpacedCards();
+  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
+}
+
+function resetSrsState() {
+  try {
+    localStorage.removeItem(SRS_KEY);
+    localStorage.removeItem(SRS_OFFSET_KEY);
+    localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
+  } catch (e) {}
+  pushStateToGist();
+  renderSpacedCards();
+  if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
+}
+
+function getAllSrsCards(filterMode) {
+  var state = getSrsState();
+  var completed = getCompletedMap();
+  var out = [];
+  var files = Object.keys(SRS_LIBRARY);
+  files.forEach(function (file) {
+    var isComp = Boolean(completed[file]);
+    if (filterMode === 'completed' && !isComp) { return; }
+    if (filterMode && filterMode !== 'all' && filterMode !== 'completed' && filterMode !== file) { return; }
+    var entry = SRS_LIBRARY[file];
+    entry.cards.forEach(function (c, i) {
+      var id = file + '::' + i;
+      var cState = state[id] || null;
+      var info = getCardStatusInfo(cState);
+      out.push({
+        id: id,
+        file: file,
+        articleTitle: entry.title,
+        index: i,
+        q: c.q.replace(/^\[[0-9]+d\]\s*/, ''),
+        a: c.a,
+        state: cState,
+        info: info
+      });
+    });
+  });
+  return out;
+}
+
+window.SRS_LIBRARY = SRS_LIBRARY;
+window.getSrsState = getSrsState;
+window.getSrsDayOffset = getSrsDayOffset;
+window.computeSm2Next = computeSm2Next;
+window.previewSm2Intervals = previewSm2Intervals;
+window.getCardStatusInfo = getCardStatusInfo;
+window.gradeSrsCard = gradeSrsCard;
+window.stepSrsDayOffset = stepSrsDayOffset;
+window.resetSrsState = resetSrsState;
+window.getAllSrsCards = getAllSrsCards;
+
+function getActivePageCards() {
+  var here = location.pathname.split('/').pop() || 'index.html';
+  if (typeof SPACED_CARDS !== 'undefined' && Array.isArray(SPACED_CARDS) && SPACED_CARDS.length > 0) {
+    return SPACED_CARDS;
+  }
+  if (SRS_LIBRARY[here] && Array.isArray(SRS_LIBRARY[here].cards)) {
+    return SRS_LIBRARY[here].cards;
+  }
+  return null;
+}
+
 function renderSpacedCards() {
   var listEl = document.getElementById('spaced-list');
-  if (!listEl || typeof SPACED_CARDS === 'undefined' || !Array.isArray(SPACED_CARDS)) { return; }
-  listEl.innerHTML = SPACED_CARDS.map(function (c, i) {
-    return '<details class="recall-card"><summary>Card ' + (i + 1) + ': ' + c.q + '</summary><p style="margin:0.5rem 0 0 0;">' + c.a + '</p></details>';
+  var cards = getActivePageCards();
+  if (!listEl || !cards) { return; }
+  var here = location.pathname.split('/').pop() || 'article.html';
+  var state = getSrsState();
+
+  listEl.innerHTML = cards.map(function (c, i) {
+    var id = here + '::' + i;
+    var cState = state[id] || null;
+    var info = getCardStatusInfo(cState);
+    var prev = previewSm2Intervals(cState);
+    var badgeClass = 'srs-badge ' + (info.isDue ? 'is-due' : 'is-scheduled');
+    var cleanQ = c.q.replace(/^\[[0-9]+d\]\s*/, '');
+    var lastG = cState && cState.lastGrade ? cState.lastGrade : '';
+
+    return '<details class="recall-card" id="recall-card-' + i + '">' +
+      '<summary>Card ' + (i + 1) + ': ' + cleanQ +
+        ' <span class="' + badgeClass + '">' + info.label + '</span>' +
+      '</summary>' +
+      '<p style="margin:0.65rem 0 0 0;">' + c.a + '</p>' +
+      '<div class="srs-grade-row">' +
+        '<button type="button" class="srs-grade-btn' + (lastG === 'again' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'again\')">Again<span class="srs-int">' + prev.again + 'd</span></button>' +
+        '<button type="button" class="srs-grade-btn' + (lastG === 'hard' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'hard\')">Hard<span class="srs-int">' + prev.hard + 'd</span></button>' +
+        '<button type="button" class="srs-grade-btn' + (lastG === 'good' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'good\')">Good<span class="srs-int">' + prev.good + 'd</span></button>' +
+        '<button type="button" class="srs-grade-btn' + (lastG === 'easy' ? ' picked' : '') + '" onclick="gradeSrsCard(\'' + id + '\', \'easy\')">Easy<span class="srs-int">' + prev.easy + 'd</span></button>' +
+      '</div>' +
+    '</details>';
   }).join('');
   renderMathIn(listEl);
 }
 
 function copySpacedCards() {
-  if (typeof SPACED_CARDS === 'undefined' || !Array.isArray(SPACED_CARDS)) { return; }
-  var text = SPACED_CARDS.map(function (c, i) {
-    return 'Q' + (i + 1) + ': ' + c.q + '\nA' + (i + 1) + ': ' + c.a;
+  var cards = getActivePageCards();
+  if (!cards) { return; }
+  var text = cards.map(function (c, i) {
+    return 'Q' + (i + 1) + ': ' + c.q.replace(/^\[[0-9]+d\]\s*/, '') + '\nA' + (i + 1) + ': ' + c.a;
   }).join('\n\n');
   var st = document.getElementById('copy-status');
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function () {
-      if (st) { st.textContent = 'Copied ' + SPACED_CARDS.length + ' cards.'; }
+      if (st) { st.textContent = 'Copied ' + cards.length + ' cards.'; }
     }, function () {
       if (st) { st.textContent = 'Clipboard blocked; select cards manually.'; }
     });
@@ -527,7 +911,9 @@ function pullStateFromGist(callback) {
       }
       var remoteState = JSON.parse(data.files[GIST_FILENAME].content || '{}');
       var remoteCompleted = remoteState.completed || {};
+      var remoteSrs = remoteState.srs || {};
       var localCompleted = getCompletedMap();
+      var localSrs = getSrsState();
       var localUpdated = '';
       try { localUpdated = localStorage.getItem(GIST_UPDATED_KEY) || ''; } catch (e) {}
       var remoteUpdated = remoteState.updatedAt || '';
@@ -537,12 +923,15 @@ function pullStateFromGist(callback) {
       if (localUpdated && remoteUpdated && localUpdated > remoteUpdated) {
         chosen = localCompleted;
         pushStateToGist();
-      } else if (!remoteUpdated && Object.keys(localCompleted).length > 0) {
+      } else if (!remoteUpdated && (Object.keys(localCompleted).length > 0 || Object.keys(localSrs).length > 0)) {
         chosen = localCompleted;
         pushStateToGist();
       } else {
         try {
           localStorage.setItem(COMPLETED_KEY, JSON.stringify(remoteCompleted));
+          if (remoteState.srs) {
+            localStorage.setItem(SRS_KEY, JSON.stringify(remoteSrs));
+          }
           if (remoteUpdated) { localStorage.setItem(GIST_UPDATED_KEY, remoteUpdated); }
         } catch (e) {}
       }
@@ -550,7 +939,9 @@ function pullStateFromGist(callback) {
       var count = Object.keys(chosen).length;
       setSyncStatus('Gist synced (' + count + ' completed)' + (tok ? ' \u00b7 R/W' : ' \u00b7 Read-only'));
       updateArticleCompleteBox();
+      renderSpacedCards();
       if (typeof renderHomeList === 'function') { renderHomeList(); }
+      if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
       if (typeof callback === 'function') { callback(chosen); }
     })
     .catch(function (err) {
@@ -567,11 +958,14 @@ function pushStateToGist(callback) {
   }
   var now = new Date().toISOString();
   var map = getCompletedMap();
+  var srsMap = getSrsState();
   var payload = {
     version: 1,
     updatedAt: now,
     completedCount: Object.keys(map).length,
-    completed: map
+    completed: map,
+    srsCount: Object.keys(srsMap).length,
+    srs: srsMap
   };
   var body = { files: {} };
   body.files[GIST_FILENAME] = { content: JSON.stringify(payload, null, 2) };
@@ -891,16 +1285,32 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  /* Auto-populate #spaced-widget chrome if only #spaced-list or empty #spaced-widget is provided */
+  /* Auto-inject or populate #spaced-widget chrome on any article with cards */
+  var hereFile = location.pathname.split('/').pop() || 'index.html';
   var sw = document.getElementById('spaced-widget');
+  if (!sw && !document.getElementById('spaced-list') && getActivePageCards() && hereFile !== 'index.html') {
+    var mainContainer = document.querySelector('main');
+    if (mainContainer) {
+      sw = document.createElement('div');
+      sw.className = 'interactive-card';
+      sw.id = 'spaced-widget';
+      var cboxAnchor = document.getElementById('article-complete-box') || document.querySelector('footer.article-footer');
+      if (cboxAnchor && cboxAnchor.parentNode === mainContainer) {
+        mainContainer.insertBefore(sw, cboxAnchor);
+      } else {
+        mainContainer.appendChild(sw);
+      }
+    }
+  }
   if (sw && !sw.querySelector('#spaced-list')) {
     sw.innerHTML =
-      '<div class="widget-label">Spaced Recall Export (1d / 4d / 14d / 30d)</div>' +
+      '<div class="widget-label">Interactive Spaced Recall (SM-2 Scheduler)</div>' +
       '<h3>Core Retrieval Prompts</h3>' +
-      '<p>Tap any card to test yourself, or copy all Q&amp;A pairs into your spaced-repetition deck.</p>' +
+      '<p>Tap any card to reveal its answer and grade recall (<strong>Again</strong>, <strong>Hard</strong>, <strong>Good</strong>, <strong>Easy</strong>). Schedule syncs with the Home <strong>SRS Review</strong> tab and <a href="spaced-repetition.html">Article 16 (SRS Explainer)</a>.</p>' +
       '<div id="spaced-list"></div>' +
       '<div class="control-row">' +
         '<button type="button" class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>' +
+        '<a class="btn btn-small" href="index.html#srs" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">Open Full SRS Deck &rarr;</a>' +
         '<span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>' +
       '</div>';
   }
