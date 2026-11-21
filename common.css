@@ -1287,6 +1287,52 @@ footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-bloc
   display: flex;
 }
 
+.gemini-ask-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 0.35rem 0;
+  margin-bottom: 0.35rem;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.gemini-ask-nav button {
+  width: 32px;
+  height: 30px;
+  min-width: 32px;
+  min-height: 30px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  font-size: 1.25rem;
+  font-weight: bold;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.gemini-ask-nav button:active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+
+.gemini-ask-nav button:disabled {
+  border-style: dashed;
+  opacity: 0.35;
+  cursor: default;
+}
+
+.gemini-page-count {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: bold;
+}
+
 .gemini-ask-messages {
   display: none;
   overflow-y: auto;

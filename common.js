@@ -1463,6 +1463,7 @@ function ensureHeaderAndFooter() {
 var GEMINI_MODEL_PRIMARY = 'gemini-3.5-flash-lite';
 var GEMINI_MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 var geminiChatTurns = [];
+var geminiPageIdx = 0;
 var geminiBusy = false;
 var geminiCachedPageContext = null;
 
@@ -1628,24 +1629,44 @@ function formatGeminiHtml(raw) {
 
 function renderGeminiMessages() {
   var box = document.getElementById('gemini-ask-messages');
+  var nav = document.getElementById('gemini-ask-nav');
   if (!box) { return; }
   if (geminiChatTurns.length === 0) {
     box.className = 'gemini-ask-messages';
     box.innerHTML = '';
+    if (nav) { nav.style.display = 'none'; }
     return;
   }
+  if (geminiPageIdx < 0) { geminiPageIdx = 0; }
+  if (geminiPageIdx >= geminiChatTurns.length) { geminiPageIdx = geminiChatTurns.length - 1; }
+  var turn = geminiChatTurns[geminiPageIdx];
+
+  if (nav) {
+    if (geminiChatTurns.length > 1) {
+      nav.style.display = 'flex';
+      var prevBtn = document.getElementById('gemini-page-prev');
+      var nextBtn = document.getElementById('gemini-page-next');
+      var countEl = document.getElementById('gemini-page-count');
+      if (prevBtn) { prevBtn.disabled = geminiPageIdx === 0; }
+      if (nextBtn) { nextBtn.disabled = geminiPageIdx === geminiChatTurns.length - 1; }
+      if (countEl) { countEl.textContent = (geminiPageIdx + 1) + ' / ' + geminiChatTurns.length; }
+    } else {
+      nav.style.display = 'none';
+    }
+  }
+
   box.className = 'gemini-ask-messages has-turns';
-  box.innerHTML = geminiChatTurns.map(function (t) {
-    var cls = t.role === 'user' ? 'gemini-msg gemini-msg-user' : 'gemini-msg gemini-msg-model';
-    var bodyHtml = t.role === 'user'
-      ? '<p>' + String(t.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>'
-      : formatGeminiHtml(t.text || '');
-    return '<div class="' + cls + '">' +
-      '<div class="gemini-msg-body">' + bodyHtml + '</div>' +
+  var qHtml = '<p>' + String(turn.q || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+  var aHtml = formatGeminiHtml(turn.a || '');
+  box.innerHTML =
+    '<div class="gemini-msg gemini-msg-user">' +
+      '<div class="gemini-msg-body">' + qHtml + '</div>' +
+    '</div>' +
+    '<div class="gemini-msg gemini-msg-model">' +
+      '<div class="gemini-msg-body">' + aHtml + '</div>' +
     '</div>';
-  }).join('');
   renderMathIn(box);
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = 0;
 }
 
 function ensureGeminiAskDOM() {
@@ -1672,6 +1693,11 @@ function ensureGeminiAskDOM() {
     ov.setAttribute('role', 'region');
     ov.setAttribute('aria-label', 'Ask Gemini Hydrogen');
     ov.innerHTML =
+      '<div class="gemini-ask-nav" id="gemini-ask-nav" style="display:none;">' +
+        '<button type="button" id="gemini-page-prev" aria-label="Previous question">&#x2039;</button>' +
+        '<span class="gemini-page-count" id="gemini-page-count">1 / 1</span>' +
+        '<button type="button" id="gemini-page-next" aria-label="Next question">&#x203A;</button>' +
+      '</div>' +
       '<div class="gemini-ask-messages" id="gemini-ask-messages"></div>' +
       '<form class="gemini-ask-form" id="gemini-ask-form">' +
         '<input type="text" id="gemini-ask-input" placeholder="Ask Gemini..." autocomplete="off" />' +
@@ -1686,6 +1712,18 @@ function ensureGeminiAskDOM() {
     document.body.appendChild(ov);
 
     document.getElementById('gemini-ask-close').addEventListener('click', closeGeminiAskModal);
+    document.getElementById('gemini-page-prev').addEventListener('click', function () {
+      if (geminiPageIdx > 0) {
+        geminiPageIdx--;
+        renderGeminiMessages();
+      }
+    });
+    document.getElementById('gemini-page-next').addEventListener('click', function () {
+      if (geminiPageIdx < geminiChatTurns.length - 1) {
+        geminiPageIdx++;
+        renderGeminiMessages();
+      }
+    });
     var form = document.getElementById('gemini-ask-form');
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -1731,6 +1769,7 @@ function closeGeminiAskModal() {
     inp.blur();
   }
   geminiChatTurns = [];
+  geminiPageIdx = 0;
   renderGeminiMessages();
   if (ov) { ov.classList.remove('open'); }
   if (fab) { fab.classList.remove('is-open'); }
@@ -1862,12 +1901,12 @@ function submitGeminiQuestion() {
   }
 
   inp.value = '';
-  geminiChatTurns.push({ role: 'user', text: q });
   var pendingIdx = geminiChatTurns.push({
-    role: 'model',
-    text: 'Thinking...',
+    q: q,
+    a: 'Thinking...',
     modelLabel: 'Gemini 4 Hydrogen'
   }) - 1;
+  geminiPageIdx = pendingIdx;
   geminiBusy = true;
   if (sendBtn) { sendBtn.disabled = true; }
   renderGeminiMessages();
@@ -1883,22 +1922,32 @@ function submitGeminiQuestion() {
     var turn = geminiChatTurns[i];
     if (!turn.isError) {
       contents.push({
-        role: turn.role === 'user' ? 'user' : 'model',
-        parts: [{ text: turn.text }]
+        role: 'user',
+        parts: [{ text: turn.q }]
+      });
+      contents.push({
+        role: 'model',
+        parts: [{ text: turn.a }]
       });
     }
   }
+  contents.push({
+    role: 'user',
+    parts: [{ text: q }]
+  });
 
   callGeminiGenerate(GEMINI_MODEL_PRIMARY, apiKey, sysPrompt, contents, 1)
     .then(function (res) {
       var label = res.model === GEMINI_MODEL_PRIMARY
         ? 'Gemini 4 Hydrogen'
         : ('Gemini 4 Hydrogen (via ' + res.model + ')');
-      geminiChatTurns[pendingIdx] = {
-        role: 'model',
-        text: res.text,
-        modelLabel: label
-      };
+      if (geminiChatTurns[pendingIdx]) {
+        geminiChatTurns[pendingIdx] = {
+          q: q,
+          a: res.text,
+          modelLabel: label
+        };
+      }
     })
     .catch(function (err) {
       var msg = (err && err.message) ? err.message : 'Request failed.';
@@ -1906,12 +1955,14 @@ function submitGeminiQuestion() {
         setGeminiApiKey('');
         msg += ' (Cleared old key — ask again or type /key to paste your new Gemini API key.)';
       }
-      geminiChatTurns[pendingIdx] = {
-        role: 'model',
-        text: 'Error: ' + msg,
-        modelLabel: 'Gemini 4 Hydrogen',
-        isError: true
-      };
+      if (geminiChatTurns[pendingIdx]) {
+        geminiChatTurns[pendingIdx] = {
+          q: q,
+          a: 'Error: ' + msg,
+          modelLabel: 'Gemini 4 Hydrogen',
+          isError: true
+        };
+      }
     })
     .then(function () {
       geminiBusy = false;
