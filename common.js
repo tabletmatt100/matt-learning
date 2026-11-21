@@ -579,10 +579,12 @@ function getSrsDeck() {
   }
 }
 
-function saveSrsDeck(deckMap) {
+function saveSrsDeck(deckMap, markDirty) {
   try {
     localStorage.setItem(SRS_DECK_KEY, JSON.stringify(deckMap));
-    localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
+    if (markDirty !== false) {
+      localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
+    }
   } catch (e) {}
 }
 
@@ -699,7 +701,7 @@ function syncAiCardsFromRepo(callback) {
         }
       });
       if (changed) {
-        saveSrsDeck(deck);
+        saveSrsDeck(deck, false);
       }
       if (typeof window.onSrsUpdated === 'function') { window.onSrsUpdated(); }
       if (typeof callback === 'function') { callback(); }
@@ -1000,7 +1002,17 @@ function copySpacedCards() {
 
 /* ---------- Article Completion Tracking + GitHub Gist Sync ---------- */
 var COMPLETED_KEY = 'matt_learning_completed_v1';
+var UNCOMPLETED_KEY = 'matt_learning_uncompleted_v1';
 var GIST_ID_KEY = 'matt_learning_gist_id';
+
+function getUncompletedMap() {
+  try {
+    var raw = localStorage.getItem(UNCOMPLETED_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
 var GIST_TOKEN_KEY = 'matt_learning_gist_token';
 var GIST_UPDATED_KEY = 'matt_learning_gist_updated_at';
 var DEFAULT_GIST_ID = 'b270eaafff8dc051eca22cc33b394235';
@@ -1115,14 +1127,19 @@ function setSyncStatus(msg) {
 
 function setArticleCompleted(file, done) {
   var map = getCompletedMap();
+  var uncomp = getUncompletedMap();
+  var now = new Date().toISOString();
   if (done) {
-    map[file] = new Date().toISOString();
+    map[file] = now;
+    delete uncomp[file];
   } else {
     delete map[file];
+    uncomp[file] = now;
   }
   try {
     localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
-    localStorage.setItem(GIST_UPDATED_KEY, new Date().toISOString());
+    localStorage.setItem(UNCOMPLETED_KEY, JSON.stringify(uncomp));
+    localStorage.setItem(GIST_UPDATED_KEY, now);
   } catch (e) {}
   pushStateToGist();
 }
@@ -1189,20 +1206,31 @@ function pullStateFromGist(callback) {
           }
         }
       }
-      saveSrsDeck(mergedDeck);
+      saveSrsDeck(mergedDeck, false);
 
-      var chosen = remoteCompleted;
-      if (localUpdated && remoteUpdated && localUpdated > remoteUpdated) {
-        chosen = localCompleted;
+      /* Union-merge completed articles so a fresh browser never wipes remote completed articles */
+      var mergedCompleted = {};
+      for (k in remoteCompleted) {
+        if (Object.prototype.hasOwnProperty.call(remoteCompleted, k)) {
+          mergedCompleted[k] = remoteCompleted[k];
+        }
+      }
+      for (k in localCompleted) {
+        if (Object.prototype.hasOwnProperty.call(localCompleted, k)) {
+          if (!mergedCompleted[k] || localCompleted[k] > mergedCompleted[k]) {
+            mergedCompleted[k] = localCompleted[k];
+          }
+        }
+      }
+      var chosen = mergedCompleted;
+      try {
+        localStorage.setItem(COMPLETED_KEY, JSON.stringify(chosen));
+        if (remoteUpdated && (!localUpdated || remoteUpdated > localUpdated)) {
+          localStorage.setItem(GIST_UPDATED_KEY, remoteUpdated);
+        }
+      } catch (e) {}
+      if (Object.keys(chosen).length > Object.keys(remoteCompleted).length || Object.keys(mergedDeck).length > Object.keys(remoteDeck).length) {
         pushStateToGist();
-      } else if (!remoteUpdated && (Object.keys(localCompleted).length > 0 || Object.keys(mergedDeck).length > 0)) {
-        chosen = localCompleted;
-        pushStateToGist();
-      } else {
-        try {
-          localStorage.setItem(COMPLETED_KEY, JSON.stringify(remoteCompleted));
-          if (remoteUpdated) { localStorage.setItem(GIST_UPDATED_KEY, remoteUpdated); }
-        } catch (e) {}
       }
 
       var count = Object.keys(chosen).length;
