@@ -560,16 +560,13 @@ function getSrsTodayDay() {
 function formatSrsDueDate(dueDay) {
   var today = getSrsTodayDay();
   var diff = dueDay - today;
-  var d = new Date(dueDay * MS_PER_DAY);
-  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  var dateStr = months[d.getMonth()] + ' ' + d.getDate();
   if (diff <= 0) {
-    return 'Due Today (' + dateStr + ')';
+    return 'Today';
   }
   if (diff === 1) {
-    return 'Tomorrow (' + dateStr + ' \u00b7 in 1d)';
+    return 'Tomorrow';
   }
-  return dateStr + ' (in ' + diff + 'd)';
+  return 'In ' + diff + 'd';
 }
 
 /* Explicit user/AI SRS deck: { [id]: { id, q, a, source, reps, interval, ease, lapses, dueDay, addedAt, updatedAt } } */

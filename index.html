@@ -177,22 +177,17 @@
       var prev = previewSm2Intervals(c.card);
       var badgeClass = 'srs-badge ' + (c.info.isDue ? 'is-due' : 'is-scheduled');
       return '<div class="srs-list-item">' +
-        '<div class="srs-list-header">' +
-          '<span class="srs-list-meta" style="font-family:var(--font-mono);font-size:0.75rem;">' + c.source + '</span>' +
-          '<span class="srs-list-header-right">' +
-            '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
-            '<button type="button" class="srs-remove-icon-btn" onclick="removeQuestionFromSrs(\'' + c.id + '\')" aria-label="Remove question">&times;</button>' +
-          '</span>' +
-        '</div>' +
-        '<details style="margin:0.35rem 0; border:none; padding:0;">' +
-          '<summary style="font-weight:600; padding:2px 0;">' + c.q + '</summary>' +
+        '<button type="button" class="srs-remove-icon-btn" onclick="removeQuestionFromSrs(\'' + c.id + '\')" aria-label="Remove question">&times;</button>' +
+        '<details style="margin:0; border:none; padding:0;">' +
+          '<summary style="font-weight:600; padding:0;">' + c.q + '</summary>' +
           '<div style="margin:0.4rem 0; padding:0.45rem 0.6rem; background:var(--highlight-bg); border-left:2px solid var(--border);">' + c.a + '</div>' +
         '</details>' +
-        '<div class="srs-grade-row">' +
+        '<div class="srs-grade-row" style="align-items:center;">' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'again\')">Again (' + prev.again + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'hard\')">Hard (' + prev.hard + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'good\')">Good (' + prev.good + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'easy\')">Easy (' + prev.easy + 'd)</button>' +
+          '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
         '</div>' +
       '</div>';
     }
