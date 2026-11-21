@@ -177,6 +177,9 @@
       var prev = previewSm2Intervals(c.card);
       var badgeClass = 'srs-badge ' + (c.info.isDue ? 'is-due' : 'is-scheduled');
       return '<div class="srs-list-item">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">' +
+          '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
+        '</div>' +
         '<button type="button" class="srs-remove-icon-btn" onclick="removeQuestionFromSrs(\'' + c.id + '\')" aria-label="Remove question">&times;</button>' +
         '<details style="margin:0; border:none; padding:0;">' +
           '<summary style="font-weight:600; padding:0;">' + c.q + '</summary>' +
@@ -187,7 +190,6 @@
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'hard\')">Hard (' + prev.hard + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'good\')">Good (' + prev.good + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'easy\')">Easy (' + prev.easy + 'd)</button>' +
-          '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
         '</div>' +
       '</div>';
     }
