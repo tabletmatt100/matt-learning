@@ -944,11 +944,11 @@ function refreshAllSrsButtons() {
     var inSrs = Boolean(deck[cardId]);
     if (inSrs) {
       var info = getCardStatusInfo(deck[cardId]);
-      btn.textContent = '\u2713 In SRS (' + info.dateLabel + ') \u00b7 Remove';
-      btn.className = 'btn btn-small mcq-srs-btn srs-toggle-btn in-srs';
+      btn.textContent = '\u2713 In SRS (' + info.dateLabel + ')';
+      btn.className = 'srs-btn mcq-srs-btn srs-toggle-btn in-srs';
     } else {
-      btn.textContent = '+ Add to SRS';
-      btn.className = 'btn btn-small mcq-srs-btn srs-toggle-btn';
+      btn.textContent = '+ SRS';
+      btn.className = 'srs-btn mcq-srs-btn srs-toggle-btn';
     }
   });
 }
@@ -967,16 +967,16 @@ function renderSpacedCards() {
     var info = getCardStatusInfo(cState);
     var cleanQ = c.q.replace(/^\[[0-9]+d\]\s*/, '');
     var badgeHtml = inSrs
-      ? ' <span class="srs-badge ' + (info.isDue ? 'is-due' : 'is-scheduled') + '">IN SRS \u00b7 ' + info.label + '</span>'
+      ? ' <span class="srs-badge ' + (info.isDue ? 'is-due' : 'is-scheduled') + '">' + info.dateLabel + '</span>'
       : '';
     var btnLabel = inSrs
-      ? '\u2713 In SRS (' + info.dateLabel + ') \u2014 Tap to Remove'
-      : '+ Add Question to SRS List';
-    var btnClass = 'btn btn-small srs-toggle-btn' + (inSrs ? ' in-srs' : '');
+      ? '\u2713 In SRS (' + info.dateLabel + ') \u00b7 Remove'
+      : '+ Add to SRS';
+    var btnClass = 'srs-btn srs-toggle-btn' + (inSrs ? ' in-srs' : '');
 
     return '<details class="recall-card" id="recall-card-' + i + '">' +
       '<summary>Card ' + (i + 1) + ': ' + cleanQ + badgeHtml + '</summary>' +
-      '<p style="margin:0.65rem 0 0.65rem 0;">' + c.a + '</p>' +
+      '<p style="margin:0.5rem 0;">' + c.a + '</p>' +
       '<button type="button" class="' + btnClass + '" onclick="toggleRecallCardInSrs(' + i + ')">' + btnLabel + '</button>' +
     '</details>';
   }).join('');
