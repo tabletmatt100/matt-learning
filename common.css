@@ -785,6 +785,76 @@ details.mcq-box[open] > summary.mcq-title {
   background: var(--active-bg);
   color: var(--active-text);
 }
+.srs-add-plus-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: bold;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.srs-add-plus-btn:active,
+.srs-add-plus-btn.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+.srs-ai-create-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 0.6rem 0;
+}
+#srs-ai-create-input {
+  flex: 1;
+  height: 40px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 15px;
+  line-height: 1.25;
+}
+#srs-ai-create-send {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  background: var(--active-bg);
+  color: var(--active-text);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#srs-ai-create-send svg {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  display: block;
+}
+#srs-ai-create-send:disabled {
+  background: var(--highlight-bg);
+  color: var(--text);
+  border-style: dashed;
+  cursor: default;
+}
 .srs-modal-actions {
   display: flex;
   justify-content: flex-end;

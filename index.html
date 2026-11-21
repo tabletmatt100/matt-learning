@@ -104,11 +104,24 @@
     <div id="questions-view" style="display: none;">
       <div class="slide-toggle-bar" style="justify-content: space-between; align-items: center;">
         <button type="button" class="srs-info-btn" onclick="openSrsInfoModal()" aria-label="How question scheduling works" title="How question scheduling works">i</button>
-        <div class="slide-toggle" role="switch" tabindex="0" aria-label="Toggle To Do or Scheduled questions" onclick="toggleQuestionFilter()">
-          <span class="slide-toggle-opt active" id="q-opt-todo">To Do</span>
-          <span class="slide-toggle-opt" id="q-opt-other">Scheduled</span>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div class="slide-toggle" role="switch" tabindex="0" aria-label="Toggle To Do or Scheduled questions" onclick="toggleQuestionFilter()">
+            <span class="slide-toggle-opt active" id="q-opt-todo">To Do</span>
+            <span class="slide-toggle-opt" id="q-opt-other">Scheduled</span>
+          </div>
+          <button type="button" class="srs-add-plus-btn" id="srs-add-plus-btn" onclick="toggleSrsAiForm()" aria-label="Create question with AI" title="Create question with AI">+</button>
         </div>
       </div>
+
+      <form id="srs-ai-create-form" class="srs-ai-create-form" onsubmit="event.preventDefault(); submitSrsAiQuestion();" style="display:none;">
+        <input type="text" id="srs-ai-create-input" placeholder="Topic or question for AI to create..." autocomplete="off" />
+        <button type="submit" id="srs-ai-create-send" aria-label="Create question">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+        </button>
+      </form>
 
       <div id="srs-questions-list" style="border-top: 2px solid var(--border);"></div>
     </div>
@@ -209,6 +222,62 @@
     function closeSrsInfoModal() {
       var m = document.getElementById('srs-info-modal');
       if (m) { m.classList.remove('open'); }
+    }
+
+    var srsAiBusy = false;
+
+    function toggleSrsAiForm() {
+      var f = document.getElementById('srs-ai-create-form');
+      var b = document.getElementById('srs-add-plus-btn');
+      var inp = document.getElementById('srs-ai-create-input');
+      if (!f) { return; }
+      var isOpen = f.style.display !== 'none';
+      if (isOpen) {
+        f.style.display = 'none';
+        if (b) { b.classList.remove('active'); }
+        if (inp) { inp.value = ''; inp.blur(); }
+      } else {
+        f.style.display = 'flex';
+        if (b) { b.classList.add('active'); }
+        if (inp) { setTimeout(function () { inp.focus(); }, 10); }
+      }
+    }
+
+    function submitSrsAiQuestion() {
+      if (srsAiBusy) { return; }
+      var inp = document.getElementById('srs-ai-create-input');
+      var btn = document.getElementById('srs-ai-create-send');
+      if (!inp) { return; }
+      var promptText = inp.value.trim();
+      if (!promptText) { return; }
+
+      if (typeof createSrsCardWithGemini !== 'function') { return; }
+      srsAiBusy = true;
+      inp.disabled = true;
+      if (btn) { btn.disabled = true; }
+      var oldPlaceholder = inp.placeholder;
+      inp.value = 'Creating question...';
+
+      createSrsCardWithGemini(promptText, function (err, card) {
+        srsAiBusy = false;
+        inp.disabled = false;
+        if (btn) { btn.disabled = false; }
+        inp.placeholder = oldPlaceholder;
+        if (err) {
+          inp.value = promptText;
+          window.alert('Could not create question: ' + (err.message || err));
+          inp.focus();
+          return;
+        }
+        inp.value = '';
+        toggleSrsAiForm();
+        if (questionFilter !== 'todo') {
+          questionFilter = 'todo';
+          applyStateToControls();
+          updateUrlFromState();
+        }
+        renderHomeQuestions();
+      });
     }
 
     function updateUrlFromState() {

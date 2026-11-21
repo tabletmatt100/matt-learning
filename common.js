@@ -1747,6 +1747,61 @@ window.openGeminiAskModal = openGeminiAskModal;
 window.closeGeminiAskModal = closeGeminiAskModal;
 window.toggleGeminiAskModal = toggleGeminiAskModal;
 
+function createSrsCardWithGemini(userPrompt, callback) {
+  var apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    var entered = window.prompt('Paste your Gemini API key (saved ONLY to this device\'s localStorage):', '');
+    if (!entered || !entered.trim()) {
+      if (typeof callback === 'function') { callback(new Error('API key required.')); }
+      return;
+    }
+    apiKey = entered.trim();
+    setGeminiApiKey(apiKey);
+  }
+
+  var sysText =
+    'You create concise, high-signal spaced-repetition flashcard questions and answers for an ML & math learning library. ' +
+    'Follow these rules:\n' +
+    '1. Every calculation must be solvable mentally without a calculator (use clean small numbers if math is involved).\n' +
+    '2. Write plain, direct English with LaTeX math in $...$ where helpful.\n' +
+    '3. Keep the question clear and specific, and the answer concise (1-3 sentences).\n' +
+    '4. Return ONLY valid JSON with two keys: {"q": "Question text...", "a": "Answer text..."} and no markdown fences.';
+
+  var contents = [{
+    role: 'user',
+    parts: [{ text: 'Create one spaced-repetition Q&A card based on this request: ' + userPrompt }]
+  }];
+
+  callGeminiGenerate(GEMINI_MODEL_PRIMARY, apiKey, sysText, contents, 1)
+    .then(function (res) {
+      var raw = (res.text || '').trim();
+      /* Strip ```json ... ``` fences if present */
+      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      var parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        var m = raw.match(/\{[\s\S]*\}/);
+        if (m) {
+          try { parsed = JSON.parse(m[0]); } catch (e2) {}
+        }
+      }
+      if (!parsed || !parsed.q || !parsed.a) {
+        throw new Error('Could not parse Q&A from AI response.');
+      }
+      var cardId = 'ai-custom-' + Date.now();
+      var card = addQuestionToSrs(cardId, String(parsed.q).trim(), String(parsed.a).trim(), 'AI Created');
+      if (typeof callback === 'function') { callback(null, card); }
+    })
+    .catch(function (err) {
+      if (err && (err.status === 400 || err.status === 401 || err.status === 403) && /api key|unauthenticated|credential/i.test(err.message || '')) {
+        setGeminiApiKey('');
+      }
+      if (typeof callback === 'function') { callback(err); }
+    });
+}
+window.createSrsCardWithGemini = createSrsCardWithGemini;
+
 function callGeminiGenerate(modelName, apiKey, systemText, contents, attempt) {
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelName) + ':generateContent?key=' + encodeURIComponent(apiKey);
   var genCfg = { temperature: 0.3 };
