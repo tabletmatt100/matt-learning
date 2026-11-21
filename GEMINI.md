@@ -9,5 +9,6 @@ Interactive E-ink learning repository published at `https://tabletmatt100.github
 
 ## Publishing Workflow
 1. Add a card/link for any new article to `index.html` (and update `sw.js` cached assets if needed).
-2. Commit and push changes to `main`.
-3. Provide the live GitHub Pages URL (`https://tabletmatt100.github.io/matt-learning/<filename>`) in your response (never a `file://` link).
+2. **Never commit API keys or tokens** (`GEMINI_API_KEY` / GitHub token) into any repo file; store keys only in `~/.secrets` and the private state Gist (`./gist-state.sh set-gemini-key`).
+3. Commit and push changes to `main`.
+4. Provide the live GitHub Pages URL (`https://tabletmatt100.github.io/matt-learning/<filename>`) in your response (never a `file://` link).
