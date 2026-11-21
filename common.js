@@ -666,9 +666,9 @@ function toggleArticleCardSrs(cardId, qText, aText, sourceLabel) {
   }
 }
 
-/* Pull AI-added cards from srs-cards.json in the repository */
+/* Pull AI-added cards from srs-cards.json in the repository (uses cached fallback when offline) */
 function syncAiCardsFromRepo(callback) {
-  fetch('srs-cards.json?t=' + Date.now(), { cache: 'no-store' })
+  fetch('srs-cards.json?t=' + Date.now())
     .then(function (res) {
       if (!res.ok) { throw new Error('HTTP ' + res.status); }
       return res.json();
@@ -1176,20 +1176,28 @@ function pullStateFromGist(callback) {
       }
       var remoteState = JSON.parse(data.files[GIST_FILENAME].content || '{}');
       var remoteCompleted = remoteState.completed || {};
+      var remoteUncompleted = remoteState.uncompleted || {};
       var remoteDeck = remoteState.srsDeck || {};
       var remoteRemoved = remoteState.srsRemoved || {};
       var localCompleted = getCompletedMap();
+      var localUncompleted = getUncompletedMap();
       var localDeck = getSrsDeck();
       var localRemoved = getSrsRemovedMap();
       var localUpdated = '';
       try { localUpdated = localStorage.getItem(GIST_UPDATED_KEY) || ''; } catch (e) {}
       var remoteUpdated = remoteState.updatedAt || '';
 
-      /* Merge removed tombstones first */
+      /* Merge removed tombstones first (newest timestamp wins) */
       var mergedRemoved = {};
       var k;
       for (k in remoteRemoved) { if (Object.prototype.hasOwnProperty.call(remoteRemoved, k)) { mergedRemoved[k] = remoteRemoved[k]; } }
-      for (k in localRemoved) { if (Object.prototype.hasOwnProperty.call(localRemoved, k)) { mergedRemoved[k] = localRemoved[k]; } }
+      for (k in localRemoved) {
+        if (Object.prototype.hasOwnProperty.call(localRemoved, k)) {
+          if (!mergedRemoved[k] || localRemoved[k] > mergedRemoved[k]) {
+            mergedRemoved[k] = localRemoved[k];
+          }
+        }
+      }
       saveSrsRemovedMap(mergedRemoved);
 
       /* Merge SRS deck items (reviewed cards beat unreviewed seed cards; otherwise newest updatedAt wins) */
@@ -1220,7 +1228,21 @@ function pullStateFromGist(callback) {
       }
       saveSrsDeck(mergedDeck, false);
 
-      /* Union-merge completed articles so a fresh browser never wipes remote completed articles */
+      /* Merge uncompleted tombstones & completed articles (newest timestamp per article wins) */
+      var mergedUncompleted = {};
+      for (k in remoteUncompleted) {
+        if (Object.prototype.hasOwnProperty.call(remoteUncompleted, k)) {
+          mergedUncompleted[k] = remoteUncompleted[k];
+        }
+      }
+      for (k in localUncompleted) {
+        if (Object.prototype.hasOwnProperty.call(localUncompleted, k)) {
+          if (!mergedUncompleted[k] || localUncompleted[k] > mergedUncompleted[k]) {
+            mergedUncompleted[k] = localUncompleted[k];
+          }
+        }
+      }
+
       var mergedCompleted = {};
       for (k in remoteCompleted) {
         if (Object.prototype.hasOwnProperty.call(remoteCompleted, k)) {
@@ -1234,14 +1256,29 @@ function pullStateFromGist(callback) {
           }
         }
       }
+      /* Apply uncompleted tombstones if uncompleted timestamp is newer than completed timestamp */
+      for (k in mergedUncompleted) {
+        if (Object.prototype.hasOwnProperty.call(mergedUncompleted, k)) {
+          if (mergedCompleted[k] && mergedUncompleted[k] > mergedCompleted[k]) {
+            delete mergedCompleted[k];
+          }
+        }
+      }
+
       var chosen = mergedCompleted;
       try {
         localStorage.setItem(COMPLETED_KEY, JSON.stringify(chosen));
+        localStorage.setItem(UNCOMPLETED_KEY, JSON.stringify(mergedUncompleted));
         if (remoteUpdated && (!localUpdated || remoteUpdated > localUpdated)) {
           localStorage.setItem(GIST_UPDATED_KEY, remoteUpdated);
         }
       } catch (e) {}
-      if (Object.keys(chosen).length > Object.keys(remoteCompleted).length || Object.keys(mergedDeck).length > Object.keys(remoteDeck).length) {
+
+      /* Push back to Gist if local had newer offline edits, completions, or SRS reviews */
+      var needsPush = (localUpdated && (!remoteUpdated || localUpdated > remoteUpdated)) ||
+        Object.keys(chosen).length !== Object.keys(remoteCompleted).length ||
+        Object.keys(mergedDeck).length !== Object.keys(remoteDeck).length;
+      if (needsPush) {
         pushStateToGist();
       }
 
@@ -1255,6 +1292,7 @@ function pullStateFromGist(callback) {
     })
     .catch(function (err) {
       setSyncStatus('Gist offline (' + (err && err.message ? err.message : 'cached') + ')');
+      if (typeof callback === 'function') { callback(getCompletedMap()); }
     });
 }
 
@@ -1267,6 +1305,7 @@ function pushStateToGist(callback) {
   }
   var now = new Date().toISOString();
   var map = getCompletedMap();
+  var uncomp = getUncompletedMap();
   var srsDeck = getSrsDeck();
   var srsRemoved = getSrsRemovedMap();
   var payload = {
@@ -1274,6 +1313,7 @@ function pushStateToGist(callback) {
     updatedAt: now,
     completedCount: Object.keys(map).length,
     completed: map,
+    uncompleted: uncomp,
     srsCount: Object.keys(srsDeck).length,
     srsDeck: srsDeck,
     srsRemoved: srsRemoved
