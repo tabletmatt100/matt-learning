@@ -1459,9 +1459,9 @@ function ensureHeaderAndFooter() {
   }
 }
 
-/* ---------- Ask Gemini Hydrogen Overlay ('c' shortcut + floating search icon) ---------- */
-var GEMINI_MODEL_PRIMARY = 'gemini-4-hydrogen';
-var GEMINI_MODEL_FALLBACK = 'gemini-3.8-flash';
+/* ---------- Ask Gemini Overlay ('c' shortcut + floating search icon) ---------- */
+var GEMINI_MODEL_PRIMARY = 'gemini-3.5-flash-lite';
+var GEMINI_MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 var geminiChatTurns = [];
 var geminiBusy = false;
 var geminiCachedPageContext = null;
@@ -1658,9 +1658,6 @@ window.toggleGeminiAskModal = toggleGeminiAskModal;
 function callGeminiGenerate(modelName, apiKey, systemText, contents, attempt) {
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelName) + ':generateContent?key=' + encodeURIComponent(apiKey);
   var genCfg = { temperature: 0.3 };
-  if (modelName.indexOf('hydrogen') !== -1 || modelName.indexOf('gemini-4') !== -1 || modelName.indexOf('gemini-3') !== -1) {
-    genCfg.thinkingConfig = { thinkingLevel: 'LOW' };
-  }
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
