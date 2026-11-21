@@ -694,8 +694,8 @@ function syncAiCardsFromRepo(callback) {
             lapses: 0,
             dueDay: today,
             lastGrade: null,
-            addedAt: c.addedAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            addedAt: c.addedAt || '',
+            updatedAt: c.updatedAt || ''
           };
           changed = true;
         }
@@ -1192,7 +1192,7 @@ function pullStateFromGist(callback) {
       for (k in localRemoved) { if (Object.prototype.hasOwnProperty.call(localRemoved, k)) { mergedRemoved[k] = localRemoved[k]; } }
       saveSrsRemovedMap(mergedRemoved);
 
-      /* Merge SRS deck items (newest updatedAt wins, respecting tombstones) */
+      /* Merge SRS deck items (reviewed cards beat unreviewed seed cards; otherwise newest updatedAt wins) */
       var mergedDeck = {};
       for (k in remoteDeck) {
         if (Object.prototype.hasOwnProperty.call(remoteDeck, k) && !mergedRemoved[k]) {
@@ -1201,8 +1201,20 @@ function pullStateFromGist(callback) {
       }
       for (k in localDeck) {
         if (Object.prototype.hasOwnProperty.call(localDeck, k) && !mergedRemoved[k]) {
-          if (!mergedDeck[k] || (localDeck[k].updatedAt || '') >= (mergedDeck[k].updatedAt || '')) {
-            mergedDeck[k] = localDeck[k];
+          var loc = localDeck[k];
+          var rem = mergedDeck[k];
+          if (!rem) {
+            mergedDeck[k] = loc;
+          } else {
+            var locReviewed = Boolean(loc.lastGrade || loc.reps > 0 || loc.lapses > 0);
+            var remReviewed = Boolean(rem.lastGrade || rem.reps > 0 || rem.lapses > 0);
+            if (locReviewed && !remReviewed) {
+              mergedDeck[k] = loc;
+            } else if (!locReviewed && remReviewed) {
+              mergedDeck[k] = rem;
+            } else if ((loc.updatedAt || '') >= (rem.updatedAt || '')) {
+              mergedDeck[k] = loc;
+            }
           }
         }
       }
@@ -1383,8 +1395,8 @@ document.addEventListener('DOMContentLoaded', function () {
   ensureGistWarningBanner();
   ensurePopoverDOM();
   applyFontSize(currentFontSize);
-  syncAiCardsFromRepo(function () {
-    pullStateFromGist(function () {
+  pullStateFromGist(function () {
+    syncAiCardsFromRepo(function () {
       if (capturedNewToken) {
         pushStateToGist();
       }
