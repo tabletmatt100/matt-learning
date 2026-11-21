@@ -126,45 +126,89 @@
     var articleFilter = 'todo';   /* 'todo' | 'completed' */
     var questionFilter = 'todo';  /* 'todo' | 'other' */
 
-    function switchHomeTab(tab) {
-      currentMainTab = tab;
+    function updateUrlFromState() {
+      var hash = '';
+      if (currentMainTab === 'questions') {
+        hash = (questionFilter === 'other') ? '#questions-scheduled' : '#questions';
+      } else {
+        hash = (articleFilter === 'completed') ? '#articles-completed' : '#articles';
+      }
+      if (location.hash !== hash) {
+        try {
+          history.replaceState(null, document.title, location.pathname + location.search + hash);
+        } catch (e) {
+          location.hash = hash;
+        }
+      }
+    }
+
+    function applyStateToControls() {
       var aTab = document.getElementById('tab-articles');
       var qTab = document.getElementById('tab-questions');
       var aView = document.getElementById('articles-view');
       var qView = document.getElementById('questions-view');
+      var aTodo = document.getElementById('art-opt-todo');
+      var aDone = document.getElementById('art-opt-done');
+      var qTodo = document.getElementById('q-opt-todo');
+      var qOther = document.getElementById('q-opt-other');
 
       if (aTab && qTab) {
-        aTab.className = 'home-tab' + (tab === 'articles' ? ' active' : '');
-        aTab.setAttribute('aria-selected', tab === 'articles' ? 'true' : 'false');
-        qTab.className = 'home-tab' + (tab === 'questions' ? ' active' : '');
-        qTab.setAttribute('aria-selected', tab === 'questions' ? 'true' : 'false');
+        aTab.className = 'home-tab' + (currentMainTab === 'articles' ? ' active' : '');
+        aTab.setAttribute('aria-selected', currentMainTab === 'articles' ? 'true' : 'false');
+        qTab.className = 'home-tab' + (currentMainTab === 'questions' ? ' active' : '');
+        qTab.setAttribute('aria-selected', currentMainTab === 'questions' ? 'true' : 'false');
       }
       if (aView && qView) {
-        aView.style.display = (tab === 'articles') ? 'block' : 'none';
-        qView.style.display = (tab === 'questions') ? 'block' : 'none';
+        aView.style.display = (currentMainTab === 'articles') ? 'block' : 'none';
+        qView.style.display = (currentMainTab === 'questions') ? 'block' : 'none';
       }
+      if (aTodo && aDone) {
+        aTodo.className = 'slide-toggle-opt' + (articleFilter === 'todo' ? ' active' : '');
+        aDone.className = 'slide-toggle-opt' + (articleFilter === 'completed' ? ' active' : '');
+      }
+      if (qTodo && qOther) {
+        qTodo.className = 'slide-toggle-opt' + (questionFilter === 'todo' ? ' active' : '');
+        qOther.className = 'slide-toggle-opt' + (questionFilter === 'other' ? ' active' : '');
+      }
+    }
+
+    function loadStateFromUrl() {
+      var h = (location.hash || '').replace(/^#/, '').toLowerCase();
+      if (h === 'questions-scheduled' || h === 'srs-scheduled' || h === 'scheduled') {
+        currentMainTab = 'questions';
+        questionFilter = 'other';
+      } else if (h === 'questions' || h === 'questions-todo' || h === 'srs' || h === 'today') {
+        currentMainTab = 'questions';
+        questionFilter = 'todo';
+      } else if (h === 'articles-completed' || h === 'completed') {
+        currentMainTab = 'articles';
+        articleFilter = 'completed';
+      } else if (h === 'articles' || h === 'articles-todo') {
+        currentMainTab = 'articles';
+        articleFilter = 'todo';
+      }
+      applyStateToControls();
+      renderHomeList();
+    }
+
+    function switchHomeTab(tab) {
+      currentMainTab = tab;
+      applyStateToControls();
+      updateUrlFromState();
       renderHomeList();
     }
 
     function toggleArticleFilter() {
       articleFilter = (articleFilter === 'todo') ? 'completed' : 'todo';
-      var oTodo = document.getElementById('art-opt-todo');
-      var oDone = document.getElementById('art-opt-done');
-      if (oTodo && oDone) {
-        oTodo.className = 'slide-toggle-opt' + (articleFilter === 'todo' ? ' active' : '');
-        oDone.className = 'slide-toggle-opt' + (articleFilter === 'completed' ? ' active' : '');
-      }
+      applyStateToControls();
+      updateUrlFromState();
       renderHomeList();
     }
 
     function toggleQuestionFilter() {
       questionFilter = (questionFilter === 'todo') ? 'other' : 'todo';
-      var oTodo = document.getElementById('q-opt-todo');
-      var oOther = document.getElementById('q-opt-other');
-      if (oTodo && oOther) {
-        oTodo.className = 'slide-toggle-opt' + (questionFilter === 'todo' ? ' active' : '');
-        oOther.className = 'slide-toggle-opt' + (questionFilter === 'other' ? ' active' : '');
-      }
+      applyStateToControls();
+      updateUrlFromState();
       renderHomeQuestions();
     }
 
@@ -252,14 +296,9 @@
       renderHomeQuestions();
     };
 
-    document.addEventListener('DOMContentLoaded', function () {
-      if (location.hash === '#srs' || location.hash === '#today' || location.hash === '#questions') {
-        switchHomeTab('questions');
-      } else {
-        renderHomeList();
-      }
-    });
-    window.addEventListener('pageshow', renderHomeList);
+    document.addEventListener('DOMContentLoaded', loadStateFromUrl);
+    window.addEventListener('hashchange', loadStateFromUrl);
+    window.addEventListener('pageshow', loadStateFromUrl);
   </script>
 </body>
 </html>
