@@ -15,128 +15,157 @@
 </head>
 <body>
 
-  <header>
-    <div class="header-inner">
-      <div class="site-title">
-        <strong>matt-learning</strong><span class="site-subtitle">&middot; Boox Go 10.3 &amp; Palma 3</span>
-      </div>
-      <div class="font-controls">
-        <button id="font-dec" aria-label="Decrease font size">A-</button>
-        <button id="font-inc" aria-label="Increase font size">A+</button>
-      </div>
-    </div>
-  </header>
-
-  <main style="padding-top: 1rem;">
+  <main style="padding-top: 0.75rem;">
     <div class="home-tabs" role="tablist">
-      <button type="button" class="home-tab active" id="tab-unread" role="tab" aria-selected="true" onclick="switchHomeTab('unread')">
-        Articles (<span id="count-unread">0</span>)
+      <button type="button" class="home-tab active" id="tab-articles" role="tab" aria-selected="true" onclick="switchHomeTab('articles')">
+        Articles
       </button>
-      <button type="button" class="home-tab" id="tab-completed" role="tab" aria-selected="false" onclick="switchHomeTab('completed')">
-        Completed (<span id="count-completed">0</span>)
-      </button>
-      <button type="button" class="home-tab" id="tab-today" role="tab" aria-selected="false" onclick="switchHomeTab('today')">
-        Today (<span id="count-srs-due">0</span>)
-      </button>
-      <button type="button" class="home-tab" id="tab-all-srs" role="tab" aria-selected="false" onclick="switchHomeTab('all-srs')">
-        All SRS (<span id="count-srs-all">0</span>)
+      <button type="button" class="home-tab" id="tab-questions" role="tab" aria-selected="false" onclick="switchHomeTab('questions')">
+        Questions
       </button>
     </div>
 
-    <ul class="article-list" id="article-list">
-      <li class="article-row" data-article="attention.html">
-        <a class="article-row-title" href="attention.html">1. How Attention Works: From First Principles to Multi-Head Math</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('attention.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="gkd.html">
-        <a class="article-row-title" href="gkd.html">2. Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('gkd.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="class-imbalance.html">
-        <a class="article-row-title" href="class-imbalance.html">3. Dealing with Class Imbalance: Metrics, Thresholds, Weights &amp; Calibration</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('class-imbalance.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="deepconf.html">
-        <a class="article-row-title" href="deepconf.html">4. DeepConf: Deep Think with Confidence</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('deepconf.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="reinforcement-learning.html">
-        <a class="article-row-title" href="reinforcement-learning.html">5. Reinforcement Learning From Scratch: Learning Without an Answer Key (Part 1)</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('reinforcement-learning.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="rl-algorithms.html">
-        <a class="article-row-title" href="rl-algorithms.html">6. Modern RL Algorithms: From Q* and PPO to GRPO in LLMs (Part 2)</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('rl-algorithms.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="training-hyperparameters.html">
-        <a class="article-row-title" href="training-hyperparameters.html">7. Training Hyperparameters: Why Runs Explode, Stall, or Overfit</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('training-hyperparameters.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="metrics-refresher.html">
-        <a class="article-row-title" href="metrics-refresher.html">8. Classification Metrics Refresher: Precision, Recall, Type I/II Errors, ROC-AUC &amp; PR-AUC</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('metrics-refresher.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="linear-algebra-refresher.html">
-        <a class="article-row-title" href="linear-algebra-refresher.html">9. Linear Algebra for ML Refresher: Only the Parts You Actually Use</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('linear-algebra-refresher.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="feature-engineering.html">
-        <a class="article-row-title" href="feature-engineering.html">10. Feature Engineering: Turning Raw Columns Into Signals Models Can Actually Split On</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('feature-engineering.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="calibration.html">
-        <a class="article-row-title" href="calibration.html">11. Probability Calibration: When 80% Actually Means 80%</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('calibration.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="bias-variance.html">
-        <a class="article-row-title" href="bias-variance.html">12. Overfitting, Underfitting, and the Bias-Variance Tradeoff</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('bias-variance.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="calculus-refresher.html">
-        <a class="article-row-title" href="calculus-refresher.html">13. Calculus for ML Refresher: The 10% of Calc 1–3 You Actually Need</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('calculus-refresher.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="backpropagation.html">
-        <a class="article-row-title" href="backpropagation.html">14. Backpropagation From Scratch: How Gradients Flow Through Graphs &amp; Matrices</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('backpropagation.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="lora.html">
-        <a class="article-row-title" href="lora.html">15. LoRA &amp; QLoRA From Scratch: Low-Rank Adaptation Without Full Fine-Tuning</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('lora.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="template.html">
-        <a class="article-row-title" href="template.html">15.1 Article Template 1 (Original E-ink Component Template)</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template.html')">Mark Complete</button>
-      </li>
-      <li class="article-row" data-article="template2.html">
-        <a class="article-row-title" href="template2.html">15.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
-        <button type="button" class="btn btn-small complete-toggle-btn" onclick="toggleFromHome('template2.html')">Mark Complete</button>
-      </li>
-    </ul>
+    <!-- Articles View -->
+    <div id="articles-view">
+      <div class="slide-toggle-bar">
+        <div class="slide-toggle" role="switch" tabindex="0" aria-label="Toggle To Do or Completed articles" onclick="toggleArticleFilter()">
+          <span class="slide-toggle-opt active" id="art-opt-todo">To Do</span>
+          <span class="slide-toggle-opt" id="art-opt-done">Completed</span>
+        </div>
+      </div>
 
-    <div class="empty-tab-msg" id="empty-tab-msg" style="display: none;"></div>
+      <ul class="article-list" id="article-list">
+        <li class="article-row" data-article="attention.html">
+          <a class="article-row-title" href="attention.html">1. How Attention Works: From First Principles to Multi-Head Math</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('attention.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="gkd.html">
+          <a class="article-row-title" href="gkd.html">2. Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('gkd.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="class-imbalance.html">
+          <a class="article-row-title" href="class-imbalance.html">3. Dealing with Class Imbalance: Metrics, Thresholds, Weights &amp; Calibration</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('class-imbalance.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="deepconf.html">
+          <a class="article-row-title" href="deepconf.html">4. DeepConf: Deep Think with Confidence</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('deepconf.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="reinforcement-learning.html">
+          <a class="article-row-title" href="reinforcement-learning.html">5. Reinforcement Learning From Scratch: Learning Without an Answer Key (Part 1)</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('reinforcement-learning.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="rl-algorithms.html">
+          <a class="article-row-title" href="rl-algorithms.html">6. Modern RL Algorithms: From Q* and PPO to GRPO in LLMs (Part 2)</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('rl-algorithms.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="training-hyperparameters.html">
+          <a class="article-row-title" href="training-hyperparameters.html">7. Training Hyperparameters: Why Runs Explode, Stall, or Overfit</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('training-hyperparameters.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="metrics-refresher.html">
+          <a class="article-row-title" href="metrics-refresher.html">8. Classification Metrics Refresher: Precision, Recall, Type I/II Errors, ROC-AUC &amp; PR-AUC</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('metrics-refresher.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="linear-algebra-refresher.html">
+          <a class="article-row-title" href="linear-algebra-refresher.html">9. Linear Algebra for ML Refresher: Only the Parts You Actually Use</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('linear-algebra-refresher.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="feature-engineering.html">
+          <a class="article-row-title" href="feature-engineering.html">10. Feature Engineering: Turning Raw Columns Into Signals Models Can Actually Split On</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('feature-engineering.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="calibration.html">
+          <a class="article-row-title" href="calibration.html">11. Probability Calibration: When 80% Actually Means 80%</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('calibration.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="bias-variance.html">
+          <a class="article-row-title" href="bias-variance.html">12. Overfitting, Underfitting, and the Bias-Variance Tradeoff</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('bias-variance.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="calculus-refresher.html">
+          <a class="article-row-title" href="calculus-refresher.html">13. Calculus for ML Refresher: The 10% of Calc 1–3 You Actually Need</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('calculus-refresher.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="backpropagation.html">
+          <a class="article-row-title" href="backpropagation.html">14. Backpropagation From Scratch: How Gradients Flow Through Graphs &amp; Matrices</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('backpropagation.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="lora.html">
+          <a class="article-row-title" href="lora.html">15. LoRA &amp; QLoRA From Scratch: Low-Rank Adaptation Without Full Fine-Tuning</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('lora.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="template.html">
+          <a class="article-row-title" href="template.html">15.1 Article Template 1 (Original E-ink Component Template)</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('template.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+        <li class="article-row" data-article="template2.html">
+          <a class="article-row-title" href="template2.html">15.2 Article Template 2 (Stage 0–5 Constructive Learning Template)</a>
+          <button type="button" class="check-icon-btn" onclick="toggleFromHome('template2.html')" aria-label="Toggle completed">&#10003;</button>
+        </li>
+      </ul>
 
-    <!-- Tab 3: Questions Due Today -->
-    <div id="srs-today-list" style="display: none; border-top: 2px solid var(--border);"></div>
+      <div class="empty-tab-msg" id="empty-tab-msg" style="display: none;"></div>
+    </div>
 
-    <!-- Tab 4: All Saved SRS Questions & Schedule -->
-    <div id="srs-all-list" style="display: none; border-top: 2px solid var(--border);"></div>
+    <!-- Questions View -->
+    <div id="questions-view" style="display: none;">
+      <div class="slide-toggle-bar">
+        <div class="slide-toggle" role="switch" tabindex="0" aria-label="Toggle To Do or Scheduled questions" onclick="toggleQuestionFilter()">
+          <span class="slide-toggle-opt active" id="q-opt-todo">To Do</span>
+          <span class="slide-toggle-opt" id="q-opt-other">Scheduled</span>
+        </div>
+      </div>
+
+      <div id="srs-questions-list" style="border-top: 2px solid var(--border);"></div>
+    </div>
   </main>
 
   <script>
-    var currentHomeTab = 'unread';
+    var currentMainTab = 'articles';
+    var articleFilter = 'todo';   /* 'todo' | 'completed' */
+    var questionFilter = 'todo';  /* 'todo' | 'other' */
 
     function switchHomeTab(tab) {
-      currentHomeTab = tab;
-      var tabs = ['unread', 'completed', 'today', 'all-srs'];
-      tabs.forEach(function (t) {
-        var el = document.getElementById('tab-' + t);
-        if (el) {
-          el.className = 'home-tab' + (t === tab ? ' active' : '');
-          el.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-        }
-      });
+      currentMainTab = tab;
+      var aTab = document.getElementById('tab-articles');
+      var qTab = document.getElementById('tab-questions');
+      var aView = document.getElementById('articles-view');
+      var qView = document.getElementById('questions-view');
+
+      if (aTab && qTab) {
+        aTab.className = 'home-tab' + (tab === 'articles' ? ' active' : '');
+        aTab.setAttribute('aria-selected', tab === 'articles' ? 'true' : 'false');
+        qTab.className = 'home-tab' + (tab === 'questions' ? ' active' : '');
+        qTab.setAttribute('aria-selected', tab === 'questions' ? 'true' : 'false');
+      }
+      if (aView && qView) {
+        aView.style.display = (tab === 'articles') ? 'block' : 'none';
+        qView.style.display = (tab === 'questions') ? 'block' : 'none';
+      }
       renderHomeList();
+    }
+
+    function toggleArticleFilter() {
+      articleFilter = (articleFilter === 'todo') ? 'completed' : 'todo';
+      var oTodo = document.getElementById('art-opt-todo');
+      var oDone = document.getElementById('art-opt-done');
+      if (oTodo && oDone) {
+        oTodo.className = 'slide-toggle-opt' + (articleFilter === 'todo' ? ' active' : '');
+        oDone.className = 'slide-toggle-opt' + (articleFilter === 'completed' ? ' active' : '');
+      }
+      renderHomeList();
+    }
+
+    function toggleQuestionFilter() {
+      questionFilter = (questionFilter === 'todo') ? 'other' : 'todo';
+      var oTodo = document.getElementById('q-opt-todo');
+      var oOther = document.getElementById('q-opt-other');
+      if (oTodo && oOther) {
+        oTodo.className = 'slide-toggle-opt' + (questionFilter === 'todo' ? ' active' : '');
+        oOther.className = 'slide-toggle-opt' + (questionFilter === 'other' ? ' active' : '');
+      }
+      renderHomeQuestions();
     }
 
     function toggleFromHome(file) {
@@ -166,103 +195,49 @@
       '</div>';
     }
 
-    function renderHomeSrsLists() {
+    function renderHomeQuestions() {
+      var listEl = document.getElementById('srs-questions-list');
+      if (!listEl) { return; }
       var cards = typeof getAllSrsCards === 'function' ? getAllSrsCards() : [];
-      var dueCards = cards.filter(function (c) { return c.info.isDue; });
+      var filtered = cards.filter(function (c) {
+        return (questionFilter === 'todo') ? c.info.isDue : !c.info.isDue;
+      });
 
-      var dueBadge = document.getElementById('count-srs-due');
-      var allBadge = document.getElementById('count-srs-all');
-      if (dueBadge) { dueBadge.textContent = String(dueCards.length); }
-      if (allBadge) { allBadge.textContent = String(cards.length); }
-
-      var todayEl = document.getElementById('srs-today-list');
-      if (todayEl) {
-        if (dueCards.length === 0) {
-          todayEl.innerHTML = '<div class="empty-tab-msg">No questions due today.</div>';
-        } else {
-          todayEl.innerHTML = dueCards.map(renderSrsCardItem).join('');
-          renderMathIn(todayEl);
-        }
-      }
-
-      var allEl = document.getElementById('srs-all-list');
-      if (allEl) {
-        if (cards.length === 0) {
-          allEl.innerHTML = '<div class="empty-tab-msg">No questions in your SRS list.</div>';
-        } else {
-          allEl.innerHTML = cards.map(renderSrsCardItem).join('');
-          renderMathIn(allEl);
-        }
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="empty-tab-msg">' +
+          (questionFilter === 'todo' ? 'No questions due today.' : 'No scheduled questions.') +
+        '</div>';
+      } else {
+        listEl.innerHTML = filtered.map(renderSrsCardItem).join('');
+        renderMathIn(listEl);
       }
     }
 
     function renderHomeList() {
       var rows = document.querySelectorAll('#article-list .article-row');
-      var unreadCount = 0;
-      var completedCount = 0;
       var visibleCount = 0;
 
       rows.forEach(function (row) {
         var file = row.getAttribute('data-article');
         var done = isArticleCompleted(file);
-        if (done) {
-          completedCount++;
-        } else {
-          unreadCount++;
-        }
-
-        var btn = row.querySelector('.complete-toggle-btn');
+        var btn = row.querySelector('.check-icon-btn');
         if (btn) {
-          if (done) {
-            btn.textContent = 'Undo';
-            btn.setAttribute('aria-label', 'Move back to Articles');
-          } else {
-            btn.textContent = 'Complete';
-            btn.setAttribute('aria-label', 'Mark complete');
-          }
+          btn.className = 'check-icon-btn' + (done ? ' is-done' : '');
+          btn.setAttribute('aria-label', done ? 'Mark uncompleted' : 'Mark completed');
         }
 
-        var show = (currentHomeTab === 'completed') ? done : !done;
+        var show = (articleFilter === 'completed') ? done : !done;
         row.style.display = show ? 'flex' : 'none';
         if (show) { visibleCount++; }
       });
 
-      var uEl = document.getElementById('count-unread');
-      var cEl = document.getElementById('count-completed');
-      if (uEl) { uEl.textContent = String(unreadCount); }
-      if (cEl) { cEl.textContent = String(completedCount); }
-
       var emptyEl = document.getElementById('empty-tab-msg');
       var listEl = document.getElementById('article-list');
-      var todayEl = document.getElementById('srs-today-list');
-      var allEl = document.getElementById('srs-all-list');
-
-      renderHomeSrsLists();
-
-      if (currentHomeTab === 'today') {
-        if (listEl) { listEl.style.display = 'none'; }
-        if (emptyEl) { emptyEl.style.display = 'none'; }
-        if (allEl) { allEl.style.display = 'none'; }
-        if (todayEl) { todayEl.style.display = 'block'; }
-        return;
-      }
-
-      if (currentHomeTab === 'all-srs') {
-        if (listEl) { listEl.style.display = 'none'; }
-        if (emptyEl) { emptyEl.style.display = 'none'; }
-        if (todayEl) { todayEl.style.display = 'none'; }
-        if (allEl) { allEl.style.display = 'block'; }
-        return;
-      }
-
-      if (todayEl) { todayEl.style.display = 'none'; }
-      if (allEl) { allEl.style.display = 'none'; }
-
       if (emptyEl && listEl) {
         if (visibleCount === 0) {
           listEl.style.display = 'none';
           emptyEl.style.display = 'block';
-          emptyEl.textContent = (currentHomeTab === 'completed')
+          emptyEl.textContent = (articleFilter === 'completed')
             ? 'No completed articles yet.'
             : 'All articles completed!';
         } else {
@@ -270,17 +245,17 @@
           emptyEl.style.display = 'none';
         }
       }
+
+      renderHomeQuestions();
     }
 
     window.onSrsUpdated = function () {
-      renderHomeSrsLists();
+      renderHomeQuestions();
     };
 
     document.addEventListener('DOMContentLoaded', function () {
-      if (location.hash === '#srs' || location.hash === '#today') {
-        switchHomeTab('today');
-      } else if (location.hash === '#all-srs') {
-        switchHomeTab('all-srs');
+      if (location.hash === '#srs' || location.hash === '#today' || location.hash === '#questions') {
+        switchHomeTab('questions');
       } else {
         renderHomeList();
       }

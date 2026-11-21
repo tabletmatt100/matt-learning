@@ -1255,35 +1255,27 @@ function ensureHeaderAndFooter() {
   var isImbalancePart = SERIES.some(function (s) { return s.file === here; });
 
   var hdr = document.querySelector('header');
+  if (isIndex) {
+    if (hdr) { hdr.remove(); }
+    return;
+  }
   if (!hdr) {
     hdr = document.createElement('header');
     hdr.id = 'top';
-    var navHtml = isIndex
-      ? '<div class="site-title"><strong>matt-learning</strong><span class="site-subtitle">&middot; Boox Go 10.3 &amp; Palma 3</span></div>'
-      : '<div class="nav-links"><a href="index.html">&larr; All Articles</a>' +
-        (isImbalancePart ? '<a href="class-imbalance.html">Series Overview</a>' : '') +
-        '</div>';
+    var navHtml = '<div class="nav-links"><a href="index.html">&larr; All Articles</a>' +
+      (isImbalancePart ? '<a href="class-imbalance.html">Series Overview</a>' : '') +
+      '</div>';
     hdr.innerHTML =
       '<div class="header-inner">' +
         navHtml +
-        '<div class="font-controls">' +
-          '<button id="font-dec" aria-label="Decrease font size">A-</button>' +
-          '<span class="font-size-label" id="font-size-label">' + currentFontSize + 'px</span>' +
-          '<button id="font-inc" aria-label="Increase font size">A+</button>' +
-        '</div>' +
       '</div>';
     document.body.insertBefore(hdr, document.body.firstChild);
   } else {
     if (!hdr.id) { hdr.id = 'top'; }
     var fc = hdr.querySelector('.font-controls');
-    if (fc && !document.getElementById('font-size-label')) {
-      var lbl = document.createElement('span');
-      lbl.className = 'font-size-label';
-      lbl.id = 'font-size-label';
-      lbl.textContent = currentFontSize + 'px';
-      var incBtn = document.getElementById('font-inc');
-      if (incBtn) { fc.insertBefore(lbl, incBtn); }
-    }
+    if (fc) { fc.remove(); }
+    var st = hdr.querySelector('.site-title');
+    if (st) { st.remove(); }
   }
 
   var mainEl = document.querySelector('main');

@@ -717,28 +717,93 @@ details.mcq-box[open] > summary.mcq-title {
   font-size: 0.75rem;
 }
 
+.site-title, .font-controls {
+  display: none !important;
+}
+
 /* ---------- Index Page & Series Components ---------- */
 .home-tabs {
   display: flex;
   border-bottom: 2px solid var(--border);
-  margin: 0.5rem 0 1rem 0;
+  margin: 0 0 0.75rem 0;
   gap: 8px;
 }
 
 .home-tab {
+  flex: 1;
   background: var(--bg);
   color: var(--text);
   border: 2px solid var(--border);
   border-bottom: none;
-  padding: 10px 18px;
-  font-size: 1rem;
+  padding: 8px 14px;
+  font-size: 0.95rem;
   font-weight: bold;
   font-family: inherit;
   cursor: pointer;
-  min-height: 48px;
+  min-height: 40px;
+  text-align: center;
 }
 
 .home-tab.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+
+/* Slide Toggle Switch */
+.slide-toggle-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.2rem 0 0.65rem 0;
+}
+
+.slide-toggle {
+  display: inline-flex;
+  align-items: center;
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+  background: var(--bg);
+  cursor: pointer;
+  user-select: none;
+  gap: 2px;
+}
+
+.slide-toggle-opt {
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.slide-toggle-opt.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+
+/* Checkmark Icon Button for Articles */
+.check-icon-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: bold;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.check-icon-btn.is-done,
+.check-icon-btn:active {
   background: var(--active-bg);
   color: var(--active-text);
 }
