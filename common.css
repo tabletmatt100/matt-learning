@@ -731,6 +731,31 @@ details.mcq-box[open] > summary.mcq-title {
   background: var(--active-bg);
   color: var(--active-text);
 }
+.srs-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.85);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.srs-modal-overlay.open {
+  display: flex;
+}
+.srs-modal-box {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  padding: 1rem 1.15rem;
+  width: min(92vw, 320px);
+}
+.srs-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 0.85rem;
+}
 
 .site-title, .font-controls {
   display: none !important;

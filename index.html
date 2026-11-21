@@ -119,12 +119,43 @@
 
       <div id="srs-questions-list" style="border-top: 2px solid var(--border);"></div>
     </div>
+
+    <!-- Remove Question Confirmation Modal -->
+    <div id="srs-confirm-modal" class="srs-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="srs-modal-title">
+      <div class="srs-modal-box">
+        <div id="srs-modal-title" style="font-weight:bold; font-size:0.95rem;">Remove this question?</div>
+        <div class="srs-modal-actions">
+          <button type="button" class="srs-btn" onclick="closeSrsRemoveModal()">Cancel</button>
+          <button type="button" class="srs-btn" style="background:var(--active-bg);color:var(--active-text);" onclick="confirmSrsRemove()">Remove</button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
     var currentMainTab = 'articles';
     var articleFilter = 'todo';   /* 'todo' | 'completed' */
     var questionFilter = 'todo';  /* 'todo' | 'other' */
+    var pendingRemoveCardId = null;
+
+    function promptRemoveQuestion(cardId) {
+      pendingRemoveCardId = cardId;
+      var m = document.getElementById('srs-confirm-modal');
+      if (m) { m.classList.add('open'); }
+    }
+
+    function closeSrsRemoveModal() {
+      pendingRemoveCardId = null;
+      var m = document.getElementById('srs-confirm-modal');
+      if (m) { m.classList.remove('open'); }
+    }
+
+    function confirmSrsRemove() {
+      if (pendingRemoveCardId) {
+        removeQuestionFromSrs(pendingRemoveCardId);
+      }
+      closeSrsRemoveModal();
+    }
 
     function updateUrlFromState() {
       var hash = '';
@@ -224,7 +255,7 @@
         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">' +
           '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
         '</div>' +
-        '<button type="button" class="srs-remove-icon-btn" onclick="removeQuestionFromSrs(\'' + c.id + '\')" aria-label="Remove question">&times;</button>' +
+        '<button type="button" class="srs-remove-icon-btn" onclick="promptRemoveQuestion(\'' + c.id + '\')" aria-label="Remove question">&times;</button>' +
         '<details style="margin:0; border:none; padding:0;">' +
           '<summary style="font-weight:600; padding:0;">' + c.q + '</summary>' +
           '<div style="margin:0.4rem 0; padding:0.45rem 0.6rem; background:var(--highlight-bg); border-left:2px solid var(--border);">' + c.a + '</div>' +
