@@ -1641,7 +1641,12 @@ function closeGeminiAskModal() {
   var ov = document.getElementById('gemini-ask-overlay');
   var fab = document.getElementById('gemini-ask-fab');
   var inp = document.getElementById('gemini-ask-input');
-  if (inp) { inp.blur(); }
+  if (inp) {
+    inp.value = '';
+    inp.blur();
+  }
+  geminiChatTurns = [];
+  renderGeminiMessages();
   if (ov) { ov.classList.remove('open'); }
   if (fab) { fab.classList.remove('is-open'); }
 }
