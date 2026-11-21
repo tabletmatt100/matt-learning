@@ -178,8 +178,11 @@
       var badgeClass = 'srs-badge ' + (c.info.isDue ? 'is-due' : 'is-scheduled');
       return '<div class="srs-list-item">' +
         '<div class="srs-list-header">' +
-          '<span class="srs-list-meta">' + c.source + '</span>' +
-          '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
+          '<span class="srs-list-meta" style="font-family:var(--font-mono);font-size:0.75rem;">' + c.source + '</span>' +
+          '<span class="srs-list-header-right">' +
+            '<span class="' + badgeClass + '">' + c.info.dateLabel + '</span>' +
+            '<button type="button" class="srs-remove-icon-btn" onclick="removeQuestionFromSrs(\'' + c.id + '\')" aria-label="Remove question">&times;</button>' +
+          '</span>' +
         '</div>' +
         '<details style="margin:0.35rem 0; border:none; padding:0;">' +
           '<summary style="font-weight:600; padding:2px 0;">' + c.q + '</summary>' +
@@ -190,7 +193,6 @@
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'hard\')">Hard (' + prev.hard + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'good\')">Good (' + prev.good + 'd)</button>' +
           '<button type="button" class="srs-btn" onclick="gradeSrsCard(\'' + c.id + '\', \'easy\')">Easy (' + prev.easy + 'd)</button>' +
-          '<button type="button" class="srs-btn" onclick="removeQuestionFromSrs(\'' + c.id + '\')">Remove</button>' +
         '</div>' +
       '</div>';
     }

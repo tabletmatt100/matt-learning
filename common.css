@@ -712,9 +712,32 @@ details.mcq-box[open] > summary.mcq-title {
   gap: 8px;
   flex-wrap: wrap;
 }
-.srs-list-meta {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+.srs-list-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.srs-remove-icon-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: bold;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.srs-remove-icon-btn:active {
+  background: var(--active-bg);
+  color: var(--active-text);
 }
 
 .site-title, .font-controls {
