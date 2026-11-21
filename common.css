@@ -1173,10 +1173,13 @@ footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-bloc
   z-index: 2400;
 }
 
-#gemini-ask-fab:active,
-#gemini-ask-fab.is-open {
+#gemini-ask-fab:active {
   background: var(--active-bg);
   color: var(--active-text);
+}
+
+#gemini-ask-fab.is-open {
+  display: none !important;
 }
 
 #gemini-ask-fab svg {
@@ -1190,7 +1193,7 @@ footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-bloc
   display: none;
   position: fixed;
   right: 14px;
-  bottom: 66px;
+  bottom: 14px;
   width: min(92vw, 380px);
   max-height: 70vh;
   background: var(--bg);
@@ -1314,7 +1317,7 @@ footer.article-footer a { font-weight: 600; padding: 8px 0; display: inline-bloc
   }
   #gemini-ask-overlay {
     right: 10px;
-    bottom: 58px;
+    bottom: 10px;
     width: calc(100vw - 20px);
     max-height: 68vh;
   }
