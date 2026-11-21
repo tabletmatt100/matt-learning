@@ -728,18 +728,18 @@ function computeSm2Next(prev, grade) {
     nextLapses = lapses + 1;
   } else if (grade === 'hard') {
     nextReps = Math.max(1, reps);
-    nextInt = (reps === 0) ? 2 : Math.max(interval + 1, Math.round(interval * 1.2));
+    nextInt = (reps === 0) ? 1 : Math.max(interval + 1, Math.round(interval * 1.2));
     nextEase = Math.max(1.30, Number((ease - 0.15).toFixed(2)));
   } else if (grade === 'good') {
     nextReps = reps + 1;
-    if (nextReps === 1) { nextInt = 1; }
-    else if (nextReps === 2) { nextInt = 4; }
+    if (nextReps === 1) { nextInt = 2; }
+    else if (nextReps === 2) { nextInt = 5; }
     else { nextInt = Math.max(interval + 1, Math.round(interval * ease)); }
   } else if (grade === 'easy') {
     nextReps = reps + 1;
     nextEase = Number((ease + 0.15).toFixed(2));
     if (nextReps === 1) { nextInt = 4; }
-    else if (nextReps === 2) { nextInt = 8; }
+    else if (nextReps === 2) { nextInt = 9; }
     else { nextInt = Math.max(interval + 2, Math.round(interval * nextEase * 1.3)); }
   }
 
