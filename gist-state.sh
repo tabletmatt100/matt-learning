@@ -46,11 +46,32 @@ PY
     ;;
   pair-url)
     TOKEN=$(gh auth token)
-    echo "https://tabletmatt100.github.io/matt-learning/#sync=${TOKEN}"
-    echo "http://localhost:8080/#sync=${TOKEN}"
+    if [ -f ~/.secrets ]; then . ~/.secrets; fi
+    KEY_PART=""
+    if [ -n "${GEMINI_API_KEY:-}" ]; then KEY_PART="&gemini=${GEMINI_API_KEY}"; fi
+    echo "https://tabletmatt100.github.io/matt-learning/#sync=${TOKEN}${KEY_PART}"
+    echo "http://localhost:8080/#sync=${TOKEN}${KEY_PART}"
+    ;;
+  set-gemini-key)
+    KEY="${2:-}"
+    if [ -z "$KEY" ] && [ -f ~/.secrets ]; then . ~/.secrets; KEY="${GEMINI_API_KEY:-}"; fi
+    if [ -z "$KEY" ]; then
+      echo "Usage: $0 set-gemini-key <AIza...>"
+      exit 1
+    fi
+    TMP_FILE="/data/data/com.termux/files/usr/tmp/$FILENAME"
+    gh gist view "$GIST_ID" -f "$FILENAME" > "$TMP_FILE"
+    if grep -q '"geminiApiKey"' "$TMP_FILE"; then
+      sed -i 's/"geminiApiKey": *"[^"]*"/"geminiApiKey": "'"$KEY"'"/' "$TMP_FILE"
+    else
+      sed -i 's/^{/{\n  "geminiApiKey": "'"$KEY"'",/' "$TMP_FILE"
+    fi
+    gh gist edit "$GIST_ID" -f "$FILENAME" "$TMP_FILE"
+    rm -f "$TMP_FILE"
+    echo "Saved geminiApiKey in private Gist $GIST_ID"
     ;;
   *)
-    echo "Usage: $0 [view | complete <file.html> | uncomplete <file.html> | pair-url]"
+    echo "Usage: $0 [view | complete <file.html> | uncomplete <file.html> | pair-url | set-gemini-key <key>]"
     exit 1
     ;;
 esac

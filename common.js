@@ -1016,18 +1016,13 @@ function getUncompletedMap() {
 var GIST_TOKEN_KEY = 'matt_learning_gist_token';
 var GIST_UPDATED_KEY = 'matt_learning_gist_updated_at';
 var GEMINI_API_KEY_STORAGE = 'matt_learning_gemini_api_key';
-var DEFAULT_GEMINI_KEY_B64 = 'QVEuQWI4Uk42SVlCbDU1T2xzZ0EwcTcwQWZNZXRYcGp2OWhlZ01ESFFFV3c0dkxGSl9PUkE=';
 var DEFAULT_GIST_ID = 'b270eaafff8dc051eca22cc33b394235';
 var GIST_FILENAME = 'matt_learning_state.json';
 
 function getGeminiApiKey() {
   try {
-    var saved = (localStorage.getItem(GEMINI_API_KEY_STORAGE) || '').trim();
-    if (saved) { return saved; }
-  } catch (e) {}
-  try {
-    return atob(DEFAULT_GEMINI_KEY_B64).trim();
-  } catch (e2) {
+    return (localStorage.getItem(GEMINI_API_KEY_STORAGE) || '').trim();
+  } catch (e) {
     return '';
   }
 }
@@ -1073,19 +1068,29 @@ window.getGistToken = getGistToken;
 window.setGistToken = setGistToken;
 window.getGistId = getGistId;
 
-/* Capture #sync=<token> or ?sync=<token> from URL so pairing Go 10.3 or Palma 3 is a 1-tap link */
+/* Capture #sync=<token> or #gemini=<key> from URL so pairing Go 10.3 or Palma 3 is a 1-tap link */
 function captureSyncTokenFromHash() {
   var tok = '';
+  var gemKey = '';
   if (location.hash) {
     var m = location.hash.match(/[#&]sync=([^&]+)/);
     if (m && m[1]) { tok = decodeURIComponent(m[1]).trim(); }
+    var gm = location.hash.match(/[#&](?:gemini|key)=([^&]+)/);
+    if (gm && gm[1]) { gemKey = decodeURIComponent(gm[1]).trim(); }
   }
-  if (!tok && location.search) {
-    var q = location.search.match(/[?&]sync=([^&]+)/);
-    if (q && q[1]) { tok = decodeURIComponent(q[1]).trim(); }
+  if (location.search) {
+    if (!tok) {
+      var q = location.search.match(/[?&]sync=([^&]+)/);
+      if (q && q[1]) { tok = decodeURIComponent(q[1]).trim(); }
+    }
+    if (!gemKey) {
+      var gq = location.search.match(/[?&](?:gemini|key)=([^&]+)/);
+      if (gq && gq[1]) { gemKey = decodeURIComponent(gq[1]).trim(); }
+    }
   }
-  if (tok) {
-    setGistToken(tok);
+  if (tok) { setGistToken(tok); }
+  if (gemKey) { setGeminiApiKey(gemKey); }
+  if (tok || gemKey) {
     try {
       history.replaceState(null, document.title, location.pathname);
     } catch (e) {
@@ -1544,24 +1549,17 @@ function renderGeminiMessages() {
   var box = document.getElementById('gemini-ask-messages');
   if (!box) { return; }
   if (geminiChatTurns.length === 0) {
-    var h1 = document.querySelector('h1');
-    var pageLabel = h1 ? h1.textContent.trim() : (document.title || 'this page');
-    box.innerHTML =
-      '<div class="gemini-ask-empty">' +
-        'Ask <strong>Gemini 4 Hydrogen</strong> anything about <em>' + pageLabel + '</em>. ' +
-        'Full page context is passed automatically, and you can ask follow-up questions.<br>' +
-        '<span style="font-family:var(--font-mono);font-size:0.78rem;">Shortcut: press <strong>c</strong> to open/close &middot; <strong>Enter</strong> to send</span>' +
-      '</div>';
+    box.className = 'gemini-ask-messages';
+    box.innerHTML = '';
     return;
   }
+  box.className = 'gemini-ask-messages has-turns';
   box.innerHTML = geminiChatTurns.map(function (t) {
     var cls = t.role === 'user' ? 'gemini-msg gemini-msg-user' : 'gemini-msg gemini-msg-model';
-    var who = t.role === 'user' ? 'You' : (t.modelLabel || 'Gemini 4 Hydrogen');
     var bodyHtml = t.role === 'user'
       ? '<p>' + String(t.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>'
       : formatGeminiHtml(t.text || '');
     return '<div class="' + cls + '">' +
-      '<span class="gemini-msg-role">' + who + '</span>' +
       '<div class="gemini-msg-body">' + bodyHtml + '</div>' +
     '</div>';
   }).join('');
@@ -1574,7 +1572,7 @@ function ensureGeminiAskDOM() {
     var fab = document.createElement('button');
     fab.type = 'button';
     fab.id = 'gemini-ask-fab';
-    fab.setAttribute('aria-label', 'Ask Gemini Hydrogen about this page (shortcut: c)');
+    fab.setAttribute('aria-label', 'Ask Gemini Hydrogen (c)');
     fab.setAttribute('title', 'Ask Gemini Hydrogen (c)');
     fab.innerHTML =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">' +
@@ -1590,60 +1588,25 @@ function ensureGeminiAskDOM() {
   if (!document.getElementById('gemini-ask-overlay')) {
     var ov = document.createElement('div');
     ov.id = 'gemini-ask-overlay';
-    ov.setAttribute('role', 'dialog');
-    ov.setAttribute('aria-modal', 'true');
-    ov.setAttribute('aria-labelledby', 'gemini-ask-title');
+    ov.setAttribute('role', 'region');
+    ov.setAttribute('aria-label', 'Ask Gemini Hydrogen');
     ov.innerHTML =
-      '<div class="gemini-ask-modal">' +
-        '<div class="gemini-ask-header">' +
-          '<div>' +
-            '<div class="gemini-ask-title" id="gemini-ask-title">Ask Gemini 4 Hydrogen</div>' +
-            '<span class="gemini-ask-sub">Context: current page &middot; Press c or Esc to close</span>' +
-          '</div>' +
-          '<div class="gemini-ask-header-actions">' +
-            '<button type="button" class="gemini-ask-icon-btn" id="gemini-ask-clear" title="Clear conversation">Clear</button>' +
-            '<button type="button" class="gemini-ask-icon-btn" id="gemini-ask-key" title="Set Gemini API Key">Key</button>' +
-            '<button type="button" class="gemini-ask-icon-btn" id="gemini-ask-close" aria-label="Close">&times;</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="gemini-ask-messages" id="gemini-ask-messages"></div>' +
-        '<form class="gemini-ask-form" id="gemini-ask-form">' +
-          '<textarea id="gemini-ask-input" rows="2" placeholder="Ask a question or follow-up... (Enter to send)"></textarea>' +
-          '<button type="submit" id="gemini-ask-send">Ask</button>' +
-        '</form>' +
-      '</div>';
-    ov.addEventListener('click', function (e) {
-      if (e.target === ov) { closeGeminiAskModal(); }
-    });
+      '<div class="gemini-ask-messages" id="gemini-ask-messages"></div>' +
+      '<form class="gemini-ask-form" id="gemini-ask-form">' +
+        '<input type="text" id="gemini-ask-input" placeholder="Ask Gemini..." autocomplete="off" />' +
+        '<button type="submit" id="gemini-ask-send" aria-label="Send">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">' +
+            '<line x1="12" y1="19" x2="12" y2="5"></line>' +
+            '<polyline points="5 12 12 5 19 12"></polyline>' +
+          '</svg>' +
+        '</button>' +
+      '</form>';
     document.body.appendChild(ov);
 
-    document.getElementById('gemini-ask-close').addEventListener('click', closeGeminiAskModal);
-    document.getElementById('gemini-ask-clear').addEventListener('click', function () {
-      geminiChatTurns = [];
-      renderGeminiMessages();
-      var inp = document.getElementById('gemini-ask-input');
-      if (inp) { inp.focus(); }
-    });
-    document.getElementById('gemini-ask-key').addEventListener('click', function () {
-      var cur = getGeminiApiKey();
-      var next = window.prompt('Gemini API Key (saved in localStorage & private Gist):', cur || '');
-      if (next !== null && next.trim()) {
-        setGeminiApiKey(next.trim());
-        pushStateToGist();
-      }
-    });
-
     var form = document.getElementById('gemini-ask-form');
-    var input = document.getElementById('gemini-ask-input');
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       submitGeminiQuestion();
-    });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        submitGeminiQuestion();
-      }
     });
   }
 }
@@ -1743,11 +1706,16 @@ function submitGeminiQuestion() {
   if (!q) { return; }
 
   var apiKey = getGeminiApiKey();
-  if (!apiKey) {
-    var entered = window.prompt('Enter your Gemini API key:', '');
+  if (!apiKey || q.toLowerCase() === '/key') {
+    var entered = window.prompt('Paste your Gemini API key (starts with AIza... — saved to localStorage & private Gist, never public GitHub):', apiKey || '');
     if (!entered || !entered.trim()) { return; }
     apiKey = entered.trim();
     setGeminiApiKey(apiKey);
+    pushStateToGist();
+    if (q.toLowerCase() === '/key') {
+      inp.value = '';
+      return;
+    }
   }
 
   inp.value = '';
@@ -1790,9 +1758,14 @@ function submitGeminiQuestion() {
       };
     })
     .catch(function (err) {
+      var msg = (err && err.message) ? err.message : 'Request failed.';
+      if (err && (err.status === 400 || err.status === 401 || err.status === 403) && /api key|unauthenticated|credential/i.test(msg)) {
+        setGeminiApiKey('');
+        msg += ' (Cleared saved key — ask again or type /key to paste a valid AIza... Gemini API key.)';
+      }
       geminiChatTurns[pendingIdx] = {
         role: 'model',
-        text: 'Error: ' + (err && err.message ? err.message : 'Request failed.'),
+        text: 'Error: ' + msg,
         modelLabel: 'Gemini 4 Hydrogen',
         isError: true
       };
