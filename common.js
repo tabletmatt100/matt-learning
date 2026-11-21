@@ -1760,7 +1760,7 @@ function submitGeminiQuestion() {
       var msg = (err && err.message) ? err.message : 'Request failed.';
       if (err && (err.status === 400 || err.status === 401 || err.status === 403) && /api key|unauthenticated|credential/i.test(msg)) {
         setGeminiApiKey('');
-        msg += ' (Cleared saved key — ask again or type /key to paste a valid AIza... Gemini API key.)';
+        msg += ' (Cleared old key — ask again or type /key to paste your new Gemini API key.)';
       }
       geminiChatTurns[pendingIdx] = {
         role: 'model',
