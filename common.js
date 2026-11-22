@@ -1660,9 +1660,13 @@ function renderGeminiMessages() {
   box.className = 'gemini-ask-messages has-turns';
   var qHtml = '<p>' + String(turn.q || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
   var aHtml = formatGeminiHtml(turn.a || '');
+  var inlineCloseHtml = geminiChatTurns.length === 1
+    ? '<button type="button" class="gemini-close-btn gemini-inline-close" aria-label="Close" title="Close (c)">&times;</button>'
+    : '';
   box.innerHTML =
-    '<div class="gemini-msg gemini-msg-user">' +
+    '<div class="gemini-msg gemini-msg-user' + (geminiChatTurns.length === 1 ? ' has-inline-close' : '') + '">' +
       '<div class="gemini-msg-body">' + qHtml + '</div>' +
+      inlineCloseHtml +
     '</div>' +
     '<div class="gemini-msg gemini-msg-model">' +
       '<div class="gemini-msg-body">' + aHtml + '</div>' +
@@ -1696,9 +1700,12 @@ function ensureGeminiAskDOM() {
     ov.setAttribute('aria-label', 'Ask Gemini Hydrogen');
     ov.innerHTML =
       '<div class="gemini-ask-nav" id="gemini-ask-nav" style="display:none;">' +
-        '<button type="button" id="gemini-page-prev" aria-label="Previous question">&#x2039;</button>' +
-        '<span class="gemini-page-count" id="gemini-page-count">1 / 1</span>' +
-        '<button type="button" id="gemini-page-next" aria-label="Next question">&#x203A;</button>' +
+        '<div class="gemini-ask-paginator">' +
+          '<button type="button" id="gemini-page-prev" aria-label="Previous question">&#x2039;</button>' +
+          '<span class="gemini-page-count" id="gemini-page-count">1 / 1</span>' +
+          '<button type="button" id="gemini-page-next" aria-label="Next question">&#x203A;</button>' +
+        '</div>' +
+        '<button type="button" id="gemini-ask-close" class="gemini-close-btn" aria-label="Close" title="Close (c)">&times;</button>' +
       '</div>' +
       '<div class="gemini-ask-messages" id="gemini-ask-messages"></div>' +
       '<form class="gemini-ask-form" id="gemini-ask-form">' +
@@ -1709,11 +1716,16 @@ function ensureGeminiAskDOM() {
             '<polyline points="5 12 12 5 19 12"></polyline>' +
           '</svg>' +
         '</button>' +
-        '<button type="button" id="gemini-ask-close" aria-label="Close" title="Close (c)">&times;</button>' +
       '</form>';
     document.body.appendChild(ov);
 
-    document.getElementById('gemini-ask-close').addEventListener('click', closeGeminiAskModal);
+    ov.addEventListener('click', function (e) {
+      var closeBtn = e.target.closest ? e.target.closest('.gemini-close-btn') : null;
+      if (closeBtn) {
+        e.preventDefault();
+        closeGeminiAskModal();
+      }
+    });
     document.getElementById('gemini-page-prev').addEventListener('click', function () {
       if (geminiPageIdx > 0) {
         geminiPageIdx--;
@@ -1903,6 +1915,7 @@ function submitGeminiQuestion() {
   }
 
   inp.value = '';
+  inp.blur();
   var pendingIdx = geminiChatTurns.push({
     q: q,
     a: 'Thinking...',
@@ -2065,6 +2078,21 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
       closePopover();
+    }
+    if (isGeminiAskOpen() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      var inpEl = document.getElementById('gemini-ask-input');
+      var typingWithText = isTypingInEditable(e.target) && !(e.target === inpEl && !inpEl.value);
+      if (!typingWithText && geminiChatTurns.length > 1) {
+        e.preventDefault();
+        if (e.key === 'ArrowLeft' && geminiPageIdx > 0) {
+          geminiPageIdx--;
+          renderGeminiMessages();
+        } else if (e.key === 'ArrowRight' && geminiPageIdx < geminiChatTurns.length - 1) {
+          geminiPageIdx++;
+          renderGeminiMessages();
+        }
+        return;
+      }
     }
     if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if (!isTypingInEditable(e.target)) {
