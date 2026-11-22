@@ -142,9 +142,9 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  /* Network-first with instant cache fallback for HTML, CSS, JS */
+  /* Network-first (bypassing browser HTTP disk cache) with instant SW cache fallback when offline */
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then(function (res) {
         if (res && res.ok) {
           var copy = res.clone();
