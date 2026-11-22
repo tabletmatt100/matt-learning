@@ -2152,6 +2152,18 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
     }
+    if (isGeminiAskOpen() && (e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!isTypingInEditable(e.target)) {
+        e.preventDefault();
+        geminiSawPhysCode = true;
+        var focusInp = document.getElementById('gemini-ask-input');
+        if (focusInp) {
+          focusInp.focus();
+          try { focusInp.setSelectionRange(focusInp.value.length, focusInp.value.length); } catch (err) {}
+        }
+        return;
+      }
+    }
     if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if (!isTypingInEditable(e.target)) {
         e.preventDefault();
