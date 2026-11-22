@@ -1467,6 +1467,7 @@ var GEMINI_MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 var geminiChatTurns = [];
 var geminiPageIdx = 0;
 var geminiBusy = false;
+var geminiIsMinimized = false;
 var geminiCachedPageContext = null;
 var geminiBaseViewportH = 0;
 var geminiSawPhysCode = false;
@@ -1636,6 +1637,49 @@ function formatGeminiHtml(raw) {
   }).join('');
 }
 
+function getGeminiSizeBtnSvg(minimized) {
+  if (minimized) {
+    /* Maximize icon (expand square) */
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">' +
+      '<rect x="4" y="4" width="16" height="16"></rect>' +
+    '</svg>';
+  }
+  /* Minimize icon (horizontal dash) */
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square" aria-hidden="true">' +
+    '<line x1="5" y1="12" x2="19" y2="12"></line>' +
+  '</svg>';
+}
+
+function getGeminiWindowActionsHtml(extraClass) {
+  var cls = extraClass ? (' ' + extraClass) : '';
+  var label = geminiIsMinimized ? 'Maximize (85%)' : 'Minimize (40%)';
+  return '<div class="gemini-window-actions' + cls + '">' +
+    '<button type="button" class="gemini-size-btn" aria-label="' + label + '" title="' + label + '">' +
+      getGeminiSizeBtnSvg(geminiIsMinimized) +
+    '</button>' +
+    '<button type="button" class="gemini-close-btn" aria-label="Close" title="Close (c)">&times;</button>' +
+  '</div>';
+}
+
+function updateGeminiSizeButtons() {
+  var ov = document.getElementById('gemini-ask-overlay');
+  if (ov) {
+    ov.classList.toggle('is-minimized', Boolean(geminiIsMinimized));
+  }
+  var label = geminiIsMinimized ? 'Maximize (85%)' : 'Minimize (40%)';
+  var svg = getGeminiSizeBtnSvg(geminiIsMinimized);
+  document.querySelectorAll('#gemini-ask-overlay .gemini-size-btn').forEach(function (btn) {
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+    btn.innerHTML = svg;
+  });
+}
+
+function toggleGeminiMinimize() {
+  geminiIsMinimized = !geminiIsMinimized;
+  updateGeminiSizeButtons();
+}
+
 function renderGeminiMessages() {
   var box = document.getElementById('gemini-ask-messages');
   var nav = document.getElementById('gemini-ask-nav');
@@ -1667,17 +1711,18 @@ function renderGeminiMessages() {
   box.className = 'gemini-ask-messages has-turns';
   var qHtml = '<p>' + String(turn.q || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
   var aHtml = formatGeminiHtml(turn.a || '');
-  var inlineCloseHtml = geminiChatTurns.length === 1
-    ? '<button type="button" class="gemini-close-btn gemini-inline-close" aria-label="Close" title="Close (c)">&times;</button>'
+  var inlineActionsHtml = geminiChatTurns.length === 1
+    ? getGeminiWindowActionsHtml('gemini-inline-close')
     : '';
   box.innerHTML =
     '<div class="gemini-msg gemini-msg-user' + (geminiChatTurns.length === 1 ? ' has-inline-close' : '') + '">' +
       '<div class="gemini-msg-body">' + qHtml + '</div>' +
-      inlineCloseHtml +
+      inlineActionsHtml +
     '</div>' +
     '<div class="gemini-msg gemini-msg-model">' +
       '<div class="gemini-msg-body">' + aHtml + '</div>' +
     '</div>';
+  updateGeminiSizeButtons();
   renderMathIn(box);
   box.scrollTop = 0;
 }
@@ -1712,7 +1757,7 @@ function ensureGeminiAskDOM() {
           '<span class="gemini-page-count" id="gemini-page-count">1 / 1</span>' +
           '<button type="button" id="gemini-page-next" aria-label="Next question">&#x203A;</button>' +
         '</div>' +
-        '<button type="button" id="gemini-ask-close" class="gemini-close-btn" aria-label="Close" title="Close (c)">&times;</button>' +
+        getGeminiWindowActionsHtml('') +
       '</div>' +
       '<div class="gemini-ask-messages" id="gemini-ask-messages"></div>' +
       '<form class="gemini-ask-form" id="gemini-ask-form">' +
@@ -1727,6 +1772,12 @@ function ensureGeminiAskDOM() {
     document.body.appendChild(ov);
 
     ov.addEventListener('click', function (e) {
+      var sizeBtn = e.target.closest ? e.target.closest('.gemini-size-btn') : null;
+      if (sizeBtn) {
+        e.preventDefault();
+        toggleGeminiMinimize();
+        return;
+      }
       var closeBtn = e.target.closest ? e.target.closest('.gemini-close-btn') : null;
       if (closeBtn) {
         e.preventDefault();
@@ -1819,9 +1870,11 @@ function closeGeminiAskModal() {
   }
   geminiSawPhysCode = false;
   geminiSubmitViaSendTap = false;
+  geminiIsMinimized = false;
   geminiChatTurns = [];
   geminiPageIdx = 0;
   renderGeminiMessages();
+  updateGeminiSizeButtons();
   if (ov) { ov.classList.remove('open'); }
   if (fab) { fab.classList.remove('is-open'); }
 }
