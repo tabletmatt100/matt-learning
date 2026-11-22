@@ -1468,6 +1468,14 @@ var geminiChatTurns = [];
 var geminiPageIdx = 0;
 var geminiBusy = false;
 var geminiCachedPageContext = null;
+var geminiBaseViewportH = 0;
+var geminiInputTypedWithIme = false;
+var geminiInputTypedWithPhysKey = false;
+var geminiSubmitViaPhysEnter = false;
+
+function getActiveViewportHeight() {
+  return (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
+}
 
 function isTypingInEditable(target) {
   var el = target || document.activeElement;
@@ -1739,6 +1747,36 @@ function ensureGeminiAskDOM() {
       }
     });
     var form = document.getElementById('gemini-ask-form');
+    var inpEl = document.getElementById('gemini-ask-input');
+    var sendBtnEl = document.getElementById('gemini-ask-send');
+    if (inpEl) {
+      inpEl.addEventListener('compositionstart', function () {
+        geminiInputTypedWithIme = true;
+      });
+      inpEl.addEventListener('beforeinput', function (e) {
+        if (e.isComposing || (e.inputType && e.inputType.indexOf('Composition') !== -1)) {
+          geminiInputTypedWithIme = true;
+        }
+      });
+      inpEl.addEventListener('keydown', function (e) {
+        if (e.keyCode === 229 || e.key === 'Unidentified' || e.isComposing) {
+          geminiInputTypedWithIme = true;
+          geminiSubmitViaPhysEnter = false;
+        } else if (e.key === 'Enter') {
+          geminiSubmitViaPhysEnter = Boolean((e.code === 'Enter' || e.code === 'NumpadEnter') && !geminiInputTypedWithIme);
+        } else if (e.key && e.key.length === 1 && e.code) {
+          geminiInputTypedWithPhysKey = true;
+        }
+      });
+    }
+    if (sendBtnEl) {
+      sendBtnEl.addEventListener('pointerdown', function () {
+        geminiSubmitViaPhysEnter = false;
+      });
+      sendBtnEl.addEventListener('touchstart', function () {
+        geminiSubmitViaPhysEnter = false;
+      }, { passive: true });
+    }
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       submitGeminiQuestion();
@@ -1753,6 +1791,11 @@ function isGeminiAskOpen() {
 
 function openGeminiAskModal() {
   ensureGeminiAskDOM();
+  var vhNow = getActiveViewportHeight();
+  if (vhNow > geminiBaseViewportH) { geminiBaseViewportH = vhNow; }
+  geminiInputTypedWithIme = false;
+  geminiInputTypedWithPhysKey = false;
+  geminiSubmitViaPhysEnter = false;
   var ov = document.getElementById('gemini-ask-overlay');
   var fab = document.getElementById('gemini-ask-fab');
   if (ov) { ov.classList.add('open'); }
@@ -1782,6 +1825,9 @@ function closeGeminiAskModal() {
     inp.value = '';
     inp.blur();
   }
+  geminiInputTypedWithIme = false;
+  geminiInputTypedWithPhysKey = false;
+  geminiSubmitViaPhysEnter = false;
   geminiChatTurns = [];
   geminiPageIdx = 0;
   renderGeminiMessages();
@@ -1914,8 +1960,24 @@ function submitGeminiQuestion() {
     }
   }
 
+  var activeVh = getActiveViewportHeight();
+  var softKeyboardVisible = geminiBaseViewportH > 0 && (geminiBaseViewportH - activeVh > 110);
+  var keepInputFocus =
+    geminiSubmitViaPhysEnter &&
+    !softKeyboardVisible &&
+    !geminiInputTypedWithIme &&
+    geminiInputTypedWithPhysKey;
+
+  geminiInputTypedWithIme = false;
+  geminiInputTypedWithPhysKey = false;
+  geminiSubmitViaPhysEnter = false;
+
   inp.value = '';
-  inp.blur();
+  if (keepInputFocus) {
+    inp.focus();
+  } else {
+    inp.blur();
+  }
   var pendingIdx = geminiChatTurns.push({
     q: q,
     a: 'Thinking...',
@@ -1983,8 +2045,13 @@ function submitGeminiQuestion() {
       geminiBusy = false;
       if (sendBtn) { sendBtn.disabled = false; }
       renderGeminiMessages();
-      /* Blur input after sending so pressing 'c' on the physical keyboard immediately closes the popup while reading */
-      if (inp) { inp.blur(); }
+      if (inp) {
+        if (keepInputFocus && isGeminiAskOpen()) {
+          inp.focus();
+        } else if (!keepInputFocus) {
+          inp.blur();
+        }
+      }
     });
 }
 
