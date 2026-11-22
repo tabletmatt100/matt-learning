@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inside the Transformer Block: Embeddings, Residual Stream, FFN &amp; Unembedding</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
+    <div>
+      <span class="tag">LLM Architecture</span>
+      <span class="tag">Forward Pass Only</span>
+      <span class="tag">Boox Go 10.3 &amp; Palma 3</span>
+    </div>
+
+    <h1>Inside the Transformer Block: Embeddings, Residual Stream, FFN &amp; Unembedding</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>The two-job division of labor:</strong> <a href="attention.html">Self-attention</a> is the <em>only</em> place where <span class="term" data-term="token">tokens</span> talk to other tokens across sequence positions. Every other piece of an <span class="term" data-term="llm">LLM</span>—<span class="term" data-term="embedding-matrix">embedding</span>, <span class="term" data-term="rmsnorm">LayerNorm / RMSNorm</span>, the <span class="term" data-term="ffn">Feed-Forward Network (FFN / MLP)</span>, and the <span class="term" data-term="unembedding-matrix">unembedding matrix</span>—operates <strong>independently on one token vector at a time</strong>.</li>
+        <li><strong>The <span class="term" data-term="residual-stream">Residual Stream</span> (<span class="term" data-term="sym-x">$x \in \mathbb{R}^{d_{\text{model}}}$</span>):</strong> A shared conveyor belt of constant width <span class="term" data-term="sym-dmodel">$d_{\text{model}}$</span>. Neither Attention nor the FFN overwrites $x$; each reads a normalized copy of $x$, computes a delta, and <em>adds</em> it back: $x \leftarrow x + \text{Sublayer}(\text{Norm}(x))$.</li>
+        <li><strong>The <span class="term" data-term="ffn">Fully Connected FFN</span> (~$\frac{2}{3}$ of all parameters):</strong> Expands each token vector from <span class="term" data-term="sym-dmodel">$d_{\text{model}}$</span> to a wider intermediate dimension <span class="term" data-term="sym-dff">$d_{\text{ff}} \approx 4\,d_{\text{model}}$</span> via <span class="term" data-term="sym-W1">$W_{\text{up}}$</span>, applies a non-linear gate (<span class="term" data-term="relu">ReLU</span>/<span class="term" data-term="gelu">GELU</span> or <span class="term" data-term="swiglu">SwiGLU</span>), and projects back down via <span class="term" data-term="sym-W2">$W_{\text{down}}$</span>. It acts as a learned key-value memory bank that injects factual associations into the token's vector.</li>
+        <li><strong>The <span class="term" data-term="unembedding-matrix">Unembedding Matrix</span> (<span class="term" data-term="sym-WU">$W_U \in \mathbb{R}^{d_{\text{model}} \times V}$</span>):</strong> Multiplies the final layer's <span class="term" data-term="residual-stream">residual vector</span> <span class="term" data-term="sym-x">$x_{\text{final}}$</span> against one column per vocabulary token to produce <span class="term" data-term="sym-V">$V$</span> raw <span class="term" data-term="logits">logits</span> <span class="term" data-term="sym-z">$z = x_{\text{final}} W_U$</span>, which <span class="term" data-term="softmax">softmax</span> turns into next-token probabilities.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Matrix Shape</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term" data-term="sym-V">$V,\; d_{\text{model}},\; d_{\text{ff}}$</span></td>
+            <td><span class="term" data-term="vocabulary">Vocabulary</span> size, <span class="term" data-term="residual-stream">residual stream</span> width, and <span class="term" data-term="ffn">FFN</span> hidden width</td>
+            <td class="num">e.g. $V\!=\!100\text{k},\; d_{\text{model}}\!=\!4096$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-WE">$W_E$</span></td>
+            <td><span class="term" data-term="embedding-matrix">Token Embedding Matrix</span> (lookup table mapping token ID <span class="term" data-term="sym-id">$k$</span> to row $k$)</td>
+            <td class="num">$V \times d_{\text{model}}$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-x">$x^{(\ell)}$</span></td>
+            <td><span class="term" data-term="residual-stream">Residual stream</span> vector for a single token at layer <span class="term" data-term="sym-ell">$\ell$</span></td>
+            <td class="num">$1 \times d_{\text{model}}$ (per token)</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-W1">$W_{\text{up}}$</span>, <span class="term" data-term="sym-W2">$W_{\text{down}}$</span></td>
+            <td><span class="term" data-term="ffn">FFN</span> expansion matrix and projection-back matrix</td>
+            <td class="num">$d_{\text{model}} \times d_{\text{ff}}$ and $d_{\text{ff}} \times d_{\text{model}}$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-WU">$W_U$</span>, <span class="term" data-term="sym-z">$z$</span></td>
+            <td><span class="term" data-term="unembedding-matrix">Unembedding matrix</span> and its output <span class="term" data-term="logits">logit</span> vector over the vocabulary</td>
+            <td class="num">$W_U:\; d_{\text{model}} \times V$, $\;z:\; 1 \times V$</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="interactive-card" id="fast-forward-box">
+      <div class="widget-label">Expert Fast-Forward Check</div>
+      <p style="margin-top:0.3rem;">Already know how shapes flow through the FFN and Unembedding layers? Solve this mental-math check to collapse Section 1 and jump straight to the component traces.</p>
+      <div class="control-row">
+        <label for="ff-input">A tiny LLM has <span class="term" data-term="sym-dmodel">$d_{\text{model}} = 2$</span> and vocabulary size <span class="term" data-term="sym-V">$V = 4$</span>. If the final token vector is $x = [3, 1]$ and column $j$ of <span class="term" data-term="sym-WU">$W_U$</span> is $[2, 5]^\top$, what is token $j$'s raw logit $z_j$?</label>
+        <input type="text" id="ff-input" placeholder="Enter integer for logit z_j" style="flex:1; min-width:140px;">
+        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
+      </div>
+      <div id="ff-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#s1">1. Predict First: Where Do 2/3 of an LLM's Parameters Live?</a></li>
+        <li><a href="#s2">2. Entering the Stream: Token Embeddings, Positions &amp; RMSNorm</a></li>
+        <li><a href="#s3">3. The Fully Connected FFN (MLP): Expand, Gate, Project Back</a></li>
+        <li><a href="#s4">4. Leaving the Stream: The Unembedding Matrix ($W_U$) &amp; Logits</a></li>
+        <li><a href="#s5">5. Backward-Faded Practice &amp; Closed-Book Retrieval</a></li>
+        <li><a href="#s6">6. Architecture Map, Interleaved Checks &amp; Spaced Cards</a></li>
+      </ol>
+    </nav>
+
+    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
+    <div id="scaffolding-section">
+      <h2 id="s1">1. Predict first: why isn't Self-Attention enough on its own?</h2>
+      <p>
+        In the <a href="attention.html">Attention article</a>, we saw that attention blends <span class="term" data-term="value">Value</span> vectors across tokens: $z_i = \sum_j A_{ij} v_j$, where $V = X W_V$ and the heads are mixed by $W_O$.
+      </p>
+      <p>
+        Suppose you strip out the <span class="term" data-term="ffn">fully connected FFN layers</span> and stack 32 layers of Self-Attention back-to-back. Furthermore, consider a standard Transformer block where <span class="term" data-term="sym-dmodel">$d_{\text{model}} = 1000$</span> and the FFN expands to <span class="term" data-term="sym-dff">$d_{\text{ff}} = 4\,d_{\text{model}} = 4000$</span>. Attention has 4 square projection matrices ($W_Q, W_K, W_V, W_O$, each $d_{\text{model}} \times d_{\text{model}}$). The FFN has two rectangular matrices (<span class="term" data-term="sym-W1">$W_{\text{up}}$</span> of shape $d_{\text{model}} \times 4d_{\text{model}}$ and <span class="term" data-term="sym-W2">$W_{\text{down}}$</span> of shape $4d_{\text{model}} \times d_{\text{model}}$).
+      </p>
+
+      <div class="interactive-card" id="poe-widget">
+        <div class="widget-label">Predict-Observe-Explain (Guess First)</div>
+        <h3>Prediction: Inside each Transformer layer, what fraction of the weights belong to Attention vs. the Fully Connected FFN?</h3>
+        <p>Count the $d_{\text{model}}^2$ blocks mentally ($4$ matrices in Attention vs. $4 + 4 = 8$ in the FFN) and commit before revealing:</p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runPOE('A')">A) ~90% Attention / 10% FFN (Attention is the whole model)</button>
+          <button class="btn btn-small" onclick="runPOE('B')">B) 50% Attention / 50% FFN (split evenly)</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) 1/3 Attention ($4\,d^2$) / 2/3 FFN ($8\,d^2$)</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="poe-reveal" style="display:none;">
+          <div class="figure-box">
+            <svg id="poe-svg" viewBox="0 0 460 125" width="460" height="125" role="img" aria-label="Parameter share comparison: Attention vs FFN"></svg>
+          </div>
+          <div class="refutation" id="poe-refutation"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === SECTION 2: EMBEDDINGS, RESIDUAL STREAM & RMSNORM === -->
+    <h2 id="s2">2. Entering the stream: Token Embedding ($W_E$), Positions &amp; the Residual Highway</h2>
+    <p>
+      Before layer 1 even starts, raw text like <code>"Paris is in"</code> is split by a <span class="term" data-term="tokenizer">tokenizer</span> into integer IDs, say <span class="term" data-term="sym-id">$[402, 19, 12]$</span>. An integer ID has no geometry—token $402$ is not "twice as big" as token $201$.
+    </p>
+    <p>
+      To enter the network, each token ID <span class="term" data-term="sym-id">$k$</span> looks up row $k$ of the <span class="term" data-term="embedding-matrix">Embedding Matrix</span> <span class="term" data-term="sym-WE">$W_E \in \mathbb{R}^{V \times d_{\text{model}}}$</span>. Mathematically, multiplying a <span class="term" data-term="one-hot">one-hot vector</span> $e_k \in \{0,1\}^{1 \times V}$ (which has a $1$ at index $k$ and $0$ everywhere else) by $W_E$ simply slices out row $k$ with zero arithmetic:
+    </p>
+
+    <div class="worked">
+      <p><strong>Concrete trace ($V = 4$ tokens, $d_{\text{model}} = 3$ dimensions, distinct numbers):</strong></p>
+      <p>
+        Suppose our miniature vocabulary has 4 tokens—ID 0: <code>"Paris"</code>, ID 1: <code>"is"</code>, ID 2: <code>"in"</code>, ID 3: <code>"France"</code>—and the learned <span class="term" data-term="embedding-matrix">embedding matrix</span> <span class="term" data-term="sym-WE">$W_E$</span> ($4 \times 3$) is:
+        $$W_E = \begin{bmatrix} 1 & 2 & 3 \\ 4 & 0 & 1 \\ 2 & 5 & 0 \\ 3 & 1 & 4 \end{bmatrix} \begin{array}{l} \leftarrow \text{row 0: ``Paris''} \\ \leftarrow \text{row 1: ``is''} \\ \leftarrow \text{row 2: ``in''} \\ \leftarrow \text{row 3: ``France''} \end{array}$$
+        When the current input token is ID $k = 2$ (<code>"in"</code>), its initial <span class="term" data-term="residual-stream">residual stream</span> vector is simply row 2:
+        $$x^{(0)} = e_2 W_E = [0, 0, 1, 0]\,W_E = \mathbf{[2,\; 5,\; 0]}$$
+        (In classic Transformers like GPT-2, a <span class="term" data-term="pos-encoding">positional vector</span> $p_{\text{pos}} \in \mathbb{R}^{d_{\text{model}}}$ is added right here: $x^{(0)} = W_E[k] + p_{\text{pos}}$; modern LLMs like Llama and Gemini instead rotate $Q$ and $K$ inside attention via <span class="term" data-term="rope">RoPE</span>.)
+      </p>
+    </div>
+
+    <p>
+      Once $x^{(0)} \in \mathbb{R}^{d_{\text{model}}}$ is created, it rides on the <strong><span class="term" data-term="residual-stream">Residual Stream</span></strong>—a persistent vector wire of width <span class="term" data-term="sym-dmodel">$d_{\text{model}}$</span> that runs straight from the input embedding all the way to the final output. Each Transformer block has two sublayers that <em>read</em> from the stream via <span class="term" data-term="pre-norm">Pre-Norm</span> (<span class="term" data-term="layernorm">LayerNorm</span> or <span class="term" data-term="rmsnorm">RMSNorm</span>) and <em>add</em> their result back into the stream:
+    </p>
+
+    <div class="math-block">
+      $$x_{\text{mid}} = x + \text{Attention}\bigl(\text{Norm}_1(x)\bigr), \qquad x_{\text{out}} = x_{\text{mid}} + \text{FFN}\bigl(\text{Norm}_2(x_{\text{mid}})\bigr)$$
+      <div class="math-hint">Why normalize before each sublayer? Adding outputs across 32 to 80 layers would cause vector magnitudes to drift wildly. <span class="term" data-term="rmsnorm">RMSNorm</span> divides $x$ by its root-mean-square size $\text{RMS}(x) = \sqrt{\frac{1}{d}\sum_{i=1}^d x_i^2}$ so every sublayer sees well-scaled inputs while the unnormalized highway $+x$ stays clean.</div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Mental-math trace of <span class="term" data-term="rmsnorm">RMSNorm</span> on a 4D vector $x = [1, 1, 3, 5]$ (zero calculator needed):</strong></p>
+      <p>
+        1. Square each coordinate: $[1^2, 1^2, 3^2, 5^2] = [1, 1, 9, 25]$.<br>
+        2. Average the squares across $d = 4$ dimensions: $\frac{1 + 1 + 9 + 25}{4} = \frac{36}{4} = \mathbf{9}$, so $\text{RMS}(x) = \sqrt{9} = \mathbf{3}$.<br>
+        3. Divide $x = [1, 1, 3, 5]$ by $\text{RMS}(x) = 3$: $\text{RMSNorm}(x) = \mathbf{[\frac{1}{3},\; \frac{1}{3},\; 1,\; \frac{5}{3}]}$ (then multiply element-wise by learned scale weights $\gamma$).
+      </p>
+    </div>
+
+    <!-- === SECTION 3: THE FULLY CONNECTED FFN (MLP) === -->
+    <h2 id="s3">3. The Fully Connected FFN (MLP): expand, gate, project back</h2>
+    <p>
+      Once Self-Attention has copied context from earlier tokens into the current token's <span class="term" data-term="residual-stream">residual vector</span> $x_{\text{mid}}$, the token enters the <strong><span class="term" data-term="ffn">Position-Wise Feed-Forward Network (FFN)</span></strong>—also called the <strong><span class="term" data-term="mlp">MLP</span> (Multi-Layer Perceptron)</strong> or <strong>fully connected sublayer</strong>.
+    </p>
+    <p>
+      "Position-wise" means the exact same two weight matrices <span class="term" data-term="sym-W1">$W_{\text{up}}$</span> and <span class="term" data-term="sym-W2">$W_{\text{down}}$</span> are applied to token 1's vector, token 2's vector, and token $N$'s vector completely independently—<strong>zero cross-token mixing happens here</strong>. If Attention is "gather relevant notes from your neighbors," the FFN is "sit alone at your desk and think about the notes you just gathered."
+    </p>
+
+    <div class="math-block">
+      $$\text{FFN}(x) = \underbrace{\sigma\bigl(x\, W_{\text{up}} + b_1\bigr)}_{\text{hidden detectors } h \in \mathbb{R}^{d_{\text{ff}}}} W_{\text{down}} + b_2$$
+      <div class="math-hint">Shape journey for 1 token: $(1 \times d_{\text{model}}) \xrightarrow{\times\, W_{\text{up}}\; (d_{\text{model}} \times d_{\text{ff}})} (1 \times d_{\text{ff}}) \xrightarrow{\sigma(\cdot)\text{ element-wise}} (1 \times d_{\text{ff}}) \xrightarrow{\times\, W_{\text{down}}\; (d_{\text{ff}} \times d_{\text{model}})} (1 \times d_{\text{model}})$.</div>
+    </div>
+
+    <p>
+      Why expand to a wider dimension <span class="term" data-term="sym-dff">$d_{\text{ff}} \approx 4\,d_{\text{model}}$</span> and then squeeze back down to $d_{\text{model}}$? Think of the $d_{\text{ff}}$ intermediate neurons as a bank of <strong><span class="term" data-term="kv-memory">key-value memory slots</span></strong> (Geva et al.):
+    </p>
+    <ul>
+      <li><strong>Step 1 — Pattern Detection (<span class="term" data-term="sym-W1">$W_{\text{up}}$</span>, columns are "keys"):</strong> Column $m$ of $W_{\text{up}}$ takes a dot product with the token vector $x$. It fires strongly when $x$ contains a specific combination of features (e.g., <em>"token is 'in' AND attention just copied 'Paris' into $x$"</em>).</li>
+      <li><strong>Step 2 — Non-Linear Gate (<span class="term" data-term="relu">ReLU</span> / <span class="term" data-term="gelu">GELU</span> / <span class="term" data-term="swiglu">SwiGLU</span>):</strong> Zeroes out irrelevant detectors ($h_m \le 0 \to 0$) so unmatched memory slots stay silent instead of injecting noise. Without this non-linearity, $W_{\text{up}} W_{\text{down}}$ would collapse into a single linear matrix!</li>
+      <li><strong>Step 3 — Value Write-Back (<span class="term" data-term="sym-W2">$W_{\text{down}}$</span>, rows are "values"):</strong> Each active detector $h_m &gt; 0$ multiplies row $m$ of $W_{\text{down}}$, adding a factual concept vector (e.g., <em>"+capital-of-France / +French-geography"</em>) back into the <span class="term" data-term="residual-stream">residual stream</span>.</li>
+    </ul>
+
+    <div class="worked">
+      <p><strong>Worked FFN trace with distinct numbers ($d_{\text{model}} = 2 \to d_{\text{ff}} = 3 \to d_{\text{model}} = 2$, zero biases):</strong></p>
+      <p>
+        Suppose after Attention + Norm, our token vector is <span class="term" data-term="sym-x">$x = [2,\; -1]$</span>. We pass $x$ through an FFN with <span class="term" data-term="relu">ReLU</span> activation $\sigma(u) = \max(0, u)$, expansion matrix <span class="term" data-term="sym-W1">$W_{\text{up}}$</span> ($2 \times 3$), and projection-back matrix <span class="term" data-term="sym-W2">$W_{\text{down}}$</span> ($3 \times 2$):
+        $$W_{\text{up}} = \begin{bmatrix} 1 & -2 & 3 \\ 0 & 1 & 2 \end{bmatrix}, \qquad W_{\text{down}} = \begin{bmatrix} 2 & 1 \\ 5 & 6 \\ 0 & 3 \end{bmatrix}$$
+      </p>
+      <p>
+        <strong>1. Expand to $d_{\text{ff}} = 3$ pre-activations ($u = x W_{\text{up}}$):</strong><br>
+        &bull; Neuron 1 (col 1 of $W_{\text{up}}$): $u_1 = (2)(1) + (-1)(0) = \mathbf{2}$.<br>
+        &bull; Neuron 2 (col 2 of $W_{\text{up}}$): $u_2 = (2)(-2) + (-1)(1) = -4 - 1 = \mathbf{-5}$.<br>
+        &bull; Neuron 3 (col 3 of $W_{\text{up}}$): $u_3 = (2)(3) + (-1)(2) = 6 - 2 = \mathbf{4}$.<br>
+        So pre-activation vector is $u = [2,\; -5,\; 4]$.
+      </p>
+      <p>
+        <strong>2. Apply non-linear gate ($h = \text{ReLU}(u) = \max(0, u)$):</strong><br>
+        Neuron 2 is negative ($-5$), so ReLU shuts that gate completely to $0$:
+        $$h = [\max(0, 2),\; \max(0, -5),\; \max(0, 4)] = \mathbf{[2,\; 0,\; 4]}$$
+      </p>
+      <p>
+        <strong>3. Project back to $d_{\text{model}} = 2$ ($\Delta x = h W_{\text{down}}$):</strong><br>
+        Because $h_2 = 0$, Row 2 of $W_{\text{down}}$ ($[5, 6]$) is completely ignored! Only Row 1 ($[2, 1]$) and Row 3 ($[0, 3]$) write into the output:<br>
+        $$\Delta x = 2 \cdot \underbrace{[2, 1]}_{\text{row 1}} + 0 \cdot \underbrace{[5, 6]}_{\text{row 2}} + 4 \cdot \underbrace{[0, 3]}_{\text{row 3}} = [4, 2] + [0, 12] = \mathbf{[4,\; 14]}$$
+      </p>
+      <p>
+        <strong>4. Add back into the Residual Stream ($x_{\text{out}} = x + \Delta x$):</strong><br>
+        $$x_{\text{out}} = [2,\; -1] + [4,\; 14] = \mathbf{[6,\; 13]}$$
+      </p>
+    </div>
+
+    <details>
+      <summary>Modern twist: How SwiGLU (Llama, PaLM, Qwen) upgrades the FFN (Click to expand)</summary>
+      <div class="detail-body">
+        <p>
+          Classic Transformers use one up-projection $W_{\text{up}}$ followed by <span class="term" data-term="relu">ReLU</span> or <span class="term" data-term="gelu">GELU</span>. Modern LLMs replace that single up-projection with a <strong><span class="term" data-term="swiglu">SwiGLU</span> (Swish Gated Linear Unit)</strong> that runs <em>two</em> parallel up-projections—a gate matrix $W_{\text{gate}}$ and a value matrix $W_{\text{up}}$—and multiplies them element-wise ($\odot$):
+        </p>
+        <div class="math-block">
+          $$\text{FFN}_{\text{SwiGLU}}(x) = \Bigl(\text{Swish}\bigl(x W_{\text{gate}}\bigr) \odot \bigl(x W_{\text{up}}\bigr)\Bigr) W_{\text{down}}$$
+        </div>
+        <p>
+          Because <span class="term" data-term="swiglu">SwiGLU</span> uses <strong>three</strong> matrices ($W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$) instead of two, models shrink intermediate width $d_{\text{ff}}$ from $4\,d_{\text{model}}$ to $\frac{8}{3}\,d_{\text{model}} \approx 2.67\,d_{\text{model}}$ so total FFN parameter count stays right at $3 \times \frac{8}{3} d_{\text{model}}^2 = 8\,d_{\text{model}}^2$.
+        </p>
+      </div>
+    </details>
+
+    <!-- === SECTION 4: THE UNEMBEDDING MATRIX & LOGITS === -->
+    <h2 id="s4">4. Leaving the stream: the Unembedding Matrix ($W_U$) &amp; Logits</h2>
+    <p>
+      After the token vector passes through all $L$ Transformer blocks (Attention $\to$ Add $\to$ FFN $\to$ Add, repeated $L$ times) and one final <span class="term" data-term="rmsnorm">RMSNorm</span>, we hold a single vector <span class="term" data-term="sym-x">$x_{\text{final}} \in \mathbb{R}^{1 \times d_{\text{model}}}$</span> at the last sequence position.
+    </p>
+    <p>
+      How do we turn a $d_{\text{model}}$-dimensional vector (say, $4096$ numbers) into a prediction over <span class="term" data-term="sym-V">$V = 100{,}000$</span> possible next words in the <span class="term" data-term="vocabulary">vocabulary</span>? We multiply $x_{\text{final}}$ by the <strong><span class="term" data-term="unembedding-matrix">Unembedding Matrix</span></strong> <span class="term" data-term="sym-WU">$W_U \in \mathbb{R}^{d_{\text{model}} \times V}$</span> (often called the <strong><span class="term" data-term="lm-head">LM Head</span></strong>):
+    </p>
+
+    <div class="math-block">
+      $$z = x_{\text{final}}\, W_U \in \mathbb{R}^{1 \times V}, \qquad p_j = \text{softmax}(z)_j = \frac{e^{z_j}}{\sum_{k=1}^{V} e^{z_k}}$$
+      <div class="math-hint">Every column $u_j \in \mathbb{R}^{d_{\text{model}}}$ of <span class="term" data-term="sym-WU">$W_U$</span> is the target template vector for vocabulary token $j$. The $j$-th <span class="term" data-term="logits">logit</span> $z_j = x_{\text{final}} \cdot u_j$ is simply the <strong>dot-product similarity</strong> between the final residual stream and token $j$'s column!</div>
+    </div>
+
+    <div class="worked">
+      <p><strong>Worked Unembedding trace ($d_{\text{model}} = 2$, vocabulary size $V = 4$, distinct numbers):</strong></p>
+      <p>
+        Suppose after the prompt <code>"Paris is in"</code>, the final normalized residual vector at position <code>"in"</code> is <span class="term" data-term="sym-x">$x_{\text{final}} = [3,\; 1]$</span>. Our 4-token vocabulary is <code>["Paris", "is", "in", "France"]</code>, and the <span class="term" data-term="unembedding-matrix">unembedding matrix</span> <span class="term" data-term="sym-WU">$W_U$</span> ($2 \times 4$, one column per vocab word) is:
+        $$W_U = \begin{bmatrix} 0 & -1 & 1 & 2 \\ 1 & 0 & -1 & 3 \end{bmatrix}$$
+        <strong>1. Multiply $z = x_{\text{final}} W_U$ (one dot product per vocabulary column):</strong><br>
+        &bull; Col 0 (<code>"Paris"</code>, $[0, 1]^\top$): $z_0 = (3)(0) + (1)(1) = \mathbf{1}$.<br>
+        &bull; Col 1 (<code>"is"</code>, $[-1, 0]^\top$): $z_1 = (3)(-1) + (1)(0) = \mathbf{-3}$.<br>
+        &bull; Col 2 (<code>"in"</code>, $[1, -1]^\top$): $z_2 = (3)(1) + (1)(-1) = 3 - 1 = \mathbf{2}$.<br>
+        &bull; Col 3 (<code>"France"</code>, $[2, 3]^\top$): $z_3 = (3)(2) + (1)(3) = 6 + 3 = \mathbf{9}$.
+      </p>
+      <p>
+        <strong>2. Read the <span class="term" data-term="logits">logits</span> $z = [1,\; -3,\; 2,\; 9]$:</strong><br>
+        Token 3 (<code>"France"</code>) has the highest dot product ($z_3 = 9$) because its column $[2, 3]^\top$ aligns best with $x_{\text{final}} = [3, 1]$. Passing $z$ through <span class="term" data-term="softmax">softmax</span> assigns over $99.8\%$ probability to <code>"France"</code>.
+      </p>
+    </div>
+
+    <p>
+      Notice the symmetry between the start and end of the LLM: <span class="term" data-term="sym-WE">$W_E$</span> has shape $V \times d_{\text{model}}$ (maps token IDs into the residual stream), and <span class="term" data-term="sym-WU">$W_U$</span> has the exact transpose shape $d_{\text{model}} \times V$ (maps the residual stream back to token scores). Many LLMs use <strong><span class="term" data-term="weight-tying">weight tying</span></strong>, setting $W_U = W_E^\top$ so the model reuses the exact same vocabulary vectors for reading and writing, saving $V \times d_{\text{model}}$ parameters.
+    </p>
+
+    <!-- === INTERACTIVE STEPPER: END-TO-END SINGLE-TOKEN TRACE === -->
+    <p>
+      Step through the three non-attention stages below for a single token travelling through a $d_{\text{model}}=2$ Transformer. All three panels stay visible side-by-side so you can track how the vector changes shape and values at each step.
+    </p>
+
+    <div class="interactive-card" id="stepper-widget">
+      <div class="widget-label">Discrete Stepper + Persistent Small Multiples (Token Pipeline)</div>
+      <h3>Trace One Token Through Embedding $\to$ FFN $\to$ Unembedding</h3>
+      <div class="control-row">
+        <button class="btn btn-small active" id="step-btn-0" onclick="setArchStep(0)">Step 1: Embed + Attn ($1 \times d$)</button>
+        <button class="btn btn-small" id="step-btn-1" onclick="setArchStep(1)">Step 2: FFN Expand/Gate ($1 \times d_{\text{ff}}$)</button>
+        <button class="btn btn-small" id="step-btn-2" onclick="setArchStep(2)">Step 3: Unembed $x W_U$ ($1 \times V$)</button>
+      </div>
+
+      <div class="small-multiples" id="arch-sm-grid"></div>
+      <div class="readout" id="arch-step-explain"></div>
+
+      <div id="arch-slider-gate" class="locked-note">
+        Complete the Section 1 prediction (or step through all 3 stages above) to unlock the interactive Residual Stream &amp; Unembedding Inspector.
+      </div>
+      <div id="arch-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
+        <div class="widget-label">Interactive Residual Stream &amp; Unembedding Inspector</div>
+        <p style="margin:0.2rem 0 0.5rem 0; font-size:0.88rem;">Toggle which sublayers write into the <span class="term" data-term="residual-stream">residual stream</span> after token <code>"in"</code> starts at $x^{(0)} = [1, 0]$, and watch how the unembedding dot products $z = x W_U$ shift the winning next token:</p>
+        <div class="control-row">
+          <button class="btn btn-small" id="preset-embed" onclick="setStreamMode(0)">1. Embed Only: $x = x^{(0)}$</button>
+          <button class="btn btn-small" id="preset-attn" onclick="setStreamMode(1)">2. + Attention Delta ($\Delta_{\text{attn}}$)</button>
+          <button class="btn btn-small active" id="preset-full" onclick="setStreamMode(2)">3. + FFN Delta ($\Delta_{\text{attn}} + \Delta_{\text{ffn}}$)</button>
+        </div>
+        <div class="figure-box">
+          <svg id="stream-svg" viewBox="0 0 460 130" width="460" height="130" role="img" aria-label="Unembedding logits across 4 vocabulary tokens"></svg>
+        </div>
+        <div class="stat-grid">
+          <div class="stat"><div class="k">Residual Vector $x$</div><div class="v" id="st-vec">[3, 1]</div></div>
+          <div class="stat"><div class="k">Logit("France")</div><div class="v" id="st-france">+9</div></div>
+          <div class="stat"><div class="k">Logit("in")</div><div class="v" id="st-in">+2</div></div>
+          <div class="stat"><div class="k">Top Prediction</div><div class="v" id="st-top">France</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === STAGE 4: BACKWARD-FADED PRACTICE + CLOSED-BOOK RETRIEVAL === -->
+    <h2 id="s5">5. Backward-faded practice &amp; closed-book retrieval</h2>
+    <p>
+      Finish the final step of the FFN + Unembedding trace below mentally (zero calculator required), then complete the blank-sheet retrieval check.
+    </p>
+
+    <div class="interactive-card" id="faded-widget">
+      <div class="widget-label">Backward-Faded Worked Example (FFN Write-Back + Unembedding Logit)</div>
+      <h3>Compute the Final Residual Vector and Target Logit</h3>
+      <p>
+        A token enters the FFN with residual stream vector <span class="term" data-term="sym-x">$x_{\text{mid}} = [1,\; 2]$</span>. It passes through an FFN with <span class="term" data-term="relu">ReLU</span> activation where:<br>
+        <strong>Step 1 (FFN Expansion &amp; ReLU Gate):</strong> After multiplying by $W_{\text{up}}$ and applying ReLU, the 3 hidden FFN neurons are $h = [3,\; 0,\; 1]$ (neuron 2 was negative and gated to $0$).<br>
+        <strong>Step 2 (FFN Down-Projection $\Delta x = h W_{\text{down}}$):</strong> The 3 rows of $W_{\text{down}}$ are Row 1 $= [1, 0]$, Row 2 $= [9, 9]$, and Row 3 $= [0, 2]$. Because $h_2 = 0$, Row 2 drops out, giving $\Delta x = 3\,[1, 0] + 0\,[9, 9] + 1\,[0, 2] = \mathbf{[3,\; 2]}$.<br>
+        <strong>Step 3 (Residual Add):</strong> Adding $\Delta x$ back into the residual stream gives $x_{\text{final}} = x_{\text{mid}} + \Delta x = [1, 2] + [3, 2] = \mathbf{[4,\; 4]}$.<br>
+        <strong>Step 4 (Your turn &mdash; Unembedding dot product):</strong> If the column for token <code>"Rome"</code> in the <span class="term" data-term="unembedding-matrix">unembedding matrix</span> <span class="term" data-term="sym-WU">$W_U$</span> is $u_{\text{Rome}} = [2,\; 1]^\top$, what is the raw logit $z_{\text{Rome}} = x_{\text{final}} \cdot u_{\text{Rome}}$?
+      </p>
+      <div class="control-row">
+        <label for="fade-input">$z_{\text{Rome}} =$</label>
+        <input type="number" id="fade-input" step="1" placeholder="Integer" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkFaded()">Check Step 4</button>
+      </div>
+      <div id="fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-widget">
+      <div class="widget-label">Closed-Book Retrieval (Blank-Sheet Test)</div>
+      <h3>Explain the Four Non-Attention Components From Memory</h3>
+      <p>
+        Without scrolling up, write 1 short sentence for each: (1) What is the difference in job between <strong>Self-Attention</strong> and the <strong>Fully Connected FFN</strong>? (2) Why does the FFN need a non-linear activation between $W_{\text{up}}$ and $W_{\text{down}}$? (3) What are the input, matrix shape, and output of the <strong>Unembedding Matrix $W_U$</strong>?
+      </p>
+      <textarea id="recall-input" placeholder="Type your 3-part answer from memory..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-feedback" class="readout" style="display:none;">
+        <strong>Canonical answer:</strong><br>
+        1. <strong>Attention vs. FFN:</strong> Self-attention routes information <em>across different token positions</em>, whereas the FFN processes <em>each token's vector independently in isolation</em> (expanding $d_{\text{model}} \to d_{\text{ff}} \to d_{\text{model}}$ to look up and inject learned factual/feature associations).<br>
+        2. <strong>Why non-linearity is required:</strong> Without a non-linear gate (ReLU/GELU/SwiGLU), multiplying by $W_{\text{up}}$ and then $W_{\text{down}}$ would collapse into a single linear matrix $W_{\text{combined}} = W_{\text{up}} W_{\text{down}}$, unable to selectively switch memory slots on or off.<br>
+        3. <strong>Unembedding Matrix $W_U$:</strong> Takes the final residual stream vector $x_{\text{final}} \in \mathbb{R}^{1 \times d_{\text{model}}}$, multiplies by $W_U \in \mathbb{R}^{d_{\text{model}} \times V}$ (one column per vocabulary word), and outputs $V$ unnormalized <span class="term" data-term="logits">logits</span> $z \in \mathbb{R}^{1 \times V}$ before softmax.
+      </div>
+    </div>
+
+    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
+    <h2 id="s6">6. Contrastive component matrix, interleaved checks &amp; spaced recall</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Input $\to$ Output Shape (for $N$ tokens)</th>
+            <th>Cross-Token Mixing?</th>
+            <th>Core Job in the Forward Pass</th>
+            <th>What Breaks Without It</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="embedding-matrix">Embedding ($W_E$)</span></strong></td>
+            <td class="num">IDs $(N) \to (N \times d_{\text{model}})$</td>
+            <td>No (per-token row lookup)</td>
+            <td>Converts discrete token IDs into continuous <span class="term" data-term="residual-stream">residual stream</span> vectors</td>
+            <td>Model cannot do continuous linear algebra on arbitrary integer token IDs</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="rmsnorm">LayerNorm / RMSNorm</span></strong></td>
+            <td class="num">$(N \times d_{\text{model}}) \to (N \times d_{\text{model}})$</td>
+            <td>No (normalizes each token vector across $d_{\text{model}}$)</td>
+            <td>Stabilizes activation scale before Attention and FFN</td>
+            <td>Residual stream magnitudes explode across depth; <span class="term" data-term="softmax">softmax</span> saturates</td>
+          </tr>
+          <tr>
+            <td><strong><a href="attention.html">Multi-Head Attention</a></strong></td>
+            <td class="num">$(N \times d_{\text{model}}) \to (N \times d_{\text{model}})$</td>
+            <td><strong>Yes ($N \times N$ score matrix)</strong></td>
+            <td>Copies &amp; routes context from earlier tokens into the current token's stream</td>
+            <td>Each token stays completely blind to every other word in the prompt</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="ffn">Fully Connected FFN (MLP)</span></strong></td>
+            <td class="num">$(N \times d_{\text{model}}) \to (N \times d_{\text{ff}}) \to (N \times d_{\text{model}})$</td>
+            <td>No (identical weights applied per token)</td>
+            <td>Non-linear feature transformation &amp; <span class="term" data-term="kv-memory">key-value fact lookup</span> (~$\frac{2}{3}$ of params)</td>
+            <td>Network reduces to linear value routing with minimal capacity to store facts</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="residual-stream">Residual Add ($x + \Delta x$)</span></strong></td>
+            <td class="num">$(N \times d_{\text{model}}) \to (N \times d_{\text{model}})$</td>
+            <td>No (element-wise vector addition)</td>
+            <td>Preserves earlier representations and gives gradients a $+1$ highway</td>
+            <td><a href="vanishing-gradients.html">Gradients vanish</a> and early token features get overwritten</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="unembedding-matrix">Unembedding ($W_U$)</span></strong></td>
+            <td class="num">$(N \times d_{\text{model}}) \to (N \times V)$</td>
+            <td>No (dot product against $V$ vocab columns)</td>
+            <td>Projects final residual vector into <span class="term" data-term="logits">logits</span> $z$ over the vocabulary</td>
+            <td>Model holds a $d_{\text{model}}$ hidden vector with no way to score next words</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>Minimal PyTorch Implementation: Full Decoder-Only Transformer Block + Unembedding (Click to expand)</summary>
+      <div class="detail-body">
+<pre><code>import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class RMSNorm(nn.Module):
+    def __init__(self, d_model, eps=1e-6):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(d_model))
+        self.eps = eps
+
+    def forward(self, x):
+        # Normalize each token vector by its root-mean-square across d_model
+        rms = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return (x / rms) * self.weight
+
+class FeedForwardMLP(nn.Module):
+    def __init__(self, d_model, d_ff):
+        super().__init__()
+        self.w_up = nn.Linear(d_model, d_ff, bias=False)
+        self.w_down = nn.Linear(d_ff, d_model, bias=False)
+
+    def forward(self, x):
+        # Position-wise: expands d_model -> d_ff, gates, projects back -> d_model
+        return self.w_down(F.gelu(self.w_up(x)))
+
+class MiniTransformerLM(nn.Module):
+    def __init__(self, vocab_size=32000, d_model=512, n_heads=8, d_ff=2048):
+        super().__init__()
+        self.w_e = nn.Embedding(vocab_size, d_model)          # W_E: [V, d_model]
+        self.norm1 = RMSNorm(d_model)
+        self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
+        self.norm2 = RMSNorm(d_model)
+        self.ffn = FeedForwardMLP(d_model, d_ff)              # FFN: [d_model -> d_ff -> d_model]
+        self.final_norm = RMSNorm(d_model)
+        self.w_u = nn.Linear(d_model, vocab_size, bias=False) # W_U: [d_model, V]
+
+    def forward(self, token_ids):
+        # 1. Enter residual stream via embedding lookup
+        x = self.w_e(token_ids)                               # [B, N, d_model]
+        # 2. Pre-Norm + Attention + Residual Add
+        h_norm = self.norm1(x)
+        attn_out, _ = self.attn(h_norm, h_norm, h_norm, need_weights=False)
+        x = x + attn_out
+        # 3. Pre-Norm + Fully Connected FFN + Residual Add
+        x = x + self.ffn(self.norm2(x))
+        # 4. Final Norm + Unembedding projection to vocabulary logits
+        logits = self.w_u(self.final_norm(x))                 # [B, N, V]
+        return logits</code></pre>
+      </div>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Interleaved 1: Which layers mix tokens across sequence positions?">
+      <p>A prompt has $N = 10$ tokens. Suppose you change token 1 at the start of the prompt (while keeping causal masking on) and run a single Transformer block. Inside which component does information from token 1 actually cross over into token 10's vector?</p>
+      <label class="mcq-option" data-explain="The FFN applies $W_{\text{up}}$ and $W_{\text{down}}$ to each token vector $x_i \in \mathbb{R}^{d_{\text{model}}}$ independently; token 10's FFN computation never touches tokens 1 through 9.">Inside the Fully Connected FFN ($W_{\text{up}}$ and $W_{\text{down}}$), because it has $\frac{2}{3}$ of the layer's parameters.</label>
+      <label class="mcq-option" data-explain="Correct. Self-attention is the only operation that computes an $N \times N$ interaction matrix across sequence positions. RMSNorm, FFN, and the Unembedding matrix $W_U$ all act position-wise on each token vector in isolation.">Only inside Self-Attention; RMSNorm, the FFN, and the Unembedding matrix $W_U$ all process each token position independently.</label>
+      <label class="mcq-option" data-explain="RMSNorm normalizes each token across its own $d_{\text{model}}$ features, not across the $N$ sequence positions, and $W_U$ multiplies each token vector by $W_U$ independently.">Inside RMSNorm and the Unembedding matrix $W_U$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="Interleaved 2: Unembedding Matrix shapes and dot-product interpretation">
+      <p>An LLM has residual stream width $d_{\text{model}} = 4096$, intermediate FFN width $d_{\text{ff}} = 16384$, and vocabulary size $V = 100{,}000$. What is the shape of the Unembedding Matrix $W_U$, and what does column $j$ of $W_U$ represent?</p>
+      <label class="mcq-option" data-explain="$4096 \times 16384$ is the shape of the FFN expansion matrix $W_{\text{up}}$, not the unembedding matrix.">$4096 \times 16384$; column $j$ is the $j$-th FFN hidden neuron.</label>
+      <label class="mcq-option" data-explain="The unembedding matrix maps from $d_{\text{model}}$ (not $d_{\text{ff}}$) directly to $V$, because the FFN already projected the vector back down to $d_{\text{model}}$.">$16384 \times 100{,}000$; column $j$ maps the FFN hidden layer to vocabulary word $j$.</label>
+      <label class="mcq-option" data-explain="Correct. The FFN projects back to $d_{\text{model}} = 4096$ and adds to the residual stream. $W_U$ then maps $4096 \to 100{,}000$, where logit $z_j = x_{\text{final}} \cdot W_U[:, j]$ measures alignment between the final residual vector and word $j$'s column.">$4096 \times 100{,}000$ ($d_{\text{model}} \times V$); column $j$ is the $d_{\text{model}}$-dimensional target vector for vocabulary token $j$ whose dot product with $x_{\text{final}}$ gives logit $z_j$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Interleaved 3: Why the FFN cannot skip its non-linear activation">
+      <p>Suppose someone removes the ReLU/GELU activation from the FFN so that $\text{FFN}(x) = (x W_{\text{up}}) W_{\text{down}}$, where $W_{\text{up}} \in \mathbb{R}^{d_{\text{model}} \times 4d_{\text{model}}}$ and $W_{\text{down}} \in \mathbb{R}^{4d_{\text{model}} \times d_{\text{model}}}$. Why does the $4\times$ expansion no longer add any expressive power?</p>
+      <label class="mcq-option" data-explain="Correct. By matrix associativity, $(x W_{\text{up}}) W_{\text{down}} = x (W_{\text{up}} W_{\text{down}}) = x W_{\text{eff}}$, where $W_{\text{eff}}$ is just a single $d_{\text{model}} \times d_{\text{model}}$ linear transformation that cannot selectively gate individual memory slots.">Because matrix multiplication is associative: $(x W_{\text{up}}) W_{\text{down}} = x(W_{\text{up}} W_{\text{down}})$, collapsing the two huge matrices into a single $d_{\text{model}} \times d_{\text{model}}$ linear matrix.</label>
+      <label class="mcq-option" data-explain="Two matrices of shapes $(d \times 4d)$ and $(4d \times d)$ are completely conformable and multiply cleanly without any shape error.">Because $W_{\text{up}}$ and $W_{\text{down}}$ have incompatible dimensions and cannot be multiplied without ReLU.</label>
+      <label class="mcq-option" data-explain="ReLU does not mix different tokens; the FFN is strictly per-token either way.">Because ReLU is the operation that mixes information between neighboring tokens in the sequence.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Interleaved 4: Mental-math trace of Weight Tying (W_U = W_E^T)">
+      <p>A tiny LLM uses <strong>weight tying</strong> ($W_U = W_E^\top$). In its embedding table $W_E$, the row for token 5 (<code>"apple"</code>) is $[2, -1, 3]$. At the end of the final layer, the normalized residual stream vector is $x_{\text{final}} = [4, 2, 1]$. What is the output logit $z_5$ for <code>"apple"</code>?</p>
+      <label class="mcq-option" data-explain="Check the middle term: $(2)(-1) = -2$, not $+2$.">$z_5 = 13$</label>
+      <label class="mcq-option" data-explain="Correct. With weight tying, column 5 of $W_U$ is just row 5 of $W_E$ transposed: $[2, -1, 3]^\top$. The dot product is $(4)(2) + (2)(-1) + (1)(3) = 8 - 2 + 3 = 9$.">$z_5 = 9$ (since $(4)(2) + (2)(-1) + (1)(3) = 8 - 2 + 3 = 9$)</label>
+      <label class="mcq-option" data-explain="The logit is a single scalar dot product per vocabulary token, not an element-wise sum of the two vectors.">$z_5 = [6, 1, 4]$</label>
+    </details>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'token': {
+        title: 'Token',
+        body: 'A word or subword piece mapped by the <span class="term" data-term="tokenizer">tokenizer</span> to an integer ID $k \\in \\{0, \\dots, V-1\\}$.'
+      },
+      'tokenizer': {
+        title: 'Tokenizer (BPE / WordPiece)',
+        body: 'Deterministic lookup tool that splits raw text strings into subword <span class="term" data-term="token">tokens</span> and replaces each with its integer ID in the <span class="term" data-term="vocabulary">vocabulary</span>.'
+      },
+      'vocabulary': {
+        title: 'Vocabulary (V)',
+        body: 'The fixed dictionary of all $V$ unique <span class="term" data-term="token">tokens</span> an LLM knows (typically $V \\approx 32{,}000$ to $150{,}000$). Both <span class="term" data-term="embedding-matrix">$W_E$</span> and <span class="term" data-term="unembedding-matrix">$W_U$</span> have one entry per vocabulary token.'
+      },
+      'llm': {
+        title: 'Large Language Model (LLM)',
+        body: 'Autoregressive Transformer stack that takes a sequence of <span class="term" data-term="token">token</span> IDs and outputs <span class="term" data-term="logits">logits</span> over the <span class="term" data-term="vocabulary">vocabulary</span> to predict the next token.'
+      },
+      'embedding-matrix': {
+        title: 'Token Embedding Matrix (W_E)',
+        body: 'Learned lookup table of shape $V \\times d_{\\text{model}}$ at the entry of an LLM. Token ID $k$ simply grabs row $k$ of $W_E$ as its initial <span class="term" data-term="residual-stream">residual stream</span> vector $x^{(0)} \\in \\mathbb{R}^{d_{\\text{model}}}$.'
+      },
+      'one-hot': {
+        title: 'One-Hot Vector (e_k)',
+        body: 'A vector of length $V$ that is $1$ at index $k$ and $0$ everywhere else. Multiplying $e_k W_E$ selects row $k$ of <span class="term" data-term="embedding-matrix">$W_E$</span>.'
+      },
+      'pos-encoding': {
+        title: 'Positional Encoding',
+        body: 'Signal added or rotated into token representations so the permutation-invariant Transformer knows word order (e.g., whether token $A$ came before or after token $B$).'
+      },
+      'rope': {
+        title: 'RoPE (Rotary Position Embedding)',
+        body: 'Modern <span class="term" data-term="pos-encoding">positional encoding</span> that rotates Query and Key vectors in 2D planes by an angle proportional to token position $t$, making dot products $q_t \\cdot k_s$ depend naturally on relative distance $t - s$.'
+      },
+      'residual-stream': {
+        title: 'Residual Stream (x)',
+        body: 'The central vector highway of width $d_{\\text{model}}$ for each token. Attention and the <span class="term" data-term="ffn">FFN</span> read from the stream and add their outputs back ($x \\leftarrow x + \\Delta x$) instead of overwriting it.'
+      },
+      'pre-norm': {
+        title: 'Pre-Norm Architecture',
+        body: 'Applying <span class="term" data-term="layernorm">LayerNorm</span> or <span class="term" data-term="rmsnorm">RMSNorm</span> on the branch <em>before</em> Attention and the <span class="term" data-term="ffn">FFN</span> ($x + F(\\text{Norm}(x))$), keeping the main <span class="term" data-term="residual-stream">residual stream</span> addition unobstructed.'
+      },
+      'layernorm': {
+        title: 'Layer Normalization (LayerNorm)',
+        body: 'Subtracts the mean and divides by the standard deviation across a single token\'s $d_{\\text{model}}$ features, then applies learned per-feature scale $\\gamma$ and shift $\\beta$.'
+      },
+      'rmsnorm': {
+        title: 'RMSNorm (Root Mean Square LayerNorm)',
+        body: 'Streamlined <span class="term" data-term="layernorm">LayerNorm</span> used in Llama, Gemini, and Qwen that skips mean-centering and divides $x$ by $\\text{RMS}(x) = \\sqrt{\\frac{1}{d}\\sum_{i=1}^d x_i^2 + \\epsilon}$, then scales by $\\gamma$.'
+      },
+      'ffn': {
+        title: 'Feed-Forward Network (FFN / MLP Sublayer)',
+        body: 'The fully connected sublayer inside every Transformer block: expands each token vector independently from $d_{\\text{model}}$ to $d_{\\text{ff}} \\approx 4d_{\\text{model}}$, applies a non-linear gate, and projects back to $d_{\\text{model}}$. Holds ~2/3 of the block\'s parameters.'
+      },
+      'mlp': {
+        title: 'Multi-Layer Perceptron (MLP)',
+        body: 'Another name for a stack of fully connected linear layers separated by non-linear activations—in Transformers, the <span class="term" data-term="ffn">FFN sublayer</span>.'
+      },
+      'kv-memory': {
+        title: 'FFN as Key-Value Memory',
+        body: 'Perspective (Geva et al.) showing that columns of $W_{\\text{up}}$ act as pattern detectors ("keys" matching input context in $x$) and rows of $W_{\\text{down}}$ act as factual/concept payloads ("values" added into the <span class="term" data-term="residual-stream">residual stream</span> when a detector fires).'
+      },
+      'relu': {
+        title: 'ReLU Activation',
+        body: '$\\text{ReLU}(u) = \\max(0, u)$. Passes positive pre-activations through unchanged and zeroes out negative ones so inactive <span class="term" data-term="ffn">FFN</span> memory slots stay silent.'
+      },
+      'gelu': {
+        title: 'GELU (Gaussian Error Linear Unit)',
+        body: 'Smooth curve approximation to <span class="term" data-term="relu">ReLU</span> ($u \\cdot \\Phi(u)$) used in GPT-2/3 and BERT that weights inputs by their percentile under a Gaussian distribution.'
+      },
+      'swiglu': {
+        title: 'SwiGLU (Swish Gated Linear Unit)',
+        body: 'Modern <span class="term" data-term="ffn">FFN</span> activation used in Llama and PaLM that multiplies a Swish-activated gate branch $\\text{Swish}(x W_{\\text{gate}})$ element-wise against a linear value branch $(x W_{\\text{up}})$ before projecting down with $W_{\\text{down}}$.'
+      },
+      'unembedding-matrix': {
+        title: 'Unembedding Matrix (W_U)',
+        body: 'Final linear projection matrix of shape $d_{\\text{model}} \\times V$. Multiplies the last layer\'s <span class="term" data-term="residual-stream">residual vector</span> $x_{\\text{final}} \\in \\mathbb{R}^{1 \\times d_{\\text{model}}}$ to produce one raw <span class="term" data-term="logits">logit</span> score per vocabulary token: $z = x_{\\text{final}} W_U$.'
+      },
+      'lm-head': {
+        title: 'Language Modeling Head (LM Head)',
+        body: 'Code/PyTorch name (often <code>lm_head</code>) for the <span class="term" data-term="unembedding-matrix">unembedding matrix $W_U$</span> at the top of an autoregressive LLM.'
+      },
+      'weight-tying': {
+        title: 'Weight Tying (W_U = W_E^T)',
+        body: 'Sharing the exact same parameter matrix between the input <span class="term" data-term="embedding-matrix">embedding $W_E$</span> ($V \\times d_{\\text{model}}$) and output <span class="term" data-term="unembedding-matrix">unembedding $W_U$</span> ($d_{\\text{model}} \\times V$), cutting vocabulary parameter memory in half.'
+      },
+      'logits': {
+        title: 'Logits (z)',
+        body: 'Vector $z = x_{\\text{final}} W_U \\in (-\\infty, +\\infty)^V$ of raw unnormalized dot-product scores for every token in the <span class="term" data-term="vocabulary">vocabulary</span> before <span class="term" data-term="softmax">softmax</span>.'
+      },
+      'softmax': {
+        title: 'Softmax',
+        body: 'Exponentiates and normalizes the $V$ <span class="term" data-term="logits">logits</span> into a probability distribution summing to $1$: $p_j = e^{z_j} / \\sum_{k=1}^V e^{z_k}$.'
+      },
+      'value': {
+        title: 'Attention Value Vector (V)',
+        body: 'In Self-Attention, the projected vector payload $V = X W_V$ blended across tokens using attention weights $A$.'
+      },
+      'sym-V': {
+        title: 'Symbols: V, d_model, d_ff',
+        body: '$V$ is vocabulary size (number of distinct tokens), $d_{\\text{model}}$ is the width of the <span class="term" data-term="residual-stream">residual stream</span>, and $d_{\\text{ff}}$ is the expanded intermediate width inside the <span class="term" data-term="ffn">FFN</span>.'
+      },
+      'sym-dmodel': {
+        title: 'Symbol: d_model (Residual Stream Dimension)',
+        body: 'Number of coordinates in each token\'s <span class="term" data-term="residual-stream">residual stream</span> vector (e.g., $768$ in GPT-2 Small, $4096$ in Llama-3 8B).'
+      },
+      'sym-dff': {
+        title: 'Symbol: d_ff (FFN Intermediate Dimension)',
+        body: 'Expanded hidden layer width inside the <span class="term" data-term="ffn">FFN</span>, classically $d_{\\text{ff}} = 4\\,d_{\\text{model}}$ (or $\\frac{8}{3}d_{\\text{model}}$ with <span class="term" data-term="swiglu">SwiGLU</span>).'
+      },
+      'sym-id': {
+        title: 'Symbol: k (Integer Token ID)',
+        body: 'Index $k \\in \\{0, 1, \\dots, V-1\\}$ identifying which row of <span class="term" data-term="embedding-matrix">$W_E$</span> (and which column of <span class="term" data-term="unembedding-matrix">$W_U$</span>) corresponds to a specific token.'
+      },
+      'sym-WE': {
+        title: 'Symbol: W_E (Embedding Matrix)',
+        body: 'Matrix of shape $V \\times d_{\\text{model}}$ whose $k$-th row is the initial vector representation of token ID $k$.'
+      },
+      'sym-x': {
+        title: 'Symbol: x (Residual Stream Vector)',
+        body: 'Row vector $x \\in \\mathbb{R}^{1 \\times d_{\\text{model}}}$ representing one token as it gets updated additively through the layers.'
+      },
+      'sym-ell': {
+        title: 'Symbol: ℓ (Transformer Block Index)',
+        body: 'Layer number $\\ell \\in \\{1, \\dots, L\\}$ from the first block after embedding to the final block before unembedding.'
+      },
+      'sym-W1': {
+        title: 'Symbol: W_up (FFN Up-Projection Matrix)',
+        body: 'First fully connected matrix in the <span class="term" data-term="ffn">FFN</span> of shape $d_{\\text{model}} \\times d_{\\text{ff}}$ that expands the token vector into $d_{\\text{ff}}$ detector activations.'
+      },
+      'sym-W2': {
+        title: 'Symbol: W_down (FFN Down-Projection Matrix)',
+        body: 'Second fully connected matrix in the <span class="term" data-term="ffn">FFN</span> of shape $d_{\\text{ff}} \\times d_{\\text{model}}$ that projects gated activations back into the <span class="term" data-term="residual-stream">residual stream</span>.'
+      },
+      'sym-WU': {
+        title: 'Symbol: W_U (Unembedding Matrix)',
+        body: 'Final projection matrix of shape $d_{\\text{model}} \\times V$ that takes dot products between $x_{\\text{final}}$ and all $V$ vocabulary columns to produce <span class="term" data-term="logits">logits</span> $z$.'
+      },
+      'sym-z': {
+        title: 'Symbol: z (Logit Vector)',
+        body: 'Row vector $z = x_{\\text{final}} W_U \\in \\mathbb{R}^{1 \\times V}$ containing one raw score per vocabulary word.'
+      }
+    };
+
+    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
+    function checkFastForward() {
+      var raw = document.getElementById('ff-input').value.trim();
+      var fb = document.getElementById('ff-feedback');
+      fb.style.display = 'block';
+      if (raw === '11' || raw === '+11' || raw === '11.0') {
+        fb.innerHTML = '<strong>Verified ($z_j = 11$).</strong> Dot product $[3, 1] \\cdot [2, 5]^\\top = (3)(2) + (1)(5) = 6 + 5 = 11$. Section 1 prediction hook collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Section 1</button>';
+        renderMathIn(fb);
+        toggleScaffolding(false);
+        unlockArchInspector();
+      } else {
+        fb.innerHTML = 'Not quite: take the dot product of $x = [3, 1]$ with column $[2, 5]^\\top$: $(3 \\times 2) + (1 \\times 5) = 6 + 5 = 11$.';
+        renderMathIn(fb);
+      }
+    }
+
+    function toggleScaffolding(show) {
+      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
+    }
+
+    /* ---------- Stage 1 & 2: POE + Refutation ---------- */
+    var archStepsVisited = { 0: true };
+
+    function unlockArchInspector() {
+      var gate = document.getElementById('arch-slider-gate');
+      var box = document.getElementById('arch-slider-unlocked');
+      if (gate && box) {
+        gate.style.display = 'none';
+        box.style.display = 'block';
+        setStreamMode(2);
+      }
+    }
+
+    function runPOE(choice) {
+      document.getElementById('poe-reveal').style.display = 'block';
+      var svg = document.getElementById('poe-svg');
+      var guessText = choice === 'A' ? 'Your guess: 90% Attention / 10% FFN' :
+                      choice === 'B' ? 'Your guess: 50% Attention / 50% FFN' :
+                      choice === 'C' ? 'Your guess: 1/3 Attention / 2/3 FFN (Exact!)' :
+                      'Skipped guess — compare the parameter blocks below';
+
+      var html = '';
+      html += '<text x="10" y="18" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">' + guessText + '</text>';
+      /* Attention bar: 4 d^2 out of 12 d^2 -> 80px of 240px */
+      html += '<text x="10" y="50" font-family="monospace" font-size="12" font-weight="bold" fill="#000">Attention (4·d²)</text>';
+      html += '<rect x="135" y="34" width="240" height="22" fill="#fff" stroke="#000" stroke-width="1"/>';
+      html += '<rect x="135" y="34" width="80" height="22" fill="#000"/>';
+      html += '<text x="383" y="50" font-family="monospace" font-size="12" font-weight="bold" fill="#000">33.3% (W_Q,K,V,O)</text>';
+
+      /* FFN bar: 8 d^2 out of 12 d^2 -> 160px of 240px */
+      html += '<text x="10" y="88" font-family="monospace" font-size="12" font-weight="bold" fill="#000">FFN / MLP (8·d²)</text>';
+      html += '<rect x="135" y="72" width="240" height="22" fill="#fff" stroke="#000" stroke-width="1"/>';
+      html += '<rect x="135" y="72" width="160" height="22" fill="#000"/>';
+      html += '<text x="383" y="88" font-family="monospace" font-size="12" font-weight="bold" fill="#000">66.7% (W_up, W_down)</text>';
+
+      html += '<text x="10" y="116" font-family="sans-serif" font-size="11" fill="#000">Total per block = 12·d² weights (FFN holds 2× as many parameters as Attention!)</text>';
+      svg.innerHTML = html;
+
+      var ref = document.getElementById('poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Misconception Refutation</div>' +
+        '<p style="margin:0;">Most people guess <strong>90% Attention</strong> because the famous paper is titled <em>"Attention Is All You Need."</em> ' +
+        'That title only meant they removed recurrent RNN loops—inside every Transformer block, Attention uses $4\\,d_{\\text{model}}^2$ weights ($W_Q, W_K, W_V, W_O$), while the <span class="term" data-term="ffn">Fully Connected FFN</span> expands to $4\\,d_{\\text{model}}$ and back, taking $4\\,d_{\\text{model}}^2 + 4\\,d_{\\text{model}}^2 = 8\\,d_{\\text{model}}^2$ weights (<strong>two-thirds of the entire layer</strong>). Without the FFN\'s non-linear gates, a stack of attention layers is mostly linear value routing and cannot store or transform factual features.</p>';
+      renderMathIn(ref);
+      unlockArchInspector();
+    }
+
+    /* ---------- Stage 3: Discrete Stepper + Small Multiples ---------- */
+    var ARCH_STEPS = [
+      {
+        title: '1. Embed + Attn (1×2)',
+        bars: [
+          { label: 'd₁ (x₁)', val: 2, max: 14 },
+          { label: 'd₂ (x₂)', val: -1, max: 14 }
+        ],
+        shape: 'Shape: 1 × d_model (1×2)',
+        note: 'Step 1 (Residual Stream): Token ID k=2 ("in") slices row 2 out of W_E and adds Attention context, giving a 2D vector x = [2, -1] on the residual stream.'
+      },
+      {
+        title: '2. FFN Gate h (1×3)',
+        bars: [
+          { label: 'h₁ (on)', val: 2, max: 14 },
+          { label: 'h₂ (0!)', val: 0, max: 14 },
+          { label: 'h₃ (on)', val: 4, max: 14 }
+        ],
+        shape: 'Shape: 1 × d_ff (1×3)',
+        note: 'Step 2 (FFN Expand & Gate): W_up expands x = [2, -1] to 3 detectors u = [2, -5, 4]. ReLU zeroes out u₂ = -5 → 0, and W_down projects h = [2, 0, 4] back to Δx = [4, 14].'
+      },
+      {
+        title: '3. Unembed z (1×4)',
+        bars: [
+          { label: 'Paris', val: 1, max: 10 },
+          { label: 'is', val: -3, max: 10 },
+          { label: 'in', val: 2, max: 10 },
+          { label: 'France', val: 9, max: 10 }
+        ],
+        shape: 'Shape: 1 × V (1×4 logits)',
+        note: 'Step 3 (Unembedding W_U): Normalized x_final = [3, 1] multiplies W_U (2×4) to score every vocab word: z = [1, -3, 2, 9]. "France" wins with logit +9.'
+      }
+    ];
+
+    function setArchStep(idx) {
+      archStepsVisited[idx] = true;
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('step-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var grid = document.getElementById('arch-sm-grid');
+      var html = '';
+      ARCH_STEPS.forEach(function (st, sIdx) {
+        var cls = 'sm-panel' + (sIdx === idx ? ' sm-active' : '');
+        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.84em; margin-bottom:2px;">' + st.title + '</div>';
+        html += '<div style="font-family:monospace; font-size:0.75em; margin-bottom:4px;">' + st.shape + '</div>';
+        html += '<svg viewBox="0 0 210 104" width="210" height="104" role="img" aria-label="' + st.title + '">';
+        st.bars.forEach(function (b, j) {
+          var y = 4 + j * 24;
+          var absW = Math.max(3, Math.round((Math.abs(b.val) / b.max) * 95));
+          html += '<text x="2" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + b.label + '</text>';
+          html += '<rect x="52" y="' + y + '" width="95" height="16" fill="#fff" stroke="#000" stroke-width="1"/>';
+          if (b.val > 0) {
+            html += '<rect x="52" y="' + y + '" width="' + absW + '" height="16" fill="#000"/>';
+          } else if (b.val < 0) {
+            html += '<rect x="52" y="' + y + '" width="' + absW + '" height="16" fill="#ccc" stroke="#000" stroke-dasharray="2 2"/>';
+          }
+          var signStr = b.val > 0 ? '+' + b.val : String(b.val);
+          html += '<text x="152" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + signStr + '</text>';
+        });
+        html += '</svg></div>';
+      });
+      grid.innerHTML = html;
+      document.getElementById('arch-step-explain').textContent = ARCH_STEPS[idx].note;
+      if (Object.keys(archStepsVisited).length === 3) {
+        unlockArchInspector();
+      }
+    }
+
+    /* ---------- Interactive Residual Stream & Unembedding Inspector ---------- */
+    /* W_U columns: Paris=[0,1], is=[-1,0], in=[1,-1], France=[2,3] */
+    var STREAM_MODES = [
+      {
+        /* Mode 0: Only token "in" embedding x^(0) = [1, 0] (no context from "Paris", no FFN fact lookup) */
+        x: [1, 0],
+        desc: 'Embed only: x = [1, 0] ("in" knows nothing about "Paris" yet)'
+      },
+      {
+        /* Mode 1: After Attention copies "Paris" feature into stream -> x = [2, 0] */
+        x: [2, 0],
+        desc: 'After Attention: x = [1, 0] + [1, 0] = [2, 0] (copied "Paris" context)'
+      },
+      {
+        /* Mode 2: After FFN fires on ("Paris" + "in") and adds [1, 1] -> x = [3, 1] */
+        x: [3, 1],
+        desc: 'After FFN write-back: x = [2, 0] + [1, 1] = [3, 1] (FFN injects "+France" vector)'
+      }
+    ];
+
+    var WU_COLS = [
+      { word: 'Paris [0,1]',  col: [0, 1] },
+      { word: 'is [-1,0]',    col: [-1, 0] },
+      { word: 'in [1,-1]',    col: [1, -1] },
+      { word: 'France [2,3]', col: [2, 3] }
+    ];
+
+    function setStreamMode(modeIdx) {
+      var ids = ['preset-embed', 'preset-attn', 'preset-full'];
+      ids.forEach(function (id, idx) {
+        var el = document.getElementById(id);
+        if (el) { el.classList.toggle('active', idx === modeIdx); }
+      });
+
+      var m = STREAM_MODES[modeIdx];
+      var x = m.x;
+      var logits = WU_COLS.map(function (c) {
+        return x[0] * c.col[0] + x[1] * c.col[1];
+      });
+
+      document.getElementById('st-vec').textContent = '[' + x[0] + ', ' + x[1] + ']';
+      document.getElementById('st-france').textContent = (logits[3] >= 0 ? '+' : '') + logits[3];
+      document.getElementById('st-in').textContent = (logits[2] >= 0 ? '+' : '') + logits[2];
+
+      var bestIdx = 0;
+      for (var i = 1; i < logits.length; i++) {
+        if (logits[i] > logits[bestIdx]) { bestIdx = i; }
+      }
+      var names = ['Paris', 'is', 'in', 'France'];
+      document.getElementById('st-top').textContent = names[bestIdx] + ' (' + logits[bestIdx] + ')';
+
+      var svg = document.getElementById('stream-svg');
+      if (!svg) { return; }
+      var html = '';
+      html += '<text x="10" y="16" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">' + m.desc + '</text>';
+      WU_COLS.forEach(function (c, idx) {
+        var y = 26 + idx * 25;
+        var z = logits[idx];
+        var w = Math.max(4, Math.round((Math.abs(z) / 9) * 210));
+        html += '<text x="10" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">' + c.word + '</text>';
+        html += '<rect x="130" y="' + y + '" width="210" height="18" fill="#fff" stroke="#000" stroke-width="1"/>';
+        if (z > 0) {
+          html += '<rect x="130" y="' + y + '" width="' + w + '" height="18" fill="#000"/>';
+        } else if (z < 0) {
+          html += '<rect x="130" y="' + y + '" width="' + w + '" height="18" fill="#ccc" stroke="#000" stroke-dasharray="3 2"/>';
+        }
+        var zStr = 'z = ' + (z >= 0 ? '+' + z : z) + (idx === bestIdx ? ' ★' : '');
+        html += '<text x="348" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">' + zStr + '</text>';
+      });
+      svg.innerHTML = html;
+    }
+
+    /* ---------- Stage 4: Backward-Faded Practice & Closed-Book Recall ---------- */
+    function checkFaded() {
+      var val = parseFloat(document.getElementById('fade-input').value);
+      var fb = document.getElementById('fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 12) < 0.01) {
+        fb.innerHTML = '<strong>Correct ($z_{\\text{Rome}} = 12$).</strong> Taking the dot product of $x_{\\text{final}} = [4, 4]$ with column $u_{\\text{Rome}} = [2, 1]^\\top$ gives $(4)(2) + (4)(1) = 8 + 4 = 12$. Notice how the FFN write-back ($+\\Delta x = [3, 2]$) boosted this logit from $[1, 2] \\cdot [2, 1]^\\top = 4$ up to $12$!';
+      } else {
+        fb.innerHTML = 'Not quite. Multiply $x_{\\text{final}} = [4, 4]$ by column $u_{\\text{Rome}} = [2, 1]^\\top$: $(4 \\times 2) + (4 \\times 1) = 8 + 4 = 12$.';
+      }
+      renderMathIn(fb);
+    }
+
+    function revealRecall() {
+      var fb = document.getElementById('recall-feedback');
+      fb.style.display = 'block';
+      renderMathIn(fb);
+    }
+
+    var SPACED_CARDS = [
+      {
+        q: 'In a Transformer LLM, which component is the ONLY place where tokens exchange information across different sequence positions, and which components operate independently per token?',
+        a: 'Self-Attention is the only place where tokens mix across sequence positions ($N \\times N$). Embedding ($W_E$), LayerNorm/RMSNorm, the Fully Connected FFN ($W_{\\text{up}}, W_{\\text{down}}$), and the Unembedding Matrix ($W_U$) all run independently on each token vector.'
+      },
+      {
+        q: 'In a standard Transformer block with residual width $d_{\\text{model}} = d$ and FFN width $d_{\\text{ff}} = 4d$, how many parameters are in Attention ($W_Q, W_K, W_V, W_O$) vs. the FFN ($W_{\\text{up}}, W_{\\text{down}}$)?',
+        a: 'Attention has $4 \\times (d \\times d) = 4d^2$ parameters ($\\frac{1}{3}$ of the block). The FFN has $(d \\times 4d) + (4d \\times d) = 8d^2$ parameters ($\\frac{2}{3}$ of the block—twice as many as Attention).'
+      },
+      {
+        q: 'Trace a token vector $x = [2, -1]$ through a ReLU FFN with $W_{\\text{up}} = \\begin{bmatrix}1 & -2 \\\\ 0 & 1\\end{bmatrix}$ and $W_{\\text{down}} = \\begin{bmatrix}3 & 1 \\\\ 9 & 9\\end{bmatrix}$, then add it back to the residual stream $x$.',
+        a: '1) Expand: $u = x W_{\\text{up}} = [2, -5]$. 2) ReLU gate: $h = \\max(0, u) = [2, 0]$ (kills row 2 of $W_{\\text{down}}$). 3) Project down: $\\Delta x = h W_{\\text{down}} = 2[3, 1] + 0[9, 9] = [6, 2]$. 4) Residual add: $x_{\\text{out}} = [2, -1] + [6, 2] = [8, 1]$.'
+      },
+      {
+        q: 'What is the Unembedding Matrix $W_U$ in an LLM, what is its shape, and what does each column represent?',
+        a: '$W_U$ (the LM Head) has shape $d_{\\text{model}} \\times V$, where $V$ is the vocabulary size. Column $j$ is the $d_{\\text{model}}$-dimensional target vector for vocabulary word $j$; multiplying $z = x_{\\text{final}} W_U$ takes the dot product of the final residual stream vector against every word column to produce $V$ logits.'
+      },
+      {
+        q: 'What is weight tying between $W_E$ and $W_U$, and why do the matrix shapes match when transposed?',
+        a: 'The input embedding matrix $W_E$ has shape $V \\times d_{\\text{model}}$ (token ID $\\to$ vector), while the output unembedding matrix $W_U$ has shape $d_{\\text{model}} \\times V$ (vector $\\to$ token logits). Weight tying sets $W_U = W_E^\\top$ so the model uses the exact same vocabulary vectors for reading and predicting.'
+      },
+      {
+        q: 'Without a calculator, compute $\\text{RMS}(x) = \\sqrt{\\frac{1}{4}\\sum_{i=1}^4 x_i^2}$ and the normalized vector $x / \\text{RMS}(x)$ for $x = [1, 1, 3, 5]$.',
+        a: 'Squares are $[1, 1, 9, 25]$, which sum to $36$. Dividing by $d = 4$ gives mean square $36 / 4 = 9$, so $\\text{RMS}(x) = \\sqrt{9} = 3$, and $x / \\text{RMS}(x) = [\\frac{1}{3}, \\frac{1}{3}, 1, \\frac{5}{3}]$.'
+      }
+    ];
+
+    document.addEventListener('DOMContentLoaded', function () {
+      setArchStep(0);
+    });
+  </script>
+</body>
+</html>
