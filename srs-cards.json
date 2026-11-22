@@ -72,6 +72,30 @@
       "q": "If a 4-layer network uses sigmoid activations and every layer sits at its steepest point ($z = 0$, where $\\sigma'(0) = 0.25 = 1/4$) with weight $w = 1$, by what factor does the gradient shrink from Layer 4 back to Layer 1?",
       "a": "By $(1/4)^4 = 1/256$ (less than $0.4\\%$ of the upstream gradient survives just 4 layers), which is why deep Transformers and ResNets use ReLU/GELU and additive residual connections instead of plain sigmoids.",
       "source": "AI Seeded (Calculus + Linear Algebra)"
+    },
+    {
+      "id": "ai-metrics-1",
+      "q": "A clinic screens $10$ sick patients and $100$ healthy patients. The test catches $8$ sick ($TP=8, FN=2$) and triggers $16$ false alarms on healthy patients ($FP=16, TN=84$). Without a calculator, what are Sensitivity (Recall), Specificity, FPR, and Precision?",
+      "a": "Sensitivity $= \\frac{TP}{TP+FN} = \\frac{8}{10} = 80\\%$. Specificity $= \\frac{TN}{TN+FP} = \\frac{84}{100} = 84\\%$ (so $\\text{FPR} = 1 - \\text{Specificity} = 16\\%$). Precision $= \\frac{TP}{TP+FP} = \\frac{8}{8+16} = \\frac{8}{24} = 33.3\\%$ — only 1 in 3 alarms is real because the $10\\times$ larger healthy pool turns a $16\\%$ FPR into $16$ false alarms.",
+      "source": "8. Classification Metrics Refresher"
+    },
+    {
+      "id": "ai-metrics-2",
+      "q": "How does Specificity relate to False Positive Rate (FPR) and the x-axis of an ROC curve, and why does Specificity differ from Precision?",
+      "a": "$\\text{Specificity} = \\text{TNR} = \\frac{TN}{TN + FP} = 1 - \\text{FPR}$, so the ROC x-axis ($\\text{FPR}$) is simply $1 - \\text{Specificity}$. Specificity conditions on actual negatives (what fraction of healthy people were cleared?), whereas Precision ($\\frac{TP}{TP+FP}$) conditions on predicted positives (what fraction of alarms are real?) and ignores $TN$.",
+      "source": "8. Classification Metrics Refresher"
+    },
+    {
+      "id": "ai-metrics-3",
+      "q": "What is the probabilistic meaning of ROC-AUC, and what happens to a model's ROC curve vs. its PR curve if you deploy it on a population with $10\\times$ more healthy negatives ($FP$ and $TN$ both scale by $10\\times$)?",
+      "a": "ROC-AUC equals $P(s(x_+) > s(x_-))$, the probability that a random positive is scored higher than a random negative. Because $\\text{TPR}$ and $\\text{FPR} = \\frac{10\\cdot FP}{10\\cdot(FP+TN)}$ normalize each class by its own row total, the ROC curve and ROC-AUC stay identical. By contrast, $\\text{Precision} = \\frac{TP}{TP + 10\\cdot FP}$ plunges and pulls PR-AUC down sharply.",
+      "source": "8. Classification Metrics Refresher"
+    },
+    {
+      "id": "ai-metrics-4",
+      "q": "On a rare-event dataset with $10$ positives and $990$ negatives ($1\\%$ prevalence), what score does a random-guessing classifier get on ROC-AUC vs. PR-AUC, and why can ROC-AUC $= 0.90$ still have terrible precision?",
+      "a": "A random classifier always scores $0.50$ on ROC-AUC regardless of class balance, but scores the base rate $\\pi = \\frac{10}{1000} = 0.01$ on PR-AUC. Even at $90\\%$ specificity ($\\text{FPR} = 0.10$), $990$ negatives generate $99$ false alarms against at most $10$ true positives ($\\text{Precision} < 10\\%$), which ROC-AUC hides because $TN = 891$ dominates $\\text{FPR}$'s denominator.",
+      "source": "8. Classification Metrics Refresher"
     }
   ]
 }

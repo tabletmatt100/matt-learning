@@ -458,10 +458,11 @@ var SRS_LIBRARY = {
   'metrics-refresher.html': {
     title: '8. Classification Metrics Refresher',
     cards: [
-      { q: 'State the conditioning difference between Precision and Recall in terms of $TP, FP, FN$.', a: 'Precision conditions on predicted positives: $P(\\text{true}+ \\mid \\text{pred}+) = TP/(TP+FP)$. Recall conditions on actual positives: $P(\\text{pred}+ \\mid \\text{true}+) = TP/(TP+FN)$.' },
-      { q: 'What is a Type I error ($\\alpha$) vs. a Type II error ($\\beta$), and how do they connect to FPR and Recall?', a: 'Type I error is a False Positive ($\\alpha = \\text{FPR} = FP/(FP+TN)$). Type II error is a False Negative ($\\beta = \\text{FNR} = FN/(TP+FN) = 1 - \\text{Recall}$).' },
+      { q: 'State the conditioning difference between Precision, Recall, and Specificity in terms of $TP, FP, FN, TN$.', a: 'Precision conditions on predicted positives: $TP/(TP+FP)$. Recall (Sensitivity) conditions on actual positives: $TP/(TP+FN)$. Specificity ($\\text{TNR} = 1 - \\text{FPR}$) conditions on actual negatives: $TN/(TN+FP)$.' },
+      { q: 'What is a Type I error ($\\alpha$) vs. a Type II error ($\\beta$), and how do they connect to FPR, Specificity, and Recall?', a: 'Type I error is a False Positive ($\\alpha = \\text{FPR} = FP/(FP+TN) = 1 - \\text{Specificity}$). Type II error is a False Negative ($\\beta = \\text{FNR} = FN/(TP+FN) = 1 - \\text{Recall}$).' },
       { q: 'Why does F1 use the harmonic mean $\\frac{2PR}{P+R}$ instead of the arithmetic mean $\\frac{P+R}{2}$?', a: 'A classifier that predicts positive on everything gets $R = 1.0, P \\approx 0$, which still scores $0.50$ under arithmetic mean but $\\approx 0$ under harmonic mean; harmonic mean punishes extreme imbalance between $P$ and $R$.' },
-      { q: 'What is the probabilistic interpretation of ROC-AUC?', a: 'ROC-AUC equals the probability $P(s(x_+) > s(x_-))$ that a randomly chosen positive example receives a higher model score than a randomly chosen negative example.' }
+      { q: 'What is the probabilistic interpretation of ROC-AUC, and why does ROC-AUC stay unchanged when healthy negatives scale $10\\times$ while PR-AUC drops?', a: 'ROC-AUC equals $P(s(x_+) > s(x_-))$. Its axes ($\\text{TPR}$ and $\\text{FPR} = 1 - \\text{Specificity}$) normalize each class by its own row total, whereas PR-AUC uses $\\text{Precision} = \\frac{TP}{TP + FP}$, where $10\\times$ more false alarms crush precision.' },
+      { q: 'On a dataset with $10$ positives and $990$ negatives ($1\\%$ base rate), what is the random-guessing baseline for ROC-AUC vs. PR-AUC?', a: 'Random guessing always scores $0.50$ on ROC-AUC regardless of class balance, but scores the positive base rate $\\pi = \\frac{10}{1000} = 0.01$ on PR-AUC.' }
     ]
   },
   'linear-algebra-refresher.html': {
