@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Vanishing Gradient Problem: Deep Networks &amp; RNNs</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
+    <div>
+      <span class="tag">Optimization &amp; Sequences</span>
+      <span class="tag">DNNs &amp; RNNs</span>
+      <span class="tag">Boox Go 10.3 &amp; Palma 3</span>
+    </div>
+
+    <h1>The Vanishing Gradient Problem: Why Early Layers and Old Tokens Stop Learning</h1>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ul>
+        <li><strong>The core failure:</strong> <span class="term" data-term="backprop">Backpropagation</span> multiplies <span class="term" data-term="local-grad">local derivatives</span> step by step from the <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span> back to early layers or early time steps. When each step's multiplier is smaller than $1$, a chain of $K$ steps shrinks the gradient exponentially like $c^K \to 0$, freezing early weights while late weights keep moving.</li>
+        <li><strong>In regular <span class="term" data-term="dnn">DNNs</span> (depth <span class="term" data-term="sym-ell">$\ell = 1 \dots L$</span>):</strong> Each layer $\ell$ has its own distinct weight <span class="term" data-term="sym-well">$w_\ell$</span>, and the gradient into layer $1$ multiplies $\prod_{\ell=2}^L (w_\ell \cdot f'(z_\ell))$. Because <span class="term" data-term="sigmoid">sigmoid</span>'s slope $\sigma'(z)$ never exceeds $\frac{1}{4}$, stacking even $4$ sigmoid layers divides the gradient by at least $4^4 = 256$.</li>
+        <li><strong>In <span class="term" data-term="rnn">RNNs</span> (time <span class="term" data-term="sym-t">$t = 1 \dots T$</span>):</strong> Unrolling across $T$ tokens creates a virtual $T$-layer network that reuses the <em>exact same</em> recurrent weight <span class="term" data-term="sym-wh">$w_h$</span> at every step (<span class="term" data-term="bptt">BPTT</span>). The total gradient is a sum over time steps, but the credit from step $T$ back to token $1$ scales as $(w_h)^T$—either vanishing to $0$ ($|w_h| &lt; 1$) or exploding to $\infty$ ($|w_h| &gt; 1$).</li>
+        <li><strong>The two architectural fixes:</strong> Replace saturating activations with <span class="term" data-term="relu">ReLU</span> (slope $= 1$ for $z &gt; 0$) plus <span class="term" data-term="he-init">variance-preserving initialization</span>, and wire an <strong>additive $+1$ highway</strong> across layers (<span class="term" data-term="residual">ResNet</span> $h_\ell = h_{\ell-1} + F(h_{\ell-1})$) or across time (<span class="term" data-term="lstm">LSTM</span> cell state $c_t = f_t \cdot c_{t-1} + i_t \cdot \tilde{c}_t$).</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Key Formula / Bound</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term" data-term="sym-gbar">$\bar{v} \equiv \frac{\partial L}{\partial v}$</span></td>
+            <td><span class="term" data-term="upstream-grad">Gradient</span> of scalar <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span> with respect to variable $v$</td>
+            <td class="num">$\bar{L} = 1$ at output</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-sigprime">$\sigma'(z)$</span></td>
+            <td>Local slope of <span class="term" data-term="sigmoid">sigmoid</span> $\sigma(z) = \frac{1}{1+e^{-z}}$</td>
+            <td class="num">$\sigma(z)(1-\sigma(z)) \in (0, \tfrac{1}{4}]$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-hell">$h_\ell,\; z_\ell,\; w_\ell$</span></td>
+            <td>Activation, pre-activation, and distinct weight at <span class="term" data-term="dnn">DNN</span> layer <span class="term" data-term="sym-ell">$\ell$</span></td>
+            <td class="num">$\frac{\partial h_\ell}{\partial h_{\ell-1}} = w_\ell \cdot f'(z_\ell)$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-ht">$h_t,\; w_h$</span></td>
+            <td>Hidden state at token <span class="term" data-term="sym-t">$t$</span> and shared recurrent weight in an <span class="term" data-term="rnn">RNN</span></td>
+            <td class="num">$\frac{\partial h_T}{\partial h_1} = \prod_{k=2}^T w_h f'(z_k)$</td>
+          </tr>
+          <tr>
+            <td><span class="term" data-term="sym-ct">$c_t,\; f_t$</span></td>
+            <td><span class="term" data-term="lstm">LSTM</span> additive memory cell state and forget gate at step <span class="term" data-term="sym-t">$t$</span></td>
+            <td class="num">$\frac{\partial c_t}{\partial c_{t-1}} \approx f_t \in [0, 1]$</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="interactive-card" id="fast-forward-box">
+      <div class="widget-label">Expert Fast-Forward Check</div>
+      <p style="margin-top:0.3rem;">Already know how <span class="term" data-term="chain-rule">Chain Rule</span> products behave across depth and time? Answer this mental-math check to collapse the introductory prediction hook and jump straight to the DNN &amp; RNN traces.</p>
+      <div class="control-row">
+        <label for="ff-input">In a 4-step chain where each step has local derivative $\frac{1}{2}$ and output gradient $\bar{h}_4 = 16$, what gradient $\bar{h}_0$ reaches the start?</label>
+        <input type="text" id="ff-input" placeholder="Enter integer for h_0 grad" style="flex:1; min-width:150px;">
+        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
+      </div>
+      <div id="ff-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <div class="toc-title">Contents</div>
+      <ol>
+        <li><a href="#s1">1. Predict First: Why Layer 1 Freezes While Layer 4 Learns</a></li>
+        <li><a href="#s2">2. Regular DNNs: Distinct Weights Across Depth &amp; The Sigmoid Ceiling</a></li>
+        <li><a href="#s3">3. RNNs Across Time: Shared Weights &amp; The Memory Horizon</a></li>
+        <li><a href="#s4">4. Backward-Faded Practice &amp; Closed-Book Retrieval</a></li>
+        <li><a href="#s5">5. Contrastive Matrix, Interleaved Checks &amp; Spaced Cards</a></li>
+      </ol>
+    </nav>
+
+    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
+    <div id="scaffolding-section">
+      <h2 id="s1">1. Predict first: why does Layer 1 freeze when all weights equal 1?</h2>
+      <p>
+        Imagine a 4-layer <span class="term" data-term="dnn">deep neural network</span> where every weight is initialized cleanly to <span class="term" data-term="sym-well">$w_1 = w_2 = w_3 = w_4 = 1$</span>, and every pre-activation sits right at <span class="term" data-term="sym-hell">$z_\ell = 0$</span>—the steepest point of the <span class="term" data-term="sigmoid">sigmoid</span> curve <span class="term" data-term="sym-sigprime">$\sigma(z)$</span>.
+      </p>
+      <p>
+        Suppose an error signal of <span class="term" data-term="sym-gbar">$\bar{z}_4 = 64$</span> arrives at the top layer's pre-activation $z_4$. Because <span class="term" data-term="sym-sigprime">$\sigma'(0) = \frac{1}{4}$</span>, each sigmoid gate between $z_4$ and $z_1$ multiplies the backward gradient by $w_\ell \cdot \sigma'(0) = 1 \times \frac{1}{4} = \frac{1}{4}$ (there are $3$ sigmoid hops from $z_4$ back to $z_1$).
+      </p>
+
+      <div class="interactive-card" id="poe-widget">
+        <div class="widget-label">Predict-Observe-Explain (Guess First)</div>
+        <h3>Prediction: If top layer $z_4$ receives gradient $\bar{z}_4 = 64$, what gradient $\bar{z}_1$ reaches Layer 1 after 3 sigmoid hops?</h3>
+        <p>Commit to a number mentally before revealing the layer-by-layer gradient bars:</p>
+        <div class="control-row">
+          <button class="btn btn-small" onclick="runPOE('A')">A) $\bar{z}_1 = 64$ (weights are $1$, so signal stays $64$)</button>
+          <button class="btn btn-small" onclick="runPOE('B')">B) $\bar{z}_1 = 16$ (divides by $4$ once overall)</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) $\bar{z}_1 = 1$ (shrinks $64 \to 16 \to 4 \to 1$)</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+        </div>
+        <div id="poe-reveal" style="display:none;">
+          <div class="figure-box">
+            <svg id="poe-svg" viewBox="0 0 460 150" width="460" height="150" role="img" aria-label="Layer 4 vs Layer 1 gradient comparison"></svg>
+          </div>
+          <div class="refutation" id="poe-refutation"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === STAGE 3A: REGULAR DNN MECHANISM + DISTINCT-NUMBER WORKED EXAMPLE === -->
+    <h2 id="s2">2. Regular DNNs: how gradients decay across depth</h2>
+    <p>
+      In a feedforward <span class="term" data-term="dnn">DNN</span>, layer <span class="term" data-term="sym-ell">$\ell$</span> computes pre-activation <span class="term" data-term="sym-hell">$z_\ell = w_\ell h_{\ell-1}$</span> and activation <span class="term" data-term="sym-hell">$h_\ell = f(z_\ell)$</span>. By the <span class="term" data-term="chain-rule">Chain Rule</span>, passing a gradient backward by one layer multiplies by two factors: the layer's weight $w_\ell$ and its activation slope $f'(z_\ell)$.
+    </p>
+
+    <div class="worked">
+      <p><strong>Worked 3-layer DNN trace with distinct numbers (easy to follow each factor):</strong></p>
+      <p>
+        Take a 3-layer network with input <span class="term" data-term="sym-hell">$h_0 = 2$</span>, distinct layer weights <span class="term" data-term="sym-well">$w_1 = 3,\; w_2 = 2,\; w_3 = 1$</span>, distinct local activation slopes <span class="term" data-term="local-grad">$f'(z_1) = \frac{1}{2},\; f'(z_2) = \frac{1}{4},\; f'(z_3) = \frac{1}{2}$</span>, and distinct cached forward activations <span class="term" data-term="sym-hell">$h_0 = 2,\; h_1 = 3,\; h_2 = 4$</span>. Suppose the loss derivative at the top activation is <span class="term" data-term="sym-gbar">$\bar{h}_3 = \frac{\partial L}{\partial h_3} = 16$</span>.
+      </p>
+      <p>
+        <strong>1. Top layer ($\ell = 3$) updates fast:</strong><br>
+        &bull; Through activation $f(z_3)$: $\bar{z}_3 = \bar{h}_3 \cdot f'(z_3) = 16 \times \frac{1}{2} = \mathbf{8}$.<br>
+        &bull; Weight gradient $\bar{w}_3 = \bar{z}_3 \cdot h_2 = 8 \times 4 = \mathbf{32}$.<br>
+        &bull; Pass gradient down to layer 2: $\bar{h}_2 = \bar{z}_3 \cdot w_3 = 8 \times 1 = \mathbf{8}$.
+      </p>
+      <p>
+        <strong>2. Middle layer ($\ell = 2$) loses $4\times$ at the activation gate:</strong><br>
+        &bull; Through activation $f(z_2)$: $\bar{z}_2 = \bar{h}_2 \cdot f'(z_2) = 8 \times \frac{1}{4} = \mathbf{2}$.<br>
+        &bull; Weight gradient $\bar{w}_2 = \bar{z}_2 \cdot h_1 = 2 \times 3 = \mathbf{6}$.<br>
+        &bull; Pass gradient down to layer 1: $\bar{h}_1 = \bar{z}_2 \cdot w_2 = 2 \times 2 = \mathbf{4}$.
+      </p>
+      <p>
+        <strong>3. First layer ($\ell = 1$) receives a fraction of the top signal:</strong><br>
+        &bull; Through activation $f(z_1)$: $\bar{z}_1 = \bar{h}_1 \cdot f'(z_1) = 4 \times \frac{1}{2} = \mathbf{2}$.<br>
+        &bull; Weight gradient $\bar{w}_1 = \bar{z}_1 \cdot h_0 = 2 \times 2 = \mathbf{4}$ (versus $\bar{w}_3 = 32$ at the top!).
+      </p>
+    </div>
+
+    <div class="math-block">
+      $$\bar{w}_1 = \frac{\partial L}{\partial w_1} = \underbrace{\bar{h}_3}_{16} \cdot \underbrace{f'(z_3)}_{1/2} \cdot \underbrace{w_3}_{1} \cdot \underbrace{f'(z_2)}_{1/4} \cdot \underbrace{w_2}_{2} \cdot \underbrace{f'(z_1)}_{1/2} \cdot \underbrace{h_0}_{2} = 16 \cdot \frac{1}{8} \cdot 2 = 4$$
+      <div class="math-hint">General $L$-layer DNN formula: $\bar{w}_1 = \bar{h}_L f'(z_L) \left[\prod_{\ell=2}^{L} w_\ell f'(z_{\ell-1})\right] h_0$. If each layer factor $|w_\ell f'(z_{\ell-1})| \le \frac{1}{4}$, a 10-layer network shrinks $\bar{w}_1$ by $(1/4)^9 = 1/262{,}144$.</div>
+    </div>
+
+    <p>
+      Why does <span class="term" data-term="sigmoid">sigmoid</span> guarantee decay unless weights are huge? Because $\sigma'(z) = \sigma(z)(1 - \sigma(z))$ is a product of two probabilities that add to $1$: its maximum at $z = 0$ is $\frac{1}{2} \times \frac{1}{2} = \mathbf{0.25}$, and in the <span class="term" data-term="saturation">saturated</span> tails ($|z| \ge 4$) it drops below $0.018$. Even <span class="term" data-term="tanh">tanh</span> ($\tanh'(z) = 1 - \tanh^2(z) \le 1$) shrinks gradients at every layer where $z \ne 0$.
+    </p>
+    <p>
+      Step through the three DNN architectures below. All three stay visible side-by-side so you can compare how fast the backward signal dies from Layer 4 down to Layer 1.
+    </p>
+
+    <div class="interactive-card" id="dnn-stepper-widget">
+      <div class="widget-label">Discrete Stepper + Persistent Small Multiples (DNN Depth)</div>
+      <h3>Backward Gradient $\bar{z}_\ell$ Across 4 Layers (Starting from $\bar{z}_4 = 64$, Weights $w_\ell = 1$)</h3>
+      <div class="control-row">
+        <button class="btn btn-small active" id="dnn-btn-0" onclick="setDnnStep(0)">Step 1: Sigmoid ($\sigma'=1/4$)</button>
+        <button class="btn btn-small" id="dnn-btn-1" onclick="setDnnStep(1)">Step 2: Active ReLU ($f'=1$)</button>
+        <button class="btn btn-small" id="dnn-btn-2" onclick="setDnnStep(2)">Step 3: ResNet Skip ($1+F'$)</button>
+      </div>
+
+      <div class="small-multiples" id="dnn-sm-grid"></div>
+      <div class="readout" id="dnn-step-explain"></div>
+    </div>
+
+    <!-- === STAGE 3B: RNN MECHANISM Across TIME + DISTINCT-NUMBER WORKED EXAMPLE === -->
+    <h2 id="s3">3. RNNs: vanishing gradients across time (and why old tokens are forgotten)</h2>
+    <p>
+      A <span class="term" data-term="rnn">Recurrent Neural Network (RNN)</span> reads a sequence of tokens $x_1, x_2, \dots, x_T$ by updating a hidden state <span class="term" data-term="sym-ht">$h_t = f(w_h h_{t-1} + w_x x_t)$</span> at each step <span class="term" data-term="sym-t">$t$</span>. Notice two big differences from a regular <span class="term" data-term="dnn">DNN</span>:
+    </p>
+    <ul>
+      <li><strong>Weight sharing across time:</strong> A 50-layer DNN has 50 distinct weights $w_1, \dots, w_{50}$, whereas an RNN unrolled over 50 tokens reuses the <strong>exact same</strong> recurrent weight <span class="term" data-term="sym-wh">$w_h$</span> at every single time step.</li>
+      <li><strong>Sum-of-paths gradient (<span class="term" data-term="bptt">BPTT</span>):</strong> Because $w_h$ is used at every step $t = 1 \dots T$, its total gradient $\bar{w}_h$ is the <em>sum</em> of contributions from all time steps. However, the contribution that teaches the network to connect token $t = 1$ to a loss at token $t = T$ must travel through $T - 1$ copies of $w_h \cdot f'(z_k)$.</li>
+    </ul>
+
+    <div class="worked">
+      <p><strong>Worked 3-step RNN trace with distinct inputs $x = [4, 2, 1]$ (mental math, zero calculator):</strong></p>
+      <p>
+        To isolate the recurrent highway cleanly, take a linear RNN step $h_t = w_h h_{t-1} + w_x x_t$ ($f' = 1$) starting from $h_0 = 0$, with shared recurrent weight <span class="term" data-term="sym-wh">$w_h = \frac{1}{2}$</span>, input weight $w_x = 1$, and distinct token inputs <span class="term" data-term="sym-t">$x_1 = 4,\; x_2 = 2,\; x_3 = 1$</span>. A prediction loss $L$ is evaluated at the final step $T = 3$ with upstream gradient <span class="term" data-term="sym-gbar">$\bar{h}_3 = \frac{\partial L}{\partial h_3} = 4$</span>.
+      </p>
+      <p>
+        <strong>Forward pass across time ($t = 1 \to 2 \to 3$):</strong><br>
+        &bull; Step $t=1$: $h_1 = \frac{1}{2}(0) + 1(4) = \mathbf{4}$.<br>
+        &bull; Step $t=2$: $h_2 = \frac{1}{2}(4) + 1(2) = 2 + 2 = \mathbf{4}$.<br>
+        &bull; Step $t=3$: $h_3 = \frac{1}{2}(4) + 1(1) = 2 + 1 = \mathbf{3}$.
+      </p>
+      <p>
+        <strong>Backward pass through time (<span class="term" data-term="bptt">BPTT</span>, $t = 3 \to 2 \to 1$):</strong><br>
+        Since $\frac{\partial h_t}{\partial h_{t-1}} = w_h = \frac{1}{2}$, each backward step in time halves the hidden-state gradient:<br>
+        &bull; At $t=3$: $\bar{h}_3 = \mathbf{4}$. Influence of token $x_3$: $\bar{x}_3 = \bar{h}_3 \cdot w_x = \mathbf{4}$.<br>
+        &bull; At $t=2$: $\bar{h}_2 = \bar{h}_3 \cdot w_h = 4 \times \frac{1}{2} = \mathbf{2}$. Influence of token $x_2$: $\bar{x}_2 = \mathbf{2}$.<br>
+        &bull; At $t=1$: $\bar{h}_1 = \bar{h}_2 \cdot w_h = 2 \times \frac{1}{2} = \mathbf{1}$. Influence of token $x_1$: $\bar{x}_1 = \mathbf{1}$.
+      </p>
+      <p>
+        <strong>What happens to the shared weight gradient $\bar{w}_h$?</strong><br>
+        Because $w_h$ was used at $t=2$ (multiplying $h_1 = 4$) and at $t=3$ (multiplying $h_2 = 4$), we add both temporal branches:<br>
+        $$\bar{w}_h = \underbrace{\bar{h}_3 \cdot h_2}_{\text{step } t=3 \text{ (recent)}} + \underbrace{\bar{h}_2 \cdot h_1}_{\text{step } t=2 \text{ (older)}} = (4 \times 4) + (2 \times 4) = \mathbf{16} + \mathbf{8} = 24$$
+        Notice the trap: $\bar{w}_h = 24$ is <em>not</em> zero! Instead, it is <strong>dominated by recent tokens</strong> ($16$ from $t=3$ vs. $8$ from $t=2$, and over $20$ steps a token at $t=1$ contributes $(1/2)^{19} \approx 0.000002$). The RNN updates $w_h$ solely to fix short-term correlations and stays completely blind to long-range dependencies.
+      </p>
+    </div>
+
+    <div class="math-block">
+      $$\frac{\partial L_T}{\partial h_1} = \frac{\partial L_T}{\partial h_T} \prod_{k=2}^{T} \frac{\partial h_k}{\partial h_{k-1}} = \bar{h}_T \cdot w_h^{\,T-1} \prod_{k=2}^{T} f'(z_k)$$
+      <div class="math-hint">In matrix form with recurrent weight matrix $W_h$, the multiplier $(w_h)^{T-1}$ is governed by the largest <span class="term" data-term="spectral-radius">eigenvalue / singular value</span> $\rho(W_h)$: if $\rho(W_h) &lt; 1$, long-term signals vanish; if $\rho(W_h) &gt; 1$, they explode.</div>
+    </div>
+
+    <p>
+      How do <span class="term" data-term="lstm">LSTMs</span> (and <span class="term" data-term="gru">GRUs</span>) keep token 1 alive across 100 steps? They introduce a separate memory lane called the <strong>cell state</strong> <span class="term" data-term="sym-ct">$c_t = f_t \odot c_{t-1} + i_t \odot \tilde{c}_t$</span>, where the <span class="term" data-term="forget-gate">forget gate</span> <span class="term" data-term="sym-ct">$f_t \in [0, 1]$</span> is an additive pass-through multiplier (<span class="term" data-term="cec">Constant Error Carousel</span>). When the network sets $f_t \approx 1$ for an important early token, $\frac{\partial c_t}{\partial c_{t-1}} \approx 1$, carrying the gradient back across dozens of steps without decaying. (Modern <span class="term" data-term="attention-shortcut">Transformers</span> go one step further: self-attention connects token $T$ to token $1$ in a <strong>single $O(1)$ hop</strong> instead of $T-1$ serial multiplications.)
+    </p>
+
+    <div class="interactive-card" id="rnn-stepper-widget">
+      <div class="widget-label">Discrete Stepper + Persistent Small Multiples (RNN Memory Horizon)</div>
+      <h3>Gradient Signal Reaching Token $t$ from a Loss at $T = 5$ ($\bar{h}_5 = 16$)</h3>
+      <div class="control-row">
+        <button class="btn btn-small active" id="rnn-btn-0" onclick="setRnnStep(0)">Step 1: Vanishing ($w_h f' = 1/2$)</button>
+        <button class="btn btn-small" id="rnn-btn-1" onclick="setRnnStep(1)">Step 2: Exploding ($w_h f' = 2$)</button>
+        <button class="btn btn-small" id="rnn-btn-2" onclick="setRnnStep(2)">Step 3: LSTM Highway ($f_t = 1$)</button>
+      </div>
+
+      <div class="small-multiples" id="rnn-sm-grid"></div>
+      <div class="readout" id="rnn-step-explain"></div>
+
+      <div id="rnn-slider-gate" class="locked-note">
+        Complete the Section 1 prediction (or step through all 3 RNN presets above) to unlock the interactive per-step multiplier explorer.
+      </div>
+      <div id="rnn-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
+        <div class="control-row">
+          <button class="btn btn-small" onclick="setMultiplierPreset(0.25)">Sigmoid Max ($0.25$)</button>
+          <button class="btn btn-small" onclick="setMultiplierPreset(0.5)">Mild Decay ($0.50$)</button>
+          <button class="btn btn-small" onclick="setMultiplierPreset(1.0)">Unit Highway ($1.00$)</button>
+          <button class="btn btn-small" onclick="setMultiplierPreset(1.5)">Exploding ($1.50$)</button>
+        </div>
+        <div class="control-row">
+          <label for="mult-slider">Step factor $\gamma = w \cdot f'$</label>
+          <input type="range" id="mult-slider" min="0.25" max="1.50" step="0.05" value="0.50" oninput="updateMultWidget()">
+          <span class="val" id="mult-val">0.50</span>
+        </div>
+        <div class="figure-box">
+          <svg id="mult-svg" viewBox="0 0 460 135" width="460" height="135" role="img" aria-label="Gradient survival across 5 backward hops"></svg>
+        </div>
+        <div class="stat-grid">
+          <div class="stat"><div class="k">Start Grad ($t=5$)</div><div class="v" id="st-g5">16.00</div></div>
+          <div class="stat"><div class="k">After 2 Hops ($t=3$)</div><div class="v" id="st-g3">4.00</div></div>
+          <div class="stat"><div class="k">After 4 Hops ($t=1$)</div><div class="v" id="st-g1">1.00</div></div>
+          <div class="stat"><div class="k">Survival Ratio</div><div class="v" id="st-ratio">6.3%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <details>
+      <summary>Why the math of Sigmoid's maximum derivative is always $\frac{1}{4}$ (and how Xavier/He init scales weights)</summary>
+      <div class="detail-body">
+        <p>
+          For <span class="term" data-term="sigmoid">sigmoid</span> $\sigma(z) = (1 + e^{-z})^{-1}$, the derivative by the quotient/chain rule is:
+        </p>
+        <div class="math-block">
+          $$\sigma'(z) = \frac{e^{-z}}{(1 + e^{-z})^2} = \sigma(z)\bigl(1 - \sigma(z)\bigr)$$
+        </div>
+        <p>
+          Set $p = \sigma(z) \in (0, 1)$. The parabola $p(1 - p) = \frac{1}{4} - (p - \frac{1}{2})^2$ peaks at $p = \frac{1}{2}$ ($z = 0$), where $\sigma'(0) = \frac{1}{2}(1 - \frac{1}{2}) = \frac{1}{4}$.
+        </p>
+        <p>
+          Even with <span class="term" data-term="relu">ReLU</span> (where $f'(z) = 1$ for $z &gt; 0$), gradients still vanish or explode if weight matrices $W_\ell$ change the variance of vectors from layer to layer. If layer $\ell$ has $n_{\text{in}}$ inputs and roughly half are zeroed by ReLU, keeping forward activation variance and backward gradient variance equal to $1$ requires initializing weights with variance $\text{Var}(W_{ij}) = \frac{2}{n_{\text{in}}}$ (<span class="term" data-term="he-init">He initialization</span>; for linear/tanh layers without halving, <span class="term" data-term="xavier-init">Xavier initialization</span> uses $\frac{1}{n_{\text{in}}}$).
+        </p>
+      </div>
+    </details>
+
+    <!-- === STAGE 4: BACKWARD-FADED PRACTICE + CLOSED-BOOK RETRIEVAL === -->
+    <h2 id="s4">4. Backward-faded practice &amp; closed-book retrieval</h2>
+    <p>
+      Complete the final step of the ResNet vs. plain-network trace below mentally (no calculator needed), then test your eyes-off-the-page recall.
+    </p>
+
+    <div class="interactive-card" id="faded-widget">
+      <div class="widget-label">Backward-Faded Worked Example (Plain Block vs. Residual Block)</div>
+      <h3>Compute $\bar{h}_0$ Across Two Blocks When Each Branch Has Local Slope $F' = \frac{1}{2}$</h3>
+      <p>
+        Suppose top gradient $\bar{h}_2 = 16$ flows backward through <strong>two</strong> blocks ($h_0 \to h_1 \to h_2$) where each learned branch $F_\ell(h_{\ell-1})$ has local derivative $F' = \frac{1}{2}$:<br>
+        <strong>Step 1 (Plain network $h_\ell = F_\ell(h_{\ell-1})$):</strong> Each block multiplies by $\frac{1}{2}$, so $\bar{h}_1 = 16 \times \frac{1}{2} = 8$, and $\bar{h}_0 = 8 \times \frac{1}{2} = \mathbf{4}$ (lost $75\%$ of the signal in just 2 blocks).<br>
+        <strong>Step 2 (ResNet block 2: $h_2 = h_1 + F_2(h_1)$):</strong> Because of the $+ h_1$ skip wire, the local derivative is $1 + F' = 1 + \frac{1}{2} = \frac{3}{2}$. Thus $\bar{h}_1 = \bar{h}_2 \times \frac{3}{2} = 16 \times \frac{3}{2} = \mathbf{24}$.<br>
+        <strong>Step 3 (Your turn &mdash; ResNet block 1: $h_1 = h_0 + F_1(h_0)$):</strong> Given $\bar{h}_1 = 24$ and local derivative $1 + F' = \frac{3}{2}$, what is $\bar{h}_0$?
+      </p>
+      <div class="control-row">
+        <label for="fade-input">$\bar{h}_0 =$</label>
+        <input type="number" id="fade-input" step="1" placeholder="Integer" style="width:8rem;">
+        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+      </div>
+      <div id="fade-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <div class="interactive-card" id="recall-widget">
+      <div class="widget-label">Closed-Book Retrieval (Blank-Sheet Test)</div>
+      <h3>DNN Depth Vanishing vs. RNN Temporal Vanishing</h3>
+      <p>
+        Without scrolling up, answer two questions in your own words: (1) In a regular 10-layer DNN, why is it easy to see in the gradient vector that layer 1 has a vanishing gradient, whereas in a 10-step RNN the recurrent weight gradient $\bar{w}_h$ can still be large even when long-term gradients have vanished? (2) Why can you fix exploding gradients with gradient clipping, but cannot fix vanishing gradients by simply multiplying the gradient by $10^6$?
+      </p>
+      <textarea id="recall-input" placeholder="Type your 2-part explanation from memory..."></textarea>
+      <div class="control-row">
+        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
+      </div>
+      <div id="recall-feedback" class="readout" style="display:none;">
+        <strong>Canonical answer:</strong><br>
+        1. <strong>Distinct weights vs. shared weights:</strong> In a 10-layer DNN, layer 1 has its own separate parameter $w_1$, so $\bar{w}_1 \approx 0$ directly shows that early layers are frozen while $\bar{w}_{10}$ is large. In an RNN, the <em>same</em> weight $w_h$ is shared across all 10 time steps, so $\bar{w}_h = \sum_{t=1}^{10} \bar{w}_{h}^{(t)}$ sums recent and old paths together; the short-term gradient from $t=10, 9$ keeps total $\bar{w}_h$ large and hides the fact that the long-term signal from $t=1$ has decayed to zero.<br>
+        2. <strong>Why rescaling fails on vanishing gradients:</strong> In an RNN, multiplying $\bar{w}_h$ by $10^6$ blows up the dominant short-term terms from $t=10$ instead of recovering the vanished $t=1$ term; in a deep DNN, once products underflow <span class="term" data-term="float32">float32</span> precision or mix with numerical noise, rescaling amplifies noise and ill-conditioning rather than restoring the true causal direction (you need an architectural $+1$ skip path like ResNet or LSTM).
+      </div>
+    </div>
+
+    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
+    <h2 id="s5">5. Contrastive matrix, interleaved checks &amp; spaced recall</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Failure Mode / Architecture</th>
+            <th>Per-Step Multiplier $\frac{\partial h_k}{\partial h_{k-1}}$</th>
+            <th>Symptom During Training</th>
+            <th>Primary Fix</th>
+            <th>When It Happens</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="dnn">DNN</span> Vanishing Gradient</strong></td>
+            <td class="num">$|w_\ell f'(z_\ell)| &lt; 1$<br>(e.g. $\sigma' \le 0.25$)</td>
+            <td>Early layers ($\bar{w}_1 \approx 0$) freeze near random init; late layers overfit</td>
+            <td><span class="term" data-term="relu">ReLU</span>/GELU + <span class="term" data-term="he-init">He init</span> + <span class="term" data-term="residual">ResNet</span> skip ($h + F(h)$) + <span class="term" data-term="layernorm">LayerNorm</span></td>
+            <td>Deep plain networks with <span class="term" data-term="sigmoid">sigmoid</span>/<span class="term" data-term="tanh">tanh</span> or small initial weights</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="rnn">RNN</span> Vanishing Across Time</strong></td>
+            <td class="num">$\rho(W_h f') &lt; 1$</td>
+            <td>Total $\bar{W}_h$ looks healthy (from recent tokens), but model forgets tokens $&gt; 10$ steps ago</td>
+            <td><span class="term" data-term="lstm">LSTM</span>/<span class="term" data-term="gru">GRU</span> additive cell state ($f_t \approx 1$) or <span class="term" data-term="attention-shortcut">Transformer</span> direct attention</td>
+            <td>Vanilla RNNs on long sequences ($T \ge 15$)</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="dead-relu">Dead ReLU</span></strong></td>
+            <td class="num">$f'(z) = 0$ exactly for $z \le 0$</td>
+            <td>Specific neurons output $0$ on every example and receive exact $0$ gradient forever</td>
+            <td>Leaky ReLU / GELU, smaller learning rate, proper bias/weight init</td>
+            <td>ReLU networks after a large negative weight update or negative bias init</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="exploding-grad">Exploding Gradient</span></strong></td>
+            <td class="num">$\rho(W_h f') &gt; 1$</td>
+            <td>Loss spikes suddenly to <code>NaN</code> / <code>Inf</code>; weights jump wildly in one step</td>
+            <td><span class="term" data-term="grad-clip">Gradient norm clipping</span> ($g \leftarrow g \cdot \frac{\tau}{\|g\|}$) + lower LR + orthogonal init</td>
+            <td>RNNs with large recurrent weights or very deep unnormalized nets</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="mcq-box" data-correct="B" data-topic="Interleaved 1: DNN Sigmoid vs ReLU mental math">
+      <p>A 4-layer network has weights $w_1 = w_2 = w_3 = w_4 = 1$, input $h_0 = 1$, and top pre-activation gradient $\bar{z}_4 = 32$. If all intermediate activations sit at $z_\ell = +0.01$ (just above zero), compare the Layer 1 gradient $\bar{z}_1$ when the network uses <strong>Sigmoid</strong> ($\sigma'(0.01) \approx \frac{1}{4}$) vs. <strong>ReLU</strong> ($\text{ReLU}'(0.01) = 1$).</p>
+      <label class="mcq-option" data-explain="With ReLU, the slope for any $z &gt; 0$ is $1$, not $0.01$ (0.01 is the activation value $z$, not the slope!).">Sigmoid gives $\bar{z}_1 = 0.5$, while ReLU gives $\bar{z}_1 = 32 \times (0.01)^3$ because $z = 0.01$ is tiny.</label>
+      <label class="mcq-option" data-explain="Correct. Across the 3 intermediate gates ($z_4 \to z_3 \to z_2 \to z_1$), Sigmoid multiplies by $(1/4)^3 = 1/64$, giving $32 / 64 = 0.5$. ReLU has slope $1$ for any $z &gt; 0$, so $32 \times 1^3 = 32$ passes through intact.">Sigmoid shrinks $\bar{z}_1$ to $32 \times (\frac{1}{4})^3 = 0.5$, whereas ReLU keeps $\bar{z}_1 = 32 \times 1^3 = 32$.</label>
+      <label class="mcq-option" data-explain="Even when weights equal $1$, the Chain Rule multiplies by the activation derivative $f'(z_\ell)$ at every layer.">Both give $\bar{z}_1 = 32$ because all weights equal $1$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="Interleaved 2: Why RNN vanishing gradient is invisible in ||dW_h||">
+      <p>You train a vanilla RNN over $T = 50$ tokens to predict whether token $t = 50$ matches the opening bracket at token $t = 1$. You print the gradient norm $\|\frac{\partial L_{50}}{\partial W_h}\|$ and see a healthy value of $2.4$, yet validation accuracy stays at $50\%$ random chance. Why didn't the gradient norm warn you about vanishing gradients?</p>
+      <label class="mcq-option" data-explain="Gradient norm includes all parameters in $W_h$, not just biases.">Because $\|\frac{\partial L_{50}}{\partial W_h}\|$ only measures the bias gradient, which never vanishes.</label>
+      <label class="mcq-option" data-explain="If the gradient had exploded, the norm would be huge or NaN, not a steady 2.4.">Because a gradient norm of $2.4$ means the gradient has already exploded and overflowed float32.</label>
+      <label class="mcq-option" data-explain="Correct. In BPTT, $\frac{\partial L_{50}}{\partial W_h} = \sum_{k=1}^{50} \frac{\partial L_{50}}{\partial h_{50}} \frac{\partial h_{50}}{\partial h_k} \frac{\partial^+ h_k}{\partial W_h}$. The terms for $k = 50, 49, 48$ have $0, 1, 2$ hops and stay around $2.4$, completely masking the fact that the $k = 1$ term (49 hops back to the opening bracket) has shrunk to $\approx 10^{-15}$.">Because $W_h$ is shared across all 50 steps: its gradient is a sum over all steps $k = 1 \dots 50$, where large short-term gradients from $k = 49, 50$ dominate the norm and mask the $\approx 0$ long-term term from $k = 1$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Interleaved 3: LSTM forget gate vs Vanilla RNN">
+      <p>In an LSTM cell update $c_t = f_t \odot c_{t-1} + i_t \odot \tilde{c}_t$, what setting of the forget gate $f_t$ and input gate $i_t$ allows an error signal at step $T$ to flow straight back to step $1$ along the cell state without shrinking?</p>
+      <label class="mcq-option" data-explain="Correct. When $f_t \approx 1$ and $i_t \approx 0$, $c_t \approx 1 \cdot c_{t-1}$, so the direct partial derivative $\frac{\partial c_t}{\partial c_{t-1}} = f_t \approx 1$ acts as an identity highway across time.">Forget gate $f_t \approx 1$ (keep old memory) and input gate $i_t \approx 0$ (don't overwrite), making $\frac{\partial c_t}{\partial c_{t-1}} \approx 1$.</label>
+      <label class="mcq-option" data-explain="If $f_t \approx 0$, then $\frac{\partial c_t}{\partial c_{t-1}} = f_t \approx 0$, which wipes out the cell memory and kills the backward gradient in a single step.">Forget gate $f_t \approx 0$ and input gate $i_t \approx 1$.</label>
+      <label class="mcq-option" data-explain="Setting $f_t = 0.25$ multiplies the cell gradient by $0.25$ at every step, causing the exact same exponential decay as a sigmoid DNN.">Forget gate $f_t = 0.25$ at every step to match the maximum slope of sigmoid.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Interleaved 4: Gradient clipping asymmetry">
+      <p>Why does gradient norm clipping ($g \leftarrow g \cdot \frac{\tau}{\|g\|}$ whenever $\|g\| &gt; \tau$) rescue an RNN from <strong>exploding</strong> gradients, whereas scaling a small gradient up ($g \leftarrow g \cdot \frac{\tau}{\|g\|}$ when $\|g\| &lt; \tau$) fails to rescue a vanilla RNN from <strong>vanishing</strong> gradients?</p>
+      <label class="mcq-option" data-explain="Multiplying a vector by a positive scalar takes the exact same $O(d)$ time whether scaling up or scaling down.">Scaling a small vector up is computationally intractable ($O(d^3)$), whereas scaling down is $O(d)$.</label>
+      <label class="mcq-option" data-explain="Correct. When an RNN gradient explodes, the vector still points along the high-gain instability direction, and shrinking its step size prevents a cliff jump. When long-term RNN gradients vanish, $\nabla_{W_h} L$ is purely short-term signal plus float roundoff noise—scaling it up just takes a giant step in the short-term direction without restoring the lost $t=1$ contribution.">Exploding gradients preserve direction and only need a smaller step size; in a vanishing RNN, the long-term $t=1$ component has already been drowned out by short-term ($t=T$) terms inside the sum $\bar{W}_h$, so scaling the sum up just amplifies short-term updates and noise.</label>
+      <label class="mcq-option" data-explain="Float32 can represent numbers down to $\approx 1.4 \times 10^{-45}$, not $0.1$.">Because any number smaller than $0.1$ instantly becomes exact zero in <code>float32</code>.</label>
+    </details>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'backprop': {
+        title: 'Backpropagation',
+        body: 'Reverse-mode automatic differentiation: sweeps from the scalar <span class="term" data-term="loss">loss</span> $L$ back to early layers by multiplying each node\'s <span class="term" data-term="upstream-grad">upstream gradient</span> by its <span class="term" data-term="local-grad">local derivative</span>.'
+      },
+      'local-grad': {
+        title: 'Local Derivative (∂h_ℓ / ∂h_{ℓ-1})',
+        body: 'Sensitivity of a single layer or time step to its immediate input. In a layer $h_\\ell = f(w_\\ell h_{\\ell-1})$, the local derivative is $w_\\ell \\cdot f\'(z_\\ell)$.'
+      },
+      'upstream-grad': {
+        title: 'Upstream Gradient (v̄ = ∂L/∂v)',
+        body: 'The derivative of the final scalar <span class="term" data-term="loss">loss</span> $L$ with respect to an intermediate node $v$, arriving from later layers or later time steps.'
+      },
+      'loss': {
+        title: 'Loss Function (L)',
+        body: 'Single scalar measuring prediction error at the output layer or final time step $T$.'
+      },
+      'chain-rule': {
+        title: 'Chain Rule',
+        body: 'Along a serial chain $h_0 \\to h_1 \\to \\dots \\to h_L \\to L$, derivatives multiply: $\\frac{\\partial L}{\\partial h_0} = \\frac{\\partial L}{\\partial h_L} \\prod_{\\ell=1}^L \\frac{\\partial h_\\ell}{\\partial h_{\\ell-1}}$. Across parallel branches (such as a shared weight in an <span class="term" data-term="rnn">RNN</span>), derivatives add.'
+      },
+      'dnn': {
+        title: 'Regular Deep Neural Network (DNN)',
+        body: 'Feedforward stack of $L$ layers $h_\\ell = f(W_\\ell h_{\\ell-1} + b_\\ell)$ where each layer $\\ell$ has its own distinct weight matrix $W_\\ell$.'
+      },
+      'rnn': {
+        title: 'Recurrent Neural Network (RNN)',
+        body: 'Sequence model $h_t = f(W_h h_{t-1} + W_x x_t + b)$ that processes tokens $t = 1 \\dots T$ by reusing the exact same weights $W_h, W_x$ at every time step.'
+      },
+      'bptt': {
+        title: 'Backpropagation Through Time (BPTT)',
+        body: 'Unrolling an <span class="term" data-term="rnn">RNN</span> across $T$ time steps into a $T$-layer computation graph and running standard <span class="term" data-term="backprop">backpropagation</span>. Because $W_h$ is shared at every step, $\\bar{W}_h$ sums the gradients from all steps $t = 1 \\dots T$.'
+      },
+      'sigmoid': {
+        title: 'Sigmoid Activation σ(z)',
+        body: '$\\sigma(z) = \\frac{1}{1+e^{-z}} \\in (0,1)$. Its slope $\\sigma\'(z) = \\sigma(z)(1-\\sigma(z))$ peaks at $\\frac{1}{4} = 0.25$ at $z=0$ and approaches $0$ for large $|z|$ (<span class="term" data-term="saturation">saturation</span>).'
+      },
+      'tanh': {
+        title: 'Hyperbolic Tangent tanh(z)',
+        body: 'Zero-centered squash function $\\tanh(z) \\in (-1, 1)$ with derivative $\\tanh\'(z) = 1 - \\tanh^2(z) \\in (0, 1]$. Hits slope $1$ only at $z = 0$ and saturates to $0$ when $|z|$ is large.'
+      },
+      'saturation': {
+        title: 'Activation Saturation',
+        body: 'Flat tail regions of <span class="term" data-term="sigmoid">sigmoid</span> or <span class="term" data-term="tanh">tanh</span> where $|z|$ is large and the slope $f\'(z) \\approx 0$, choking off backward gradient flow.'
+      },
+      'relu': {
+        title: 'ReLU (Rectified Linear Unit)',
+        body: '$\\text{ReLU}(z) = \\max(0, z)$. Has a constant slope of $1$ whenever $z &gt; 0$ (no <span class="term" data-term="saturation">saturation</span> for positive inputs) and $0$ when $z &lt; 0$.'
+      },
+      'dead-relu': {
+        title: 'Dead ReLU',
+        body: 'A <span class="term" data-term="relu">ReLU</span> neuron whose pre-activation $z$ is negative for all training examples. Because $\\text{ReLU}\'(z) = 0$ for $z &lt; 0$, its weights receive zero gradient and never recover.'
+      },
+      'residual': {
+        title: 'Residual Connection (ResNet Skip)',
+        body: 'Wiring a direct identity shortcut $h_\\ell = h_{\\ell-1} + F(h_{\\ell-1})$ around a layer block. By the Add Gate rule, $\\frac{\\partial h_\\ell}{\\partial h_{\\ell-1}} = I + F\'(h_{\\ell-1})$, guaranteeing a $+1$ gradient highway even if $F\' \\approx 0$.'
+      },
+      'lstm': {
+        title: 'LSTM (Long Short-Term Memory)',
+        body: 'Gated recurrent architecture with an additive cell state $c_t = f_t \\odot c_{t-1} + i_t \\odot \\tilde{c}_t$. When the <span class="term" data-term="forget-gate">forget gate</span> $f_t \\approx 1$, gradients flow backward across time without exponential decay.'
+      },
+      'gru': {
+        title: 'GRU (Gated Recurrent Unit)',
+        body: 'Streamlined gated RNN that interpolates additively between old and new hidden states: $h_t = (1 - z_t) \\odot h_{t-1} + z_t \\odot \\tilde{h}_t$, creating a linear gradient highway when update gate $z_t \\approx 0$.'
+      },
+      'forget-gate': {
+        title: 'Forget Gate (f_t)',
+        body: 'Sigmoid gate $f_t \\in (0, 1)$ in an <span class="term" data-term="lstm">LSTM</span> that multiplies the previous cell state $c_{t-1}$. Because $\\frac{\\partial c_t}{\\partial c_{t-1}} \\approx f_t$, setting $f_t \\approx 1$ preserves gradients over long time horizons.'
+      },
+      'cec': {
+        title: 'Constant Error Carousel (CEC)',
+        body: 'Hochreiter &amp; Schmidhuber\'s name for the linear self-loop $c_t = f_t \\odot c_{t-1} + \\dots$ inside an <span class="term" data-term="lstm">LSTM</span> that prevents error signals from decaying exponentially across time.'
+      },
+      'attention-shortcut': {
+        title: 'Transformer Self-Attention Shortcut',
+        body: 'In a Transformer, token $T$ attends directly to token $1$ in a single layer, so the gradient path length between any two tokens is $O(1)$ instead of $O(T)$ sequential <span class="term" data-term="rnn">RNN</span> steps.'
+      },
+      'exploding-grad': {
+        title: 'Exploding Gradient',
+        body: 'Opposite of vanishing gradients: when per-step multipliers exceed $1$ (e.g., $w_h f\' = 2$), gradients grow exponentially like $2^T$, causing massive weight updates and <code>NaN</code> loss.'
+      },
+      'grad-clip': {
+        title: 'Gradient Norm Clipping',
+        body: 'Rescaling the full gradient vector $g \\leftarrow g \\cdot \\frac{\\tau}{\\|g\\|_2}$ whenever $\\|g\\|_2 &gt; \\tau$. Prevents <span class="term" data-term="exploding-grad">exploding gradients</span> from destabilizing training.'
+      },
+      'he-init': {
+        title: 'He (Kaiming) Initialization',
+        body: 'Drawing initial weights with variance $\\frac{2}{n_{\\text{in}}}$ for <span class="term" data-term="relu">ReLU</span> layers so forward activation variance and backward gradient variance stay near $1$ across depth.'
+      },
+      'xavier-init': {
+        title: 'Xavier (Glorot) Initialization',
+        body: 'Drawing initial weights with variance $\\frac{1}{n_{\\text{in}}}$ (or $\\frac{2}{n_{\\text{in}}+n_{\\text{out}}}$) for linear/<span class="term" data-term="tanh">tanh</span> layers to keep signal variance near $1$.'
+      },
+      'layernorm': {
+        title: 'Layer Normalization (LayerNorm)',
+        body: 'Rescales each layer\'s activations to zero mean and unit variance, preventing pre-activations from drifting into <span class="term" data-term="saturation">saturation</span> or exploding across depth.'
+      },
+      'spectral-radius': {
+        title: 'Spectral Radius / Largest Singular Value ρ(W_h)',
+        body: 'Maximum stretching factor of recurrent matrix $W_h$. Repeated multiplication $W_h^T$ shrinks to $0$ if $\\rho(W_h) &lt; 1$ and blows up to $\\infty$ if $\\rho(W_h) &gt; 1$.'
+      },
+      'float32': {
+        title: 'float32 Precision',
+        body: '32-bit IEEE floating-point representation with ~7 decimal digits of mantissa precision and minimum positive subnormal value $\\approx 1.4 \\times 10^{-45}$.'
+      },
+      'sym-L': {
+        title: 'Symbol: L (Scalar Loss)',
+        body: 'The single number at the end of the forward pass measuring prediction error. Backpropagation always starts with $\\bar{L} = \\frac{\\partial L}{\\partial L} = 1$.'
+      },
+      'sym-gbar': {
+        title: 'Symbol: v̄ = ∂L/∂v (Gradient / Adjoint)',
+        body: 'Shorthand $\\bar{v}$ for the partial derivative of the final scalar <span class="term" data-term="loss">loss</span> $L$ with respect to node $v$.'
+      },
+      'sym-sigprime': {
+        title: 'Symbol: σ\'(z) (Sigmoid Derivative)',
+        body: 'Slope of the <span class="term" data-term="sigmoid">sigmoid</span> curve at pre-activation $z$: $\\sigma\'(z) = \\sigma(z)(1-\\sigma(z)) \\le \\frac{1}{4}$.'
+      },
+      'sym-ell': {
+        title: 'Symbol: ℓ (Layer Index in a DNN)',
+        body: 'Indexes spatial depth $\\ell \\in \\{1, 2, \\dots, L\\}$ from input layer ($\\ell=1$) to output layer ($\\ell=L$).'
+      },
+      'sym-hell': {
+        title: 'Symbols: h_ℓ and z_ℓ (Layer Activation & Pre-Activation)',
+        body: 'At layer $\\ell$, $z_\\ell = w_\\ell h_{\\ell-1} + b_\\ell$ is the linear pre-activation and $h_\\ell = f(z_\\ell)$ is the post-activation output passed to layer $\\ell+1$.'
+      },
+      'sym-well': {
+        title: 'Symbol: w_ℓ (Distinct Layer-ℓ Weight)',
+        body: 'Weight parameter belonging exclusively to layer $\\ell$ in a <span class="term" data-term="dnn">DNN</span>.'
+      },
+      'sym-t': {
+        title: 'Symbol: t (Time / Token Step Index)',
+        body: 'Indexes sequence position $t \\in \\{1, 2, \\dots, T\\}$ from the earliest token ($t=1$) to the final token ($t=T$).'
+      },
+      'sym-ht': {
+        title: 'Symbol: h_t (RNN Hidden State at Step t)',
+        body: 'Summary vector carried forward from token $t-1$ to token $t$ in an <span class="term" data-term="rnn">RNN</span>: $h_t = f(W_h h_{t-1} + W_x x_t)$.'
+      },
+      'sym-wh': {
+        title: 'Symbol: w_h (Shared Recurrent Weight)',
+        body: 'The transition weight multiplying $h_{t-1}$ at <em>every</em> time step $t$. During <span class="term" data-term="bptt">BPTT</span>, moving backward by $k$ steps multiplies the gradient by $(w_h)^k$.'
+      },
+      'sym-ct': {
+        title: 'Symbols: c_t and f_t (LSTM Cell State & Forget Gate)',
+        body: '$c_t$ is the additive memory highway of an <span class="term" data-term="lstm">LSTM</span>, and $f_t \\in (0,1)$ is the <span class="term" data-term="forget-gate">forget gate</span> controlling how much of $c_{t-1}$ passes directly into $c_t$.'
+      }
+    };
+
+    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
+    function checkFastForward() {
+      var raw = document.getElementById('ff-input').value.trim();
+      var fb = document.getElementById('ff-feedback');
+      fb.style.display = 'block';
+      if (raw === '1' || raw === '1.0' || raw === '+1') {
+        fb.innerHTML = '<strong>Verified.</strong> $16 \\times (\\frac{1}{2})^4 = 16 \\times \\frac{1}{16} = 1$. Section 1 prediction hook collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Section 1</button>';
+        renderMathIn(fb);
+        toggleScaffolding(false);
+        unlockRnnSlider();
+      } else {
+        fb.innerHTML = 'Not quite: 4 hops of $\\frac{1}{2}$ multiply $16$ by $(\\frac{1}{2})^4 = \\frac{1}{16}$ ($16 \\to 8 \\to 4 \\to 2 \\to 1$). Work through Section 1 below.';
+        renderMathIn(fb);
+      }
+    }
+
+    function toggleScaffolding(show) {
+      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
+    }
+
+    /* ---------- Stage 1 & 2: POE + Refutation ---------- */
+    var rnnStepsVisited = { 0: true };
+
+    function unlockRnnSlider() {
+      var gate = document.getElementById('rnn-slider-gate');
+      var box = document.getElementById('rnn-slider-unlocked');
+      if (gate && box) {
+        gate.style.display = 'none';
+        box.style.display = 'block';
+        updateMultWidget();
+      }
+    }
+
+    function runPOE(choice) {
+      document.getElementById('poe-reveal').style.display = 'block';
+      var svg = document.getElementById('poe-svg');
+      var guessVal = choice === 'A' ? 64 : choice === 'B' ? 16 : choice === 'C' ? 1 : null;
+      var guessText = choice === 'A' ? 'Your guess for Layer 1: 64' :
+                      choice === 'B' ? 'Your guess for Layer 1: 16' :
+                      choice === 'C' ? 'Your guess for Layer 1: 1 (Exact!)' :
+                      'Skipped guess — trace the 3 hops below';
+
+      var layers = [
+        { label: 'Layer 4 (z₄)', val: 64 },
+        { label: 'Layer 3 (z₃)', val: 16 },
+        { label: 'Layer 2 (z₂)', val: 4 },
+        { label: 'Layer 1 (z₁)', val: 1 }
+      ];
+
+      var html = '';
+      html += '<text x="10" y="18" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">' + guessText + ' | True decay: 64 → 16 → 4 → 1</text>';
+      layers.forEach(function (row, idx) {
+        var y = 28 + idx * 29;
+        var w = Math.max(4, Math.round((row.val / 64) * 240));
+        html += '<text x="10" y="' + (y + 16) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">' + row.label + '</text>';
+        html += '<rect x="115" y="' + y + '" width="240" height="20" fill="#fff" stroke="#000" stroke-width="1"/>';
+        html += '<rect x="115" y="' + y + '" width="' + w + '" height="20" fill="#000"/>';
+        html += '<text x="365" y="' + (y + 16) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">grad = ' + row.val + '</text>';
+      });
+      if (guessVal !== null && guessVal !== 1) {
+        var gw = Math.max(4, Math.round((guessVal / 64) * 240));
+        var y1 = 28 + 3 * 29;
+        html += '<rect x="115" y="' + y1 + '" width="' + gw + '" height="20" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="4 3"/>';
+      }
+      svg.innerHTML = html;
+
+      var ref = document.getElementById('poe-refutation');
+      ref.innerHTML = '<div class="refutation-title">Misconception Refutation</div>' +
+        '<p style="margin:0;">Most people guess <strong>64</strong> or <strong>16</strong> because they see unit weights $w_\\ell = 1$ and forget that the <span class="term" data-term="chain-rule">Chain Rule</span> multiplies by the activation slope $\\sigma\'(z_\\ell)$ at <em>every</em> layer hop. ' +
+        'Because $\\sigma\'(0) = \\frac{1}{4}$ is the steepest point anywhere on a sigmoid curve, 3 backward hops multiply $64 \\times \\frac{1}{4} \\times \\frac{1}{4} \\times \\frac{1}{4} = 1$—Layer 1 learns $64\\times$ slower than Layer 4 even in the best possible case!</p>';
+      renderMathIn(ref);
+      unlockRnnSlider();
+    }
+
+    /* ---------- Stage 3A: DNN Stepper + Small Multiples ---------- */
+    var DNN_PRESETS = [
+      {
+        title: '1. Sigmoid (slope 1/4)',
+        vals: [64, 16, 4, 1],
+        note: 'Each sigmoid gate divides the backward signal by at least 4 (64 → 16 → 4 → 1). By Layer 1, 98.4% of the gradient has vanished.'
+      },
+      {
+        title: '2. Active ReLU (slope 1)',
+        vals: [64, 64, 64, 64],
+        note: 'For positive pre-activations (z > 0), ReLU has derivative 1. With unit weights w = 1, the full gradient 64 reaches Layer 1 untouched.'
+      },
+      {
+        title: '3. ResNet Skip (1 + 1/4)',
+        vals: [64, 80, 100, 125],
+        note: 'Adding an identity shortcut h_ℓ = h_{ℓ-1} + F(h_{ℓ-1}) turns each block multiplier from F\' = 1/4 into 1 + 1/4 = 1.25, keeping early layers alive even when F\' shrinks to 0.'
+      }
+    ];
+
+    function setDnnStep(idx) {
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('dnn-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var grid = document.getElementById('dnn-sm-grid');
+      var html = '';
+      DNN_PRESETS.forEach(function (p, pIdx) {
+        var cls = 'sm-panel' + (pIdx === idx ? ' sm-active' : '');
+        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.84em; margin-bottom:4px;">' + p.title + '</div>';
+        html += '<svg viewBox="0 0 210 106" width="210" height="106" role="img" aria-label="' + p.title + '">';
+        var labels = ['L4', 'L3', 'L2', 'L1'];
+        p.vals.forEach(function (v, j) {
+          var y = 6 + j * 24;
+          var w = Math.max(3, Math.round((v / 125) * 115));
+          html += '<text x="2" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + labels[j] + '</text>';
+          html += '<rect x="24" y="' + y + '" width="115" height="17" fill="#fff" stroke="#000" stroke-width="1"/>';
+          html += '<rect x="24" y="' + y + '" width="' + w + '" height="17" fill="#000"/>';
+          html += '<text x="144" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + v + '</text>';
+        });
+        html += '</svg></div>';
+      });
+      grid.innerHTML = html;
+      document.getElementById('dnn-step-explain').textContent = DNN_PRESETS[idx].note;
+    }
+
+    /* ---------- Stage 3B: RNN Stepper + Small Multiples + Gated Slider ---------- */
+    var RNN_PRESETS = [
+      {
+        title: '1. Vanishing (γ = 1/2)',
+        vals: [16, 8, 4, 2, 1],
+        note: 'Every step back in time halves the gradient: t=5 (16) → t=4 (8) → t=3 (4) → t=2 (2) → t=1 (1). Shared weight W_h updates almost entirely from recent tokens t=5, 4.'
+      },
+      {
+        title: '2. Exploding (γ = 2)',
+        vals: [16, 32, 64, 128, 256],
+        note: 'When w_h · f\' = 2 > 1, every step back in time doubles the gradient: 16 → 32 → 64 → 128 → 256. Across 30 tokens, 2^30 exceeds 1 billion and crashes training.'
+      },
+      {
+        title: '3. LSTM Cell (f_t = 1)',
+        vals: [16, 16, 16, 16, 16],
+        note: 'The additive cell state c_t = f_t · c_{t-1} + i_t · c̃_t with forget gate f_t = 1 carries the full gradient 16 all the way back to token t=1 without decay.'
+      }
+    ];
+
+    function setRnnStep(idx) {
+      rnnStepsVisited[idx] = true;
+      for (var i = 0; i < 3; i++) {
+        document.getElementById('rnn-btn-' + i).classList.toggle('active', i === idx);
+      }
+      var grid = document.getElementById('rnn-sm-grid');
+      var html = '';
+      RNN_PRESETS.forEach(function (p, pIdx) {
+        var cls = 'sm-panel' + (pIdx === idx ? ' sm-active' : '');
+        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.84em; margin-bottom:4px;">' + p.title + '</div>';
+        html += '<svg viewBox="0 0 210 126" width="210" height="126" role="img" aria-label="' + p.title + '">';
+        var labels = ['t=5', 't=4', 't=3', 't=2', 't=1'];
+        var maxV = pIdx === 1 ? 256 : 16;
+        p.vals.forEach(function (v, j) {
+          var y = 5 + j * 23;
+          var w = Math.max(3, Math.round((v / maxV) * 108));
+          html += '<text x="2" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + labels[j] + '</text>';
+          html += '<rect x="30" y="' + y + '" width="108" height="16" fill="#fff" stroke="#000" stroke-width="1"/>';
+          html += '<rect x="30" y="' + y + '" width="' + w + '" height="16" fill="#000"/>';
+          html += '<text x="143" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + v + '</text>';
+        });
+        html += '</svg></div>';
+      });
+      grid.innerHTML = html;
+      document.getElementById('rnn-step-explain').textContent = RNN_PRESETS[idx].note;
+      if (Object.keys(rnnStepsVisited).length === 3) {
+        unlockRnnSlider();
+      }
+    }
+
+    function setMultiplierPreset(val) {
+      var sl = document.getElementById('mult-slider');
+      if (sl) {
+        sl.value = String(val);
+        updateMultWidget();
+      }
+    }
+
+    function updateMultWidget() {
+      var sl = document.getElementById('mult-slider');
+      var svg = document.getElementById('mult-svg');
+      if (!sl || !svg) { return; }
+      var g = parseFloat(sl.value);
+      document.getElementById('mult-val').textContent = fmt(g, 2);
+
+      var base = 16;
+      var steps = [
+        { label: 't=5 (0 hops)', val: base },
+        { label: 't=4 (1 hop)',  val: base * g },
+        { label: 't=3 (2 hops)', val: base * Math.pow(g, 2) },
+        { label: 't=2 (3 hops)', val: base * Math.pow(g, 3) },
+        { label: 't=1 (4 hops)', val: base * Math.pow(g, 4) }
+      ];
+      var maxScale = Math.max(16, steps[4].val);
+
+      document.getElementById('st-g5').textContent = fmt(steps[0].val, 2);
+      document.getElementById('st-g3').textContent = fmt(steps[2].val, 2);
+      document.getElementById('st-g1').textContent = fmt(steps[4].val, 2);
+      document.getElementById('st-ratio').textContent = fmt((steps[4].val / base) * 100, 1) + '%';
+
+      var html = '';
+      steps.forEach(function (s, idx) {
+        var y = 8 + idx * 25;
+        var w = Math.max(3, Math.round((s.val / maxScale) * 230));
+        html += '<text x="8" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">' + s.label + '</text>';
+        html += '<rect x="120" y="' + y + '" width="230" height="18" fill="#fff" stroke="#000" stroke-width="1"/>';
+        html += '<rect x="120" y="' + y + '" width="' + w + '" height="18" fill="#000"/>';
+        html += '<text x="358" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">' + fmt(s.val, 2) + '</text>';
+      });
+      svg.innerHTML = html;
+    }
+
+    /* ---------- Stage 4: Backward-Faded Practice & Closed-Book Recall ---------- */
+    function checkFaded() {
+      var val = parseFloat(document.getElementById('fade-input').value);
+      var fb = document.getElementById('fade-feedback');
+      fb.style.display = 'block';
+      if (!isNaN(val) && Math.abs(val - 36) < 0.01) {
+        fb.innerHTML = '<strong>Correct ($\\bar{h}_0 = 36$).</strong> Multiplying $\\bar{h}_1 = 24$ by $(1 + \\frac{1}{2}) = \\frac{3}{2}$ gives $24 \\times \\frac{3}{2} = 36$ (the $+1$ skip pathway carries $24$ directly and the residual branch adds $24 \\times \\frac{1}{2} = 12$). Even if $F\'$ dropped all the way to $0$, the skip highway would still deliver $\\bar{h}_0 = 16$ unscathed!';
+      } else {
+        fb.innerHTML = 'Not quite. Multiply $\\bar{h}_1 = 24$ by $(1 + F\') = 1 + \\frac{1}{2} = 1.5$: half of $24$ is $12$, and $24 + 12 = 36$.';
+      }
+      renderMathIn(fb);
+    }
+
+    function revealRecall() {
+      var fb = document.getElementById('recall-feedback');
+      fb.style.display = 'block';
+      renderMathIn(fb);
+    }
+
+    var SPACED_CARDS = [
+      {
+        q: 'What is the maximum possible derivative $\\sigma\'(z)$ of the sigmoid function, where does it occur, and by what factor does a 4-layer unit-weight sigmoid network shrink the gradient across 3 intermediate gates?',
+        a: '$\\sigma\'(z) = \\sigma(z)(1-\\sigma(z))$ peaks at $\\frac{1}{4} = 0.25$ at $z = 0$. Across 3 intermediate sigmoid gates with unit weights, the gradient shrinks by at least $(1/4)^3 = 1/64$.'
+      },
+      {
+        q: 'In a 3-layer DNN with input $h_0 = 2$, weights $w_1 = 3, w_2 = 2, w_3 = 1$, activation slopes $f\'_1 = \\frac{1}{2}, f\'_2 = \\frac{1}{4}, f\'_3 = \\frac{1}{2}$, and top gradient $\\bar{h}_3 = 16$, what is $\\bar{w}_1$?',
+        a: '$\\bar{z}_3 = 16(\\frac{1}{2}) = 8 \\Rightarrow \\bar{h}_2 = 8(1) = 8 \\Rightarrow \\bar{z}_2 = 8(\\frac{1}{4}) = 2 \\Rightarrow \\bar{h}_1 = 2(2) = 4 \\Rightarrow \\bar{z}_1 = 4(\\frac{1}{2}) = 2 \\Rightarrow \\bar{w}_1 = \\bar{z}_1 h_0 = 2(2) = 4$.'
+      },
+      {
+        q: 'How does the vanishing gradient problem in an RNN across time ($t = 1 \\dots T$) differ from a regular DNN across layers ($\\ell = 1 \\dots L$)?',
+        a: 'A DNN has distinct weights $W_\\ell$ per layer, so $\\|\\bar{W}_1\\| \\approx 0$ directly freezes early layers. An RNN shares one recurrent matrix $W_h$ across all steps, so $\\bar{W}_h = \\sum_{t=1}^T \\bar{W}_h^{(t)}$ stays large (dominated by recent steps $t \\approx T$) while the long-range credit from $t = 1$ vanishes like $(w_h f\')^{T-1} \\to 0$.'
+      },
+      {
+        q: 'How do ResNets (across depth) and LSTMs (across time) both solve vanishing gradients with the same core mathematical idea?',
+        a: 'Both replace pure multiplicative chains with an additive $+1$ identity highway: ResNet uses $h_\\ell = h_{\\ell-1} + F(h_{\\ell-1})$ so $\\frac{\\partial h_\\ell}{\\partial h_{\\ell-1}} = 1 + F\'$, and LSTM uses $c_t = f_t \\odot c_{t-1} + i_t \\odot \\tilde{c}_t$ so $\\frac{\\partial c_t}{\\partial c_{t-1}} \\approx f_t \\approx 1$.'
+      },
+      {
+        q: 'Why does gradient clipping fix exploding gradients in an RNN, whereas multiplying the gradient by a large number fails to fix vanishing gradients?',
+        a: 'An exploding gradient still points along the instability direction and just needs a bounded step size. In a vanishing RNN, the long-term $t=1$ term is drowned out inside the sum $\\bar{W}_h$ by large short-term ($t=T$) terms and float noise, so scaling $\\bar{W}_h$ up only takes a huge step on short-term correlations.'
+      },
+      {
+        q: 'What is the difference between a vanishing sigmoid neuron and a dead ReLU neuron?',
+        a: 'A saturated sigmoid neuron has a tiny nonzero slope ($\\sigma\' &gt; 0$), so it updates extremely slowly; a dead ReLU neuron ($z &lt; 0$ on all inputs) has an exact $0$ slope ($\\text{ReLU}\' = 0$), so its weights receive zero gradient permanently.'
+      }
+    ];
+
+    document.addEventListener('DOMContentLoaded', function () {
+      setDnnStep(0);
+      setRnnStep(0);
+    });
+  </script>
+</body>
+</html>
