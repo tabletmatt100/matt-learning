@@ -96,6 +96,12 @@
       "q": "On a rare-event dataset with $10$ positives and $990$ negatives ($1\\%$ prevalence), what score does a random-guessing classifier get on ROC-AUC vs. PR-AUC, and why can ROC-AUC $= 0.90$ still have terrible precision?",
       "a": "A random classifier always scores $0.50$ on ROC-AUC regardless of class balance, but scores the base rate $\\pi = \\frac{10}{1000} = 0.01$ on PR-AUC. Even at $90\\%$ specificity ($\\text{FPR} = 0.10$), $990$ negatives generate $99$ false alarms against at most $10$ true positives ($\\text{Precision} < 10\\%$), which ROC-AUC hides because $TN = 891$ dominates $\\text{FPR}$'s denominator.",
       "source": "8. Classification Metrics Refresher"
+    },
+    {
+      "id": "ai-metrics-5",
+      "q": "How do you remember all 4 rates (TPR, FNR, TNR, FPR) as just two pairs that add to $100\\%$?",
+      "a": "Group by the actual truth (denominator): 1) Among Real Positives ($TP+FN$): $\\text{TPR (Sensitivity/Recall)} + \\text{FNR (Miss rate)} = 100\\%$. 2) Among Real Negatives ($TN+FP$): $\\text{TNR (Specificity)} + \\text{FPR (False alarm rate)} = 100\\%$. (Tip: the middle word P/N is the numerator $TP, FN, TN, FP$; if the first word is False, flip P/N to find which real group is the denominator.)",
+      "source": "8. Classification Metrics Refresher"
     }
   ]
 }
