@@ -1469,9 +1469,8 @@ var geminiPageIdx = 0;
 var geminiBusy = false;
 var geminiCachedPageContext = null;
 var geminiBaseViewportH = 0;
-var geminiInputTypedWithIme = false;
-var geminiInputTypedWithPhysKey = false;
-var geminiSubmitViaPhysEnter = false;
+var geminiSawPhysCode = false;
+var geminiSubmitViaSendTap = false;
 
 function getActiveViewportHeight() {
   return (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
@@ -1750,31 +1749,25 @@ function ensureGeminiAskDOM() {
     var inpEl = document.getElementById('gemini-ask-input');
     var sendBtnEl = document.getElementById('gemini-ask-send');
     if (inpEl) {
-      inpEl.addEventListener('compositionstart', function () {
-        geminiInputTypedWithIme = true;
-      });
-      inpEl.addEventListener('beforeinput', function (e) {
-        if (e.isComposing || (e.inputType && e.inputType.indexOf('Composition') !== -1)) {
-          geminiInputTypedWithIme = true;
-        }
-      });
       inpEl.addEventListener('keydown', function (e) {
-        if (e.keyCode === 229 || e.key === 'Unidentified' || e.isComposing) {
-          geminiInputTypedWithIme = true;
-          geminiSubmitViaPhysEnter = false;
-        } else if (e.key === 'Enter') {
-          geminiSubmitViaPhysEnter = Boolean((e.code === 'Enter' || e.code === 'NumpadEnter') && !geminiInputTypedWithIme);
-        } else if (e.key && e.key.length === 1 && e.code) {
-          geminiInputTypedWithPhysKey = true;
+        if (e.code && e.code !== 'Unidentified') {
+          geminiSawPhysCode = true;
+        }
+        if (e.key === 'Enter' || e.keyCode === 13) {
+          geminiSubmitViaSendTap = false;
+          e.preventDefault();
+          submitGeminiQuestion();
         }
       });
     }
     if (sendBtnEl) {
-      sendBtnEl.addEventListener('pointerdown', function () {
-        geminiSubmitViaPhysEnter = false;
+      sendBtnEl.addEventListener('pointerdown', function (e) {
+        if (!e.pointerType || e.pointerType === 'touch') {
+          geminiSubmitViaSendTap = true;
+        }
       });
       sendBtnEl.addEventListener('touchstart', function () {
-        geminiSubmitViaPhysEnter = false;
+        geminiSubmitViaSendTap = true;
       }, { passive: true });
     }
     form.addEventListener('submit', function (e) {
@@ -1789,13 +1782,12 @@ function isGeminiAskOpen() {
   return Boolean(ov && ov.classList.contains('open'));
 }
 
-function openGeminiAskModal() {
+function openGeminiAskModal(fromPhysShortcut) {
   ensureGeminiAskDOM();
   var vhNow = getActiveViewportHeight();
   if (vhNow > geminiBaseViewportH) { geminiBaseViewportH = vhNow; }
-  geminiInputTypedWithIme = false;
-  geminiInputTypedWithPhysKey = false;
-  geminiSubmitViaPhysEnter = false;
+  geminiSawPhysCode = Boolean(fromPhysShortcut);
+  geminiSubmitViaSendTap = false;
   var ov = document.getElementById('gemini-ask-overlay');
   var fab = document.getElementById('gemini-ask-fab');
   if (ov) { ov.classList.add('open'); }
@@ -1825,9 +1817,8 @@ function closeGeminiAskModal() {
     inp.value = '';
     inp.blur();
   }
-  geminiInputTypedWithIme = false;
-  geminiInputTypedWithPhysKey = false;
-  geminiSubmitViaPhysEnter = false;
+  geminiSawPhysCode = false;
+  geminiSubmitViaSendTap = false;
   geminiChatTurns = [];
   geminiPageIdx = 0;
   renderGeminiMessages();
@@ -1835,11 +1826,11 @@ function closeGeminiAskModal() {
   if (fab) { fab.classList.remove('is-open'); }
 }
 
-function toggleGeminiAskModal() {
+function toggleGeminiAskModal(fromPhysShortcut) {
   if (isGeminiAskOpen()) {
     closeGeminiAskModal();
   } else {
-    openGeminiAskModal();
+    openGeminiAskModal(fromPhysShortcut);
   }
 }
 window.openGeminiAskModal = openGeminiAskModal;
@@ -1961,20 +1952,20 @@ function submitGeminiQuestion() {
   }
 
   var activeVh = getActiveViewportHeight();
-  var softKeyboardVisible = geminiBaseViewportH > 0 && (geminiBaseViewportH - activeVh > 110);
-  var keepInputFocus =
-    geminiSubmitViaPhysEnter &&
-    !softKeyboardVisible &&
-    !geminiInputTypedWithIme &&
-    geminiInputTypedWithPhysKey;
+  var softKeyboardVisible = geminiBaseViewportH > 0 && (geminiBaseViewportH - activeVh > 160);
+  var keepInputFocus = !geminiSubmitViaSendTap && (geminiSawPhysCode || !softKeyboardVisible);
 
-  geminiInputTypedWithIme = false;
-  geminiInputTypedWithPhysKey = false;
-  geminiSubmitViaPhysEnter = false;
+  geminiSubmitViaSendTap = false;
 
   inp.value = '';
   if (keepInputFocus) {
     inp.focus();
+    setTimeout(function () {
+      if (isGeminiAskOpen() && inp) { inp.focus(); }
+    }, 0);
+    setTimeout(function () {
+      if (isGeminiAskOpen() && inp) { inp.focus(); }
+    }, 40);
   } else {
     inp.blur();
   }
@@ -2164,7 +2155,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey) {
       if (!isTypingInEditable(e.target)) {
         e.preventDefault();
-        toggleGeminiAskModal();
+        toggleGeminiAskModal(true);
         return;
       }
     }
