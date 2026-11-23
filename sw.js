@@ -23,6 +23,7 @@ var CORE_ASSETS = [
   './class-imbalance.html',
   './deepconf.html',
   './feature-engineering.html',
+  './funnel-transformer.html',
   './gkd.html',
   './hierarchical-multiclass.html',
   './linear-algebra-refresher.html',
