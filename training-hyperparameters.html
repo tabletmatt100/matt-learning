@@ -41,46 +41,6 @@
       <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="learning-rate">$\eta$</span>, <span class="term" data-term="gradient">$g_t$</span>, <span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span>, <span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span>, or <span class="term" data-term="weight-decay">$\lambda$</span>) to open an anchored explanation popover. Every question and worked example uses mental-math numbers—no calculator needed.</em>
     </p>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Clickable Symbol</th><th>Plain-English Meaning</th><th>Typical Scale</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="learning-rate">$\eta$</span> (or <span class="term" data-term="learning-rate">$\text{LR}$</span>)</td>
-            <td><span class="term" data-term="learning-rate">Learning rate</span>: multiplier controlling how far weights move along the step direction</td>
-            <td class="num">$10^{-5}$ to $10^{-2}$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="gradient">$g_t$</span></td>
-            <td><span class="term" data-term="gradient">Gradient</span> $\nabla \mathcal{L}(w_t)$: slope of the <span class="term" data-term="loss-function">loss</span> pointing uphill (we step in $-g_t$)</td>
-            <td class="num">Vector in $\mathbb{R}^d$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span></td>
-            <td><span class="term" data-term="effective-batch-size">Effective batch size</span> $= B_{\text{micro}} \times K \times N_{\text{GPU}}$ examples averaged per weight update</td>
-            <td class="num">$32$ to $4096$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span></td>
-            <td>Running average of gradients (<span class="term" data-term="first-moment">momentum $m_t$</span>, controlled by <span class="term" data-term="beta1">$\beta_1$</span>) and squared gradients (<span class="term" data-term="second-moment">variance $v_t$</span>, controlled by <span class="term" data-term="beta2">$\beta_2$</span>)</td>
-            <td class="num">$\beta_1 = 0.9, \beta_2 = 0.999$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="weight-decay">$\lambda$</span></td>
-            <td><span class="term" data-term="weight-decay">Weight decay</span> strength: pulls weights toward zero by fraction $\eta \lambda$ each step</td>
-            <td class="num">$0.01$ to $0.1$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="clip-threshold">$c$</span></td>
-            <td><span class="term" data-term="gradient-clipping">Gradient clipping</span> threshold on global norm <span class="term" data-term="grad-norm">$\lVert g \rVert_2$</span></td>
-            <td class="num">$1.0$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Fast-Forward Diagnostic</div>
       <p style="margin-top:0.3rem;">Already comfortable with basic gradient descent and batch scaling? Answer this quick mental check to collapse Chapters 1&ndash;2 and jump straight to schedules and AdamW.</p>

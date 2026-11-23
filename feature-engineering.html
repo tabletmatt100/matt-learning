@@ -24,41 +24,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Clickable Technique / Symbol</th><th>Formula</th><th>What Problem It Solves</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="interaction-feature">Ratio / Difference Interaction</span></td>
-            <td>$r = \dfrac{x_1}{x_2}, \quad d = x_1 - x_2$</td>
-            <td>Replaces dozens of axis-aligned tree staircase splits with <strong>1 threshold cut</strong></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="z-score">Z-Score Standardization</span> (<span class="term" data-term="z-score">$z$</span>)</td>
-            <td>$z = \dfrac{x - \mu_{\text{train}}}{\sigma_{\text{train}}}$</td>
-            <td>Puts features on the same scale for <span class="term" data-term="linear-model">linear models</span>, <span class="term" data-term="neural-net">neural nets</span>, and <span class="term" data-term="knn">k-NN</span></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="log-transform">Log1p Transform</span></td>
-            <td>$\tilde{x} = \ln(1 + x)$</td>
-            <td>Compresses right-skewed dollar/count tails so outliers do not dominate <span class="term" data-term="gradient">gradients</span></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="cyclical-encoding">Cyclical Time Encoding</span></td>
-            <td>$\sin\!\left(\frac{2\pi h}{24}\right), \cos\!\left(\frac{2\pi h}{24}\right)$</td>
-            <td>Places hour $23$ right next to hour $0$ instead of $23$ units apart</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="target-encoding">Smoothed Target Encoding</span> (<span class="term" data-term="te-symbol">$\hat{y}_c$</span>)</td>
-            <td>$\dfrac{n_c \bar{y}_c + m \bar{y}_{\text{global}}}{n_c + m}$</td>
-            <td>Turns high-cardinality categories into 1 number while shrinking rare categories toward the <span class="term" data-term="base-rate">prior $\bar{y}_{\text{global}}$</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <!-- SECTION 1 -->
     <h2 id="s1">1. Why Trees Need Ratios While Linear Models Need Scaling</h2>
 

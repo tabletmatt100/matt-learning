@@ -42,46 +42,6 @@
       <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="advantage">$A_t$</span>, <span class="term" data-term="prob-ratio">$r_t$</span>, <span class="term" data-term="clip-eps">$\epsilon$</span>, or <span class="term" data-term="group-mean">$\mu$</span>) to open an explanation popover. All examples and checks use simple mental math—no calculator required.</em>
     </p>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Clickable Symbol</th><th>Plain-English Meaning</th><th>Where It Shows Up</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="q-star">$Q^*(s, a)$</span></td>
-            <td>Optimal action-value: score of move <span class="term" data-term="action">$a$</span> assuming perfect play afterward</td>
-            <td><span class="term" data-term="q-learning">Q-Learning</span>, <span class="term" data-term="dqn">DQN</span>, reasoning tree search</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="policy-theta">$\pi_\theta(a \mid s)$</span></td>
-            <td>The <span class="term" data-term="actor">Actor</span> neural network (with weights <span class="term" data-term="theta">$\theta$</span>) that outputs action probabilities</td>
-            <td><span class="term" data-term="policy-gradient">Policy Gradient</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="grpo">GRPO</span></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="advantage">$A_t$</span></td>
-            <td><span class="term" data-term="advantage">Advantage</span>: how much better an action scored than the expected baseline</td>
-            <td><span class="term" data-term="actor-critic">Actor-Critic</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="grpo">GRPO</span></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="prob-ratio">$r_t$</span></td>
-            <td>Probability ratio <span class="term" data-term="prob-ratio">$\frac{\pi_{\text{new}}}{\pi_{\text{old}}}$</span> measuring how much the policy changed</td>
-            <td><span class="term" data-term="ppo">PPO</span> &amp; <span class="term" data-term="grpo">GRPO</span> clipping</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="clip-eps">$\epsilon$</span></td>
-            <td><span class="term" data-term="clip-eps">Clip range</span> (usually $0.2$, or $\pm 20\%$ speed limit on policy changes)</td>
-            <td><span class="term" data-term="ppo">PPO</span> &amp; <span class="term" data-term="grpo">GRPO</span></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="group-size">$G$</span>, <span class="term" data-term="group-mean">$\mu$</span>, <span class="term" data-term="group-std">$\sigma$</span></td>
-            <td>Number of sampled answers (<span class="term" data-term="group-size">$G$</span>), their average score (<span class="term" data-term="group-mean">$\mu$</span>), and spread (<span class="term" data-term="group-std">$\sigma$</span>)</td>
-            <td><span class="term" data-term="grpo">GRPO</span> group baseline</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <nav class="toc" aria-label="Table of contents">
       <div class="toc-title">The 5-Chapter Narrative</div>
       <ol>

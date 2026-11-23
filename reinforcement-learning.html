@@ -42,51 +42,6 @@
       <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="state">$S_t$</span>, <span class="term" data-term="discount-factor">$\gamma$</span>, <span class="term" data-term="return">$G_t$</span>, or <span class="term" data-term="td-error">$\delta_t$</span>) anywhere on this page to open an explanation popover. Every calculation and question uses mental-math numbers—no calculator needed.</em>
     </p>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Clickable Symbol</th><th>Plain-English Meaning</th><th>Warehouse Story Example</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="state">$S_t$</span></td>
-            <td>Current <span class="term" data-term="state">state</span> (where the agent is at step <span class="term" data-term="time-step">$t$</span>)</td>
-            <td>Robot is standing on Tile 1 of the hallway</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="action">$A_t$</span></td>
-            <td><span class="term" data-term="action">Action</span> chosen by the agent's <span class="term" data-term="policy">policy $\pi$</span></td>
-            <td>Move Right toward the main dock, or take the Quick Exit</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="reward">$R_{t+1}$</span></td>
-            <td>Immediate <span class="term" data-term="reward">reward</span> received right after taking <span class="term" data-term="action">$A_t$</span></td>
-            <td><code>+2</code>, <code>+6</code>, or <code>+80</code> points</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="discount-factor">$\gamma$</span></td>
-            <td><span class="term" data-term="discount-factor">Discount factor</span> between $0$ and $1$ shrinking delayed payoffs</td>
-            <td>At $\gamma = 0.5$, every 1 step of delay cuts a reward in half</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="return">$G_t$</span></td>
-            <td>Total discounted <span class="term" data-term="return">return</span> from step <span class="term" data-term="time-step">$t$</span> onward</td>
-            <td>Immediate reward plus discounted future rewards</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="value-function">$V(s)$</span></td>
-            <td><span class="term" data-term="value-function">State value</span>: the scorecard estimate of <span class="term" data-term="return">$G_t$</span> from state $s$</td>
-            <td>How many total points Tile 1 is expected to lead to</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="td-error">$\delta_t$</span></td>
-            <td><span class="term" data-term="td-error">TD error</span>: one-step surprise (reality minus old expectation)</td>
-            <td>Expected <code>4</code>, saw neighbor worth <code>10</code> $\implies$ surprise is <code>+6</code></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Quick Pre-Check (Optional Skip)</div>
       <p style="margin-top:0.3rem;">If you already know how discounted returns work: suppose a 2-step trip pays <span class="term" data-term="reward">$R_1 = 0$</span> on step 1 and <span class="term" data-term="reward">$R_2 = 80$</span> on step 2, and each step of delay cuts value in half (<span class="term" data-term="discount-factor">$\gamma = 0.5$</span>). What is the discounted return <span class="term" data-term="return">$G_0$</span> at the start?</p>

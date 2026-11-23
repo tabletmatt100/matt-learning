@@ -26,41 +26,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol / Shorthand</th><th>Plain-English Meaning</th><th>Shape Match Rule</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="sym-L">$L$</span></td>
-            <td>Scalar <span class="term" data-term="loss">loss</span> value at the very end of the network (one number measuring error)</td>
-            <td class="num">Scalar ($1 \times 1$)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-gbar">$\bar{v} \equiv \frac{\partial L}{\partial v}$</span></td>
-            <td>Adjoint / <span class="term" data-term="upstream-grad">gradient of loss $L$ with respect to node $v$</span> ("how much $L$ moves per unit nudge of $v$")</td>
-            <td class="num">Same shape as $v$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-dLdz">$\bar{z} = \frac{\partial L}{\partial z}$</span></td>
-            <td><span class="term" data-term="upstream-grad">Upstream gradient</span> arriving at node $z$ from later layers</td>
-            <td class="num">Same shape as $z$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-dzdx">$\frac{\partial z}{\partial x}$</span></td>
-            <td><span class="term" data-term="local-grad">Local derivative</span> (or <span class="term" data-term="jacobian">Jacobian</span>) of a single elementary gate $z = f(x)$</td>
-            <td class="num">Local slope at forward $x$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-W">$W, x, b$</span></td>
-            <td>Weight matrix <span class="term" data-term="sym-W">$W$</span>, input activation vector <span class="term" data-term="sym-x">$x$</span>, and bias vector <span class="term" data-term="sym-b">$b$</span> in <span class="term" data-term="sym-z">$z = Wx + b$</span></td>
-            <td class="num">$\bar{W} = \bar{z} x^\top,\; \bar{x} = W^\top \bar{z}$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Stage 0: Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already comfortable with scalar computation graphs and local gate rules? Answer this 1-line check to collapse Stages 1&ndash;2 and jump straight to matrix backprop and practice.</p>

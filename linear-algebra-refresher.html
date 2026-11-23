@@ -25,41 +25,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>ML Concept</th><th>Linear Algebra Core</th><th>Where It Shows Up in Code</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="dot-product">Dot Product</span> &amp; <span class="term" data-term="cosine-similarity">Cosine Similarity</span></td>
-            <td>$a^\top b = \|a\|_2 \|b\|_2 \cos\theta$</td>
-            <td>RAG vector search, <span class="term" data-term="attention-score">attention scores ($QK^\top$)</span>, linear classifiers</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="l1-norm">$L_1$ Norm</span> vs. <span class="term" data-term="l2-norm">$L_2$ Norm</span></td>
-            <td>$\sum |x_i|$ vs. $\sqrt{\sum x_i^2}$</td>
-            <td>Lasso sparsity ($L_1$), weight decay &amp; gradient clipping ($L_2$)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="matmul">Matrix Multiply</span> &amp; <span class="term" data-term="transpose">Transpose</span></td>
-            <td>$(B, d_{\text{in}}) \times (d_{\text{in}}, d_{\text{out}}) \to (B, d_{\text{out}})$</td>
-            <td><code>nn.Linear</code> forward pass ($XW$) &amp; backward pass ($dY\,W^\top$, $X^\top dY$)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="rank">Rank</span> &amp; <span class="term" data-term="low-rank">Low-Rank Bottleneck</span></td>
-            <td>$\Delta W_{d \times d} = B_{d \times r} A_{r \times d}$ ($\text{rank} \le r$)</td>
-            <td><span class="term" data-term="lora">LoRA</span> fine-tuning, bottleneck autoencoders, matrix factorization</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="eigenvector">Eigenvectors</span> &amp; <span class="term" data-term="svd">SVD</span></td>
-            <td>$Av = \lambda v$ and $X = U \Sigma V^\top$</td>
-            <td><span class="term" data-term="pca">PCA</span> dimensionality reduction, <span class="term" data-term="hessian">Hessian</span> loss curvature ($\lambda_{\max}$)</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <!-- SECTION 1 -->
     <h2 id="s1">1. Vectors, Norms, Dot Products, and Cosine Similarity</h2>
     <p>

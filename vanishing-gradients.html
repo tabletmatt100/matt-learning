@@ -26,41 +26,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Key Formula / Bound</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="sym-gbar">$\bar{v} \equiv \frac{\partial L}{\partial v}$</span></td>
-            <td><span class="term" data-term="upstream-grad">Gradient</span> of scalar <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span> with respect to variable $v$</td>
-            <td class="num">$\bar{L} = 1$ at output</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-sigprime">$\sigma'(z)$</span></td>
-            <td>Local slope of <span class="term" data-term="sigmoid">sigmoid</span> $\sigma(z) = \frac{1}{1+e^{-z}}$</td>
-            <td class="num">$\sigma(z)(1-\sigma(z)) \in (0, \tfrac{1}{4}]$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-hell">$h_\ell,\; z_\ell,\; w_\ell$</span></td>
-            <td>Activation, pre-activation, and distinct weight at <span class="term" data-term="dnn">DNN</span> layer <span class="term" data-term="sym-ell">$\ell$</span></td>
-            <td class="num">$\frac{\partial h_\ell}{\partial h_{\ell-1}} = w_\ell \cdot f'(z_\ell)$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-ht">$h_t,\; w_h$</span></td>
-            <td>Hidden state at token <span class="term" data-term="sym-t">$t$</span> and shared recurrent weight in an <span class="term" data-term="rnn">RNN</span></td>
-            <td class="num">$\frac{\partial h_T}{\partial h_1} = \prod_{k=2}^T w_h f'(z_k)$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-ct">$c_t,\; f_t$</span></td>
-            <td><span class="term" data-term="lstm">LSTM</span> additive memory cell state and forget gate at step <span class="term" data-term="sym-t">$t$</span></td>
-            <td class="num">$\frac{\partial c_t}{\partial c_{t-1}} \approx f_t \in [0, 1]$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already know how <span class="term" data-term="chain-rule">Chain Rule</span> products behave across depth and time? Answer this mental-math check to collapse the introductory prediction hook and jump straight to the DNN &amp; RNN traces.</p>

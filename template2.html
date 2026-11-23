@@ -25,20 +25,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Typical Range</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>$z_i$</td><td>Raw unnormalized <span class="term" data-term="logits">logit</span> for token $i$</td><td class="num">$(-\infty, +\infty)$</td></tr>
-          <tr><td>$T$</td><td><span class="term" data-term="temperature">Temperature</span> divisor before exponentiation</td><td class="num">$T &gt; 0$</td></tr>
-          <tr><td>$m$</td><td>Maximum logit $\max_j z_j$ subtracted for stability</td><td class="num">$\max(z)$</td></tr>
-          <tr><td>$p_i$</td><td>Output probability for token $i$ ($\sum p_i = 1$)</td><td class="num">$[0, 1]$</td></tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already know log-sum-exp shifting and temperature scaling? Answer this 1-line check to collapse Stages 1&ndash;3 and jump to practice.</p>

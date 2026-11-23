@@ -24,41 +24,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Clickable Term / Symbol</th><th>Formula</th><th>Plain-English Meaning</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="true-fn">True Signal $f(x)$</span></td>
-            <td>$y = f(x) + \epsilon$</td>
-            <td>The underlying noise-free pattern connecting input <span class="term" data-term="feature-x">$x$</span> to label <span class="term" data-term="target-y">$y$</span></td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="hat-f">Trained Model $\hat{f}(x)$</span> &amp; <span class="term" data-term="avg-pred">Mean $\bar{f}(x)$</span></td>
-            <td>$\bar{f}(x) = \mathbb{E}[\hat{f}(x)]$</td>
-            <td>$\hat{f}(x)$ is one model trained on one sample; $\bar{f}(x)$ is the average prediction across repeated training samples</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="bias">Bias</span> &amp; <span class="term" data-term="bias-sq">$\text{Bias}^2$</span></td>
-            <td>$(\bar{f}(x) - f(x))^2$</td>
-            <td>How far the model's <em>average</em> prediction misses the true signal <span class="term" data-term="true-fn">$f(x)$</span> (underfitting penalty)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="variance">Variance ($\text{Var}$)</span></td>
-            <td>$\mathbb{E}\big[(\hat{f}(x) - \bar{f}(x))^2\big]$</td>
-            <td>How wildly predictions <span class="term" data-term="hat-f">$\hat{f}(x)$</span> jump around when you draw a fresh training set (overfitting penalty)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="irreducible-error">Irreducible Noise ($\sigma^2$)</span></td>
-            <td>$\sigma^2 = \mathbb{E}[\epsilon^2]$</td>
-            <td>Unpredictable label randomness in <span class="term" data-term="noise-eps">$\epsilon$</span>; the lowest <span class="term" data-term="mse">MSE</span> any model can ever achieve</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already know the bias-variance math? At $x = 2$, the true signal is $f(2) = 10$ with noise variance $\sigma^2 = 1$. Across repeated training runs, a model's predictions have mean $\bar{f}(2) = 8$ and variance $\text{Var} = 3$. What is the expected test <span class="term" data-term="mse">MSE</span>?</p>

@@ -25,41 +25,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Calc 1&ndash;3 Topic</th><th>Keep or Skip?</th><th>Why It Matters (or Doesn't) in ML</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="partial">Partial Derivatives</span> &amp; <span class="term" data-term="gradient">Gradient $\nabla L$</span></td>
-            <td><strong>Essential daily</strong></td>
-            <td>Every optimizer (`SGD`, `AdamW`) steps along $-\nabla_w L$.</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="chain-rule">Multivariable Chain Rule</span></td>
-            <td><strong>Essential daily</strong></td>
-            <td>It <em>is</em> <span class="term" data-term="backprop">backpropagation</span> (`loss.backward()`). Explains vanishing and exploding gradients.</td>
-          </tr>
-          <tr>
-            <td>Derivatives of $w^2, e^x, \ln x, \sigma(z), \text{ReLU}$</td>
-            <td><strong>High value</strong></td>
-            <td>Explains why <span class="term" data-term="cross-entropy">cross-entropy</span> + <span class="term" data-term="sigmoid">sigmoid</span>/<span class="term" data-term="softmax">softmax</span> has the clean gradient $\hat{p} - y$.</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="taylor">Taylor Series</span> &amp; <span class="term" data-term="hessian">Hessian ($L''$)</span></td>
-            <td><strong>Conceptual</strong></td>
-            <td>Explains loss curvature, max safe learning rate ($\eta < 2/\lambda_{\max}$), and adaptive step sizes.</td>
-          </tr>
-          <tr>
-            <td>By-hand integrals, u-sub, Green's/Stokes', curl/div</td>
-            <td><strong>Skip 100%</strong></td>
-            <td>High-dimensional integrals in ML are intractable analytically and estimated by Monte Carlo sampling.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <!-- SECTION 1 -->
     <h2 id="s1">1. Partials &amp; The Gradient: Which Way Is Downhill?</h2>
     <p>

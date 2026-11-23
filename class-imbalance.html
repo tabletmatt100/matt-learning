@@ -26,41 +26,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Formula / Typical Value</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="sym-pi">$\pi$</span></td>
-            <td>True positive <span class="term" data-term="base-rate">base rate</span> (prevalence) in untouched production data</td>
-            <td class="num">$\pi = \frac{P}{P + N}$ (e.g. $\frac{100}{10{,}000} = 0.01$)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-p">$\hat{p}(x)$</span></td>
-            <td><span class="term" data-term="calibration">Calibrated</span> predicted probability that example $x$ is positive</td>
-            <td class="num">$\hat{p} \in [0, 1]$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-t">$t^*$</span></td>
-            <td>Cost-optimal <span class="term" data-term="threshold">decision threshold</span> given false-positive cost <span class="term" data-term="sym-cfp">$C_{FP}$</span> and false-negative cost <span class="term" data-term="sym-cfn">$C_{FN}$</span></td>
-            <td class="num">$t^* = \frac{C_{FP}}{C_{FP} + C_{FN}}$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-wpos">$w_+$</span></td>
-            <td>Positive <span class="term" data-term="class-weight">class weight</span> multiplier in weighted <span class="term" data-term="cross-entropy">cross-entropy</span> (or negative undersampling ratio)</td>
-            <td class="num">Balanced: $w_+ = \frac{N}{P}$ (e.g. $99$)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-gamma">$\gamma$</span></td>
-            <td>Focusing exponent in <span class="term" data-term="focal-loss">focal loss</span> $-(1 - p_t)^\gamma \ln p_t$ that silences easy negatives</td>
-            <td class="num">$\gamma \in [0, 5]$ (typically $\gamma = 2$)</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Stage 0: Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already know Bayes-optimal thresholds and base-rate traps? Solve this mental-math check to collapse Stages 1&ndash;2 and jump straight to the threshold, weight, and calibration tools.</p>

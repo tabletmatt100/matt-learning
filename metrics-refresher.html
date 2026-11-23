@@ -24,46 +24,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Clickable Term / Symbol</th><th>Formula</th><th>Plain-English Question It Answers</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="type-1">Type I Error</span> (<span class="term" data-term="fp">$FP$</span>)</td>
-            <td>Count of false alarms</td>
-            <td>How many innocent/healthy cases did we wrongly flag?</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="type-2">Type II Error</span> (<span class="term" data-term="fn">$FN$</span>)</td>
-            <td>Count of missed positives</td>
-            <td>How many real threats/cases slipped right past us?</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="recall">Recall</span> = <span class="term" data-term="sensitivity">Sensitivity</span> (<span class="term" data-term="tpr">$\text{TPR}$</span>)</td>
-            <td>$\dfrac{TP}{TP + FN}$</td>
-            <td>Of all <strong>actual positives</strong>, what fraction did we catch?</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="specificity">Specificity</span> (<span class="term" data-term="tnr">$\text{TNR}$</span>)</td>
-            <td>$\dfrac{TN}{TN + FP} = 1 - \text{FPR}$</td>
-            <td>Of all <strong>actual negatives</strong>, what fraction did we leave alone?</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="precision">Precision</span> (<span class="term" data-term="ppv">$\text{PPV}$</span>)</td>
-            <td>$\dfrac{TP}{TP + FP}$</td>
-            <td>When the alarm rings (<strong>predicted positive</strong>), how often is it real?</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="roc-auc">ROC-AUC</span> vs. <span class="term" data-term="pr-auc">PR-AUC</span></td>
-            <td>$\text{TPR vs. FPR}$ / $\text{Prec vs. Rec}$</td>
-            <td>How well does the model rank positives across <strong>all</strong> <span class="term" data-term="threshold">thresholds $t$</span>?</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <!-- SECTION 1 -->
     <h2 id="s1">1. One 2&times;2 Table Generates Every Metric</h2>
 

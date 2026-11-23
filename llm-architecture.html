@@ -26,41 +26,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Matrix Shape</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="sym-V">$V,\; d_{\text{model}},\; d_{\text{ff}}$</span></td>
-            <td><span class="term" data-term="vocabulary">Vocabulary</span> size, <span class="term" data-term="residual-stream">residual stream</span> width, and <span class="term" data-term="ffn">FFN</span> hidden width</td>
-            <td class="num">e.g. $V\!=\!100\text{k},\; d_{\text{model}}\!=\!4096$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-WE">$W_E$</span></td>
-            <td><span class="term" data-term="embedding-matrix">Token Embedding Matrix</span> (lookup table mapping token ID <span class="term" data-term="sym-id">$k$</span> to row $k$)</td>
-            <td class="num">$V \times d_{\text{model}}$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-x">$x^{(\ell)}$</span></td>
-            <td><span class="term" data-term="residual-stream">Residual stream</span> vector for a single token at layer <span class="term" data-term="sym-ell">$\ell$</span></td>
-            <td class="num">$1 \times d_{\text{model}}$ (per token)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-W1">$W_{\text{up}}$</span>, <span class="term" data-term="sym-W2">$W_{\text{down}}$</span></td>
-            <td><span class="term" data-term="ffn">FFN</span> expansion matrix and projection-back matrix</td>
-            <td class="num">$d_{\text{model}} \times d_{\text{ff}}$ and $d_{\text{ff}} \times d_{\text{model}}$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-WU">$W_U$</span>, <span class="term" data-term="sym-z">$z$</span></td>
-            <td><span class="term" data-term="unembedding-matrix">Unembedding matrix</span> and its output <span class="term" data-term="logits">logit</span> vector over the vocabulary</td>
-            <td class="num">$W_U:\; d_{\text{model}} \times V$, $\;z:\; 1 \times V$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already know how shapes flow through the FFN and Unembedding layers? Solve this mental-math check to collapse Section 1 and jump straight to the component traces.</p>

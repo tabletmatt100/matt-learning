@@ -26,41 +26,6 @@
       </ul>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Shape / Typical Setting</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="sym-W0">$W_0$</span></td>
-            <td>Frozen pretrained weight matrix (receives no gradients and has no <span class="term" data-term="adamw">AdamW</span> state)</td>
-            <td class="num">$(d \times k)$, e.g. $4096 \times 4096$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-A">$A$</span></td>
-            <td>Trainable down-projection matrix mapping $k$-dim input into the $r$-dim bottleneck (initialized Gaussian)</td>
-            <td class="num">$(r \times k)$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-B">$B$</span></td>
-            <td>Trainable up-projection matrix mapping the $r$-dim bottleneck back to $d$ dims (initialized to $0$)</td>
-            <td class="num">$(d \times r)$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-r">$r$</span></td>
-            <td><span class="term" data-term="lora">LoRA</span> <span class="term" data-term="low-rank">rank</span> (width of the bottleneck between $A$ and $B$)</td>
-            <td class="num">$r \in \{4, 8, 16, 32, 64\}$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-alpha">$\alpha$</span></td>
-            <td>Scaling constant; output of the LoRA branch is multiplied by <span class="term" data-term="sym-scale">$\frac{\alpha}{r}$</span> so learning rate stays stable across ranks</td>
-            <td class="num">Typically $\alpha = r$ or $\alpha = 2r$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <div class="interactive-card" id="fast-forward-box">
       <div class="widget-label">Stage 0: Expert Fast-Forward Check</div>
       <p style="margin-top:0.3rem;">Already know low-rank matrix factorization and adapter merging? Solve this mental-math check to collapse Stages 1&ndash;2 and jump straight to the worked $3 \times 3$ matrix trace and rank explorer.</p>

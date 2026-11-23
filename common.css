@@ -28,8 +28,9 @@
 
 html {
   font-size: var(--font-size);
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
+  width: 100%;
 }
 
 body {
@@ -40,8 +41,11 @@ body {
   line-height: 1.65;
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
+  width: 100%;
+  position: relative;
+  overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -138,8 +142,10 @@ header {
 /* ---------- Main Container & Typography ---------- */
 main {
   max-width: 860px;
+  width: 100%;
   margin: 0 auto;
   padding: 2rem 1.2rem 5rem 1.2rem;
+  overflow-x: clip;
 }
 
 h1 {
@@ -243,11 +249,24 @@ p, li {
   padding: 0.9rem 1rem;
   margin: 1.3rem 0;
   overflow-x: auto;
+  max-width: 100%;
   text-align: center;
   font-size: 1.05rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .math-block .katex-display { margin: 0.3rem 0; }
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.katex {
+  max-width: 100%;
+}
 
 .math-hint {
   font-size: 0.82rem;
@@ -274,8 +293,10 @@ p, li {
 
 /* ---------- Tables ---------- */
 .table-wrap {
-  overflow-x: auto;
+  width: 100%;
   max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin: 1.2rem 0;
   -webkit-overflow-scrolling: touch;
 }
@@ -284,6 +305,13 @@ table, table.data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.93em;
+}
+
+main table:not(.table-wrap table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 th, td, table.data-table th, table.data-table td {
@@ -334,9 +362,13 @@ pre {
   padding: 12px;
   border: var(--border-thin);
   overflow-x: auto;
+  max-width: 100%;
   white-space: pre;
   line-height: 1.45;
+  -webkit-overflow-scrolling: touch;
 }
+
+select { max-width: 100%; }
 
 pre code { background: none; padding: 0; font-size: 1em; }
 
@@ -451,6 +483,8 @@ summary {
   padding: 1.25rem;
   margin: 1.6rem 0;
   background: var(--bg);
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .interactive-card h3 {
