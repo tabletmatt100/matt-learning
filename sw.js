@@ -4,7 +4,7 @@
    plus dynamically discovers any new articles listed in index.html.
    ========================================================================== */
 
-var CACHE_NAME = 'matt-learning-v40';
+var CACHE_NAME = 'matt-learning-v41';
 
 var CORE_ASSETS = [
   './',
@@ -34,6 +34,7 @@ var CORE_ASSETS = [
   './template.html',
   './template2.html',
   './training-hyperparameters.html',
+  './transient-global-attention.html',
   './vanishing-gradients.html',
   /* KaTeX CSS & JS */
   './katex/katex.min.css',
