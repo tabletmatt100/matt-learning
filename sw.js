@@ -4,7 +4,7 @@
    plus dynamically discovers any new articles listed in index.html.
    ========================================================================== */
 
-var CACHE_NAME = 'matt-learning-v42';
+var CACHE_NAME = 'matt-learning-v43';
 
 var CORE_ASSETS = [
   './',

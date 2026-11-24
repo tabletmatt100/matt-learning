@@ -47,9 +47,50 @@ var katexOptions = {
 function renderMathIn(el) {
   if (el && typeof renderMathInElement === 'function') {
     renderMathInElement(el, katexOptions);
+    if (typeof updateStickyTables === 'function') { updateStickyTables(); }
     return true;
   }
   return false;
+}
+
+/* ---------- Sticky Column & Row Headings for Tables ---------- */
+function initStickyTables() {
+  document.querySelectorAll('main table').forEach(function (tbl) {
+    if (!tbl.querySelector('thead') || (tbl.closest && tbl.closest('.srs-modal-overlay'))) { return; }
+    tbl.classList.add('sticky-table');
+    var p = tbl.parentNode;
+    if (p && (!p.classList || !p.classList.contains('table-wrap'))) {
+      var wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      p.insertBefore(wrap, tbl);
+      wrap.appendChild(tbl);
+    }
+  });
+  updateStickyTables();
+}
+
+function updateStickyTables() {
+  document.querySelectorAll('table').forEach(function (tbl) {
+    var thead = tbl.querySelector('thead');
+    if (!thead || (tbl.closest && tbl.closest('.srs-modal-overlay'))) { return; }
+    if (!tbl.classList.contains('sticky-table')) { tbl.classList.add('sticky-table'); }
+    var rect = tbl.getBoundingClientRect();
+    var headH = thead.offsetHeight || 0;
+    var cells = thead.querySelectorAll('th, td');
+    if (rect.top < 0 && rect.bottom > 0 && rect.height > headH) {
+      var maxDy = Math.max(0, rect.height - headH);
+      var dy = Math.round(Math.min(-rect.top, maxDy));
+      thead.classList.add('is-sticky-y');
+      for (var i = 0; i < cells.length; i++) {
+        cells[i].style.transform = 'translateY(' + dy + 'px)';
+      }
+    } else if (thead.classList.contains('is-sticky-y')) {
+      thead.classList.remove('is-sticky-y');
+      for (var j = 0; j < cells.length; j++) {
+        cells[j].style.transform = '';
+      }
+    }
+  });
 }
 
 function renderAllMath() {
@@ -2180,7 +2221,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  window.addEventListener('resize', positionPopover);
+  window.addEventListener('resize', function () {
+    positionPopover();
+    updateStickyTables();
+  });
+  window.addEventListener('scroll', updateStickyTables, { passive: true });
+  document.addEventListener('toggle', updateStickyTables, true);
+  initStickyTables();
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       if (isGeminiAskOpen()) {
