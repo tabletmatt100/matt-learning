@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Funnel-Transformer</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Funnel-Transformer: Why Keep Every Word Separate Across Every Layer?</h1>
+
+    <p>
+      Think about how you read a sentence when your only job is to decide whether a movie review is positive or negative. At the start, you look at individual words. Within a split second, you group those words into phrases ("not very good"), and then into a single takeaway. You don't carry every individual word vector separately all the way to the end of your thought process.
+    </p>
+    <p>
+      Standard Transformer encoders like BERT do the exact opposite. If you feed BERT 512 tokens, Layer 1 processes 512 tokens, Layer 6 processes 512 tokens, and Layer 12 processes 512 tokens—even though for classification tasks you literally throw 511 of those output vectors in the trash and only read the final <code>[CLS]</code> token. By the middle layers, neighboring tokens have already smeared their information together via self-attention, so keeping 512 separate vectors is mostly wasted math.
+    </p>
+    <p>
+      In 2020, Zihang Dai and colleagues asked an obvious question: why not shrink the sequence length as you go deeper, the same way a convolutional network shrinks an image from $256 \times 256$ down to $64 \times 64$? Their model, <strong>Funnel-Transformer</strong>, cuts the number of tokens in half every few layers, shaping the encoder like a funnel ($T \to T/2 \to T/4$).
+    </p>
+
+    <h2>1. The Naive Pooling Trap (and the "Pool-Query-Only" Fix)</h2>
+    <p>
+      The simplest way to cut a sequence of hidden states $h$ in half is stride-2 average pooling: take tokens 1 and 2, average them into one vector; take tokens 3 and 4, average them into the next vector. Call that half-length sequence $h' = \text{Pool}(h)$.
+    </p>
+    <p>
+      If you just replace $h$ with $h'$ and run normal self-attention on $h'$, the model loses a surprising amount of accuracy. Why? Because plain average pooling is blind. If token 1 is <code>"not"</code> and token 2 is <code>"very"</code>, a 50/50 average smashes them together before attention ever gets to decide which word mattered more.
+    </p>
+    <p>
+      Funnel-Transformer fixes this with a clever trick at the layer where the sequence shrinks. In attention, the output always has the same length as the <strong>queries ($Q$)</strong>, no matter how many <strong>keys ($K$)</strong> and <strong>values ($V$)</strong> you look up. So at the transition layer, Funnel-Transformer uses the pooled half-length sequence $h'$ as the queries $Q$, while keeping the full, unpooled sequence $h$ as the keys $K$ and values $V$:
+    </p>
+
+    <div class="math-block">
+      $$h \leftarrow \text{LayerNorm}\Bigl(h' + \text{Attn}\bigl(Q = h',\; K = h,\; V = h\bigr)\Bigr)$$
+    </div>
+
+    <p>
+      Because each compressed query in $h'$ attends over the individual unpooled tokens in $h$, the attention head learns <em>how</em> to weight each word during compression instead of settling for a blind average. And once that single boundary layer finishes, the sequence is officially half as long ($T/2$), so every layer after it runs four times faster on attention and twice as fast on the feed-forward network.
+    </p>
+    <p>
+      (One tiny detail: you don't want the global <code>[CLS]</code> token at position 0 to get averaged with the first word of the sentence. So you slice <code>[CLS]</code> off before pooling, pool the rest of the tokens, and stick <code>[CLS]</code> back on the front.)
+    </p>
+
+    <h2>2. Wait—How Do You Pre-Train It If Most Tokens Are Gone?</h2>
+    <p>
+      Shrinking the sequence to $T/4$ works great when you only care about the final <code>[CLS]</code> vector. Here is the problem: BERT-style encoders are pre-trained with Masked Language Modeling (MLM), where you mask out 15% of the words and ask the final layer to guess the missing word at <em>every single token position</em>. How can you predict token 7 if the final layer only has a quarter of the tokens left?
+    </p>
+    <p>
+      You need a decoder that stretches the compressed states back out to full length $T$ during pre-training. Instead of building a big, expensive U-Net that upsamples step-by-step after every block, the authors did something almost comically simple:
+    </p>
+    <p>
+      Suppose your encoder has 3 blocks, shrinking the sequence from $T \to T/2 \to T/4$. That means each vector in the final compressed output $h^{(3)}$ covers a window of 4 original words. To get back to length $T$, you just duplicate each compressed vector 4 times in a row: $[v_1, v_2] \to [v_1, v_1, v_1, v_1, v_2, v_2, v_2, v_2]$.
+    </p>
+    <p>
+      Of course, four identical copies in a row can't predict four different masked words on their own. So Funnel-Transformer adds a long residual skip connection from $h^{(1)}$—the last full-length layer at the end of Block 1—straight onto those duplicated vectors, and runs 2 standard Transformer layers on top to blend them:
+    </p>
+
+    <div class="math-block">
+      $$g = h^{(1)} + \text{up-sample}\bigl(h^{(M)}\bigr)$$
+    </div>
+
+    <p>
+      That equation is the whole recovery mechanism. The upsampled vector $\text{up-sample}(h^{(M)})$ supplies the deep, whole-sentence context, while the skip connection $h^{(1)}$ supplies the exact local word identity for each slot. Even better, once pre-training is done, if you are fine-tuning on a sentence classification task, you simply delete the decoder and only load the funnel encoder.
+    </p>
+
+    <h2>3. What Do You Do With the Saved Compute?</h2>
+    <p>
+      Suppose a standard 12-layer BERT model costs 12 units of compute (1 unit per full-length layer). If you build a 12-layer Funnel-Transformer with three 4-layer blocks at lengths $T$, $T/2$, and $T/4$ (called <strong>B4-4-4</strong>), the feed-forward and projection cost drops to:
+    </p>
+
+    <div class="math-block">
+      $$4 \times (1) \;+\; 4 \times (0.5) \;+\; 4 \times (0.25) \;=\; 4 + 2 + 1 \;=\; 7\text{ units}$$
+    </div>
+
+    <p>
+      You just cut the encoder's compute bill by 42%. In practice, the paper shows two ways to cash that check:
+    </p>
+    <p>
+      If you keep the same 12-layer depth (<strong>B4-4-4</strong>), you get a much faster model that loses a tiny fraction of a point on token-heavy benchmarks. If instead you reinvest the saved FLOPs by stacking 6 layers in each block (an 18-layer <strong>B6-6-6</strong> model, costing $6 + 3 + 1.5 = 10.5$ units), your model is both <em>deeper</em> and <em>faster</em> than a 12-layer BERT, and beats it across GLUE, text classification, and reading comprehension.
+    </p>
+    <p>
+      There is only one place where Funnel-Transformer doesn't fit naturally: causal, left-to-right GPT-style generation. When you pool tokens 1 and 2 together and later upsample them back to position 1, token 2's future information leaks backward into position 1, violating the autoregressive mask. For bidirectional encoders that read the whole prompt at once, however, throwing away token redundancy as you go deeper is practically a free lunch.
+    </p>
+  </main>
+</body>
+</html>
