@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Template 2: Evidence-Backed Interactive Article</title>
+  <title>Funnel-Transformer</title>
 
   <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
   <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
@@ -13,183 +13,117 @@
 </head>
 <body>
   <main>
-    <h1>Softmax Temperature and Numerical Overflow</h1>
+    <h1>Funnel-Transformer: Why Keep Every Word Separate Across Every Layer?</h1>
 
     <p>
-      The final layer of a <span class="term" data-term="llm">language model</span> does not output probabilities directly. It outputs raw, unbounded scores called <span class="term" data-term="logits">logits</span>—numbers that can be $-15$, $+4.2$, or $+100$. To sample the next word or compute cross-entropy loss, we have to turn that vector of arbitrary scores into a valid probability distribution where every entry is positive and the whole vector adds up to $1$.
+      Think about how you read a sentence when your only job is to decide whether a movie review is positive or negative. At the start, you look at individual words. Within a split second, you group those words into phrases ("not very good"), and then into a single takeaway. You don't carry every individual word vector separately all the way to the end of your thought process.
     </p>
     <p>
-      The standard tool for that job is <span class="term" data-term="softmax">softmax</span>, which exponentiates each score ($e^{z_i}$) and divides by the sum. On paper, exponentiation looks harmless. On an actual GPU running <span class="term" data-term="float32">float32</span> arithmetic, feeding raw logits into $e^{z_i}$ is a ticking time bomb that crashes training runs with <code>NaN</code> the moment a single logit drifts past $88.72$.
+      Standard <span class="term" data-term="encoder-stack">Transformer encoders</span> like BERT do the exact opposite. If you feed BERT <span class="term" data-term="sym-t">$T = 512$</span> tokens, Layer 1 processes 512 tokens, Layer 6 processes 512 tokens, and Layer 12 processes 512 tokens—even though for sequence classification you throw 511 of those output vectors in the trash and only read the final <span class="term" data-term="separate-cls"><code>[CLS]</code></span> token. By the middle layers, neighboring tokens have already blended their information together via <span class="term" data-term="self-attention">self-attention</span>, so keeping 512 separate vectors is mostly wasted math.
     </p>
     <p>
-      Fixing that crash takes a one-line algebraic shift—subtracting the maximum logit before exponentiating—while a single divisor called <span class="term" data-term="temperature">temperature</span> ($T$) lets us reshape how sharply or evenly probability mass spreads across competing tokens.
+      In 2020, Zihang Dai and colleagues asked an obvious question: why not shrink the sequence length as you go deeper, the same way a convolutional network shrinks an image grid from $256 \times 256$ down to $64 \times 64$? Their model, <strong>Funnel-Transformer</strong>, cuts the number of tokens in half every few layers, shaping the encoder like a funnel (<span class="term" data-term="sym-t">$T \to T/2 \to T/4$</span>).
     </p>
 
-    <div id="scaffolding-section">
-      <h2 id="stage-1">1. Why Naive Softmax Crashes on Large Logits</h2>
-      <p>
-        Suppose a <span class="term" data-term="llm">language model</span> scores three candidate words with logits $z = [100, 99, 98]$ in <span class="term" data-term="float32">float32</span>. The relative gaps between those three scores are tiny ($+1$ and $+2$), so the top word should cleanly take about two-thirds of the probability mass. What actually happens if you run naive <code>exp(z) / sum(exp(z))</code>?
-      </p>
+    <h2>1. The Naive Pooling Trap (and the "Pool-Query-Only" Fix)</h2>
+    <p>
+      The simplest way to cut a sequence of hidden states <span class="term" data-term="sym-h">$h$</span> in half is <span class="term" data-term="strided-pooling">stride-2 average pooling</span>: average tokens 1 and 2 into one vector, average tokens 3 and 4 into the next vector, and call that half-length sequence <span class="term" data-term="sym-hprime">$h' = \text{Pool}(h)$</span>.
+    </p>
+    <p>
+      If you simply replace $h$ with $h'$ and run normal self-attention on $h'$, accuracy drops noticeably. Why? Because plain average pooling is blind. If token 1 is a high-signal word like <code>"not"</code> (value $v_1 = 2$) and token 2 is a filler word like <code>"very"</code> (value $v_2 = 10$), a 50/50 average smashes them into $\frac{2+10}{2} = 6$ before attention ever gets to decide which word mattered more.
+    </p>
+    <p>
+      Funnel-Transformer fixes this at the boundary layer where the sequence shrinks. In attention, the output sequence always has the exact same length as the <span class="term" data-term="sym-qkv">queries ($Q$)</span>, no matter how many <span class="term" data-term="sym-qkv">keys ($K$)</span> and <span class="term" data-term="sym-qkv">values ($V$)</span> you look up. So at the transition layer, Funnel-Transformer uses the pooled half-length sequence <span class="term" data-term="sym-hprime">$h'$</span> as the queries $Q$ (and as the <span class="term" data-term="residual-stream">residual stream</span> base), while keeping the full, unpooled sequence <span class="term" data-term="sym-h">$h$</span> as the keys $K$ and values $V$ (<span class="term" data-term="pool-query-only">Pool-Query-Only</span>):
+    </p>
 
-      <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Quick Prediction</div>
-        <h3>Naive Softmax on <code>[100, 99, 98]</code></h3>
-        <p>Pick what you expect <code>p[0]</code> to return in standard 32-bit floating point:</p>
-        <div class="control-row">
-          <button class="btn btn-small" onclick="runPOE('A')">A) ~0.665 (normal probability)</button>
-          <button class="btn btn-small" onclick="runPOE('B')">B) 1.0 (winner takes all)</button>
-          <button class="btn btn-small" onclick="runPOE('C')">C) NaN (overflow crash)</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
-        </div>
-        <div id="poe-reveal" style="display:none;">
-          <div class="figure-box">
-            <svg id="poe-svg" viewBox="0 0 460 120" width="460" height="120" role="img" aria-label="Prediction vs actual comparison"></svg>
-          </div>
-          <div class="refutation" id="poe-refutation"></div>
-        </div>
-      </div>
-
-      <h2 id="stage-3">2. Shift by the Max, Then Scale by Temperature</h2>
-      <p>
-        Why can we fix the overflow without changing the math? If you subtract any constant $m$ from every logit, you multiply every numerator and every term in the denominator by $e^{-m}$. Because $e^{-m} / e^{-m} = 1$, the constant cancels out completely. Choosing $m = \max(z)$ guarantees that the largest shifted logit is $0$ and every other shifted logit is negative, so $e^{z_i - m}$ stays safely inside $(0, 1]$.
-      </p>
-
-      <div class="worked">
-        <p><strong>Tracing max-shifted softmax on $z = [100, 99, 98]$ at $T = 1.0$:</strong></p>
-        <p>
-          1. Pull out the maximum score: $m = \max(100, 99, 98) = 100$.<br>
-          2. Subtract $m$ from every entry: $z - m = [0, -1, -2]$.<br>
-          3. Exponentiate the shifted scores: $[e^0, e^{-1}, e^{-2}] \approx [1.000, 0.368, 0.135]$, which sum to $1.503$.<br>
-          4. Divide by the sum to get valid probabilities: $p = [0.665, 0.245, 0.090]$.
-        </p>
-      </div>
-
-      <div class="math-block">
-        $$p_i = \frac{\exp\!\left(\frac{z_i - m}{T}\right)}{\sum_{j} \exp\!\left(\frac{z_j - m}{T}\right)}, \quad m = \max_j z_j$$
-      </div>
-
-      <p>
-        Once the overflow is tamed, dividing the shifted logits by <span class="term" data-term="temperature">temperature</span> $T$ controls how aggressively softmax favors the leader. A low temperature ($T &lt; 1$) stretches the gaps between scores before exponentiation, pushing almost all mass onto the top token. A high temperature ($T &gt; 1$) compresses the gaps toward zero, flattening the distribution toward uniform.
-      </p>
-
-      <div class="interactive-card" id="stepper-widget">
-        <div class="widget-label">Side-by-Side Comparison</div>
-        <h3>How Temperature Shapes <code>z = [2.0, 1.0, 0.0]</code></h3>
-        <div class="control-row">
-          <button class="btn btn-small active" id="step-btn-0" onclick="setStep(0)">Low (T=0.3)</button>
-          <button class="btn btn-small" id="step-btn-1" onclick="setStep(1)">Neutral (T=1.0)</button>
-          <button class="btn btn-small" id="step-btn-2" onclick="setStep(2)">High (T=3.0)</button>
-        </div>
-
-        <div class="small-multiples" id="sm-grid"></div>
-        <div class="readout" id="step-explain"></div>
-
-        <div id="slider-gate" class="locked-note">
-          Try the prediction above (or tap through the 3 presets) to unlock the live temperature slider.
-        </div>
-        <div id="slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
-          <div class="control-row">
-            <label for="temp-slider">Temperature $T$</label>
-            <input type="range" id="temp-slider" min="0.2" max="3.0" step="0.1" value="1.0">
-            <span class="val" id="temp-val">1.0</span>
-          </div>
-          <div class="figure-box">
-            <svg id="temp-svg" viewBox="0 0 460 135" width="460" height="135" role="img" aria-label="Live temperature bar chart"></svg>
-          </div>
-          <div class="stat-grid">
-            <div class="stat"><div class="k">Top Prob $p_1$</div><div class="v" id="stat-p1">-</div></div>
-            <div class="stat"><div class="k">Entropy (<span class="term" data-term="nats">nats</span>)</div><div class="v" id="stat-ent">-</div></div>
-            <div class="stat"><div class="k">Max / Min Ratio</div><div class="v" id="stat-ratio">-</div></div>
-          </div>
-        </div>
-      </div>
+    <div class="math-block">
+      $$h \leftarrow \text{LayerNorm}\Bigl(h' + \text{Attn}\bigl(Q = h',\; K = h,\; V = h\bigr)\Bigr)$$
     </div>
 
-    <h2 id="stage-4">3. Hands-On Practice</h2>
     <p>
-      Test the shift-and-scale mechanics on a two-token example where the mental math comes out clean.
+      Because each compressed query in $h'$ attends over the individual unpooled tokens in $h$, the attention head learns <em>how</em> to weight each word during compression instead of settling for a blind 50/50 average. And once that single transition layer finishes, the sequence is officially half as long ($T/2$), so every interior layer after it runs four times faster on attention and twice as fast on the <span class="term" data-term="ffn">feed-forward network (FFN)</span>.
+    </p>
+    <p>
+      (One practical detail: you never want the global <span class="term" data-term="separate-cls"><code>[CLS]</code></span> token at position 0 to get averaged with the first word of the sentence. So Funnel-Transformer slices <code>[CLS]</code> off before pooling the content tokens and sticks <code>[CLS]</code> back on the front afterward.)
     </p>
 
-    <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Try It By Hand</div>
-      <h3>Finish the Softmax Trace for <code>z = [4.0, 2.0]</code> at <code>T = 2.0</code></h3>
+    <div class="worked">
+      <p><strong>Worked Example (4 tokens $\to$ 2 tokens with distinct mental-math numbers):</strong></p>
       <p>
-        <strong>Step 1 (Shift by max and divide by $T$):</strong> $m = 4.0$, so $(z - m)/T = [0.0, -1.0]$.<br>
-        <strong>Step 2 (Exponentiate):</strong> $e^{0.0} = 1.000$ and $e^{-1.0} \approx 0.368$, giving a total sum of $1.368$.<br>
-        <strong>Step 3 (Your turn &mdash; normalize):</strong> What is the top token's probability $p_0 = 1.000 / 1.368$ (to 2 decimal places)?
+        Suppose 4 unpooled tokens have values $V = [2,\; 6,\; 10,\; 14]$.<br>
+        1. <strong>Stride-2 pooling ($h \to h'$):</strong> Average pairs $(2, 6)$ and $(10, 14)$ into 2 pooled queries: $h'_1 = \frac{2+6}{2} = \mathbf{4}$ and $h'_2 = \frac{10+14}{2} = \mathbf{12}$.<br>
+        2. <strong>Selective compression on pair 2:</strong> Suppose query $q_2$ (built from $h'_2 = 12$) attends over unpooled tokens 3 and 4 ($v_3 = 10, v_4 = 14$) with sharp <span class="term" data-term="softmax">softmax</span> weights $\alpha = [0,\; 0,\; \frac{1}{4},\; \frac{3}{4}]$ instead of $50/50$.<br>
+        3. <strong>Attention + pooled residual:</strong> The attention weighted sum is $\frac{1}{4}(10) + \frac{3}{4}(14) = 2.5 + 10.5 = \mathbf{13}$. Adding the pooled residual $h'_2 = 12$ gives the compressed token $h^{\text{out}}_2 = 12 + 13 = \mathbf{25}$.
       </p>
-      <div class="control-row">
-        <label for="fade-input">$p_0 \approx$</label>
-        <input type="number" id="fade-input" step="0.01" placeholder="0.00" style="width:8rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check</button>
-      </div>
-      <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <h2 id="stage-5">4. When to Use Which Temperature &amp; Diagnostic Checks</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Decoding / Scaling Mode</th>
-            <th>Objective</th>
-            <th>Failure Mode</th>
-            <th><span class="term" data-term="entropy">Entropy</span></th>
-            <th>When to Use</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>Greedy Argmax ($T \to 0$)</strong></td>
-            <td>Pick single highest logit</td>
-            <td>Repetitive loops; zero diversity</td>
-            <td class="num">0 nats</td>
-            <td>Deterministic extraction, math checks</td>
-          </tr>
-          <tr>
-            <td><strong>Low-T Softmax ($T = 0.3$)</strong></td>
-            <td>Concentrate mass on top few tokens</td>
-            <td>Drops plausible rare phrasing</td>
-            <td class="num">Low</td>
-            <td>Code generation, factual QA</td>
-          </tr>
-          <tr>
-            <td><strong>Neutral Softmax ($T = 1.0$)</strong></td>
-            <td>Match model's raw calibrated distribution</td>
-            <td>Long tail can still sample noise</td>
-            <td class="num">Medium</td>
-            <td>Training loss, calibrated probabilities</td>
-          </tr>
-          <tr>
-            <td><strong>High-T Softmax ($T = 3.0$)</strong></td>
-            <td>Flatten differences toward uniform</td>
-            <td>Samples low-logit nonsense</td>
-            <td class="num">High</td>
-            <td><span class="term" data-term="distillation">Distillation</span> soft targets, brainstorming</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <details class="mcq-box" data-correct="B" data-topic="Interleaved: Overflow vs Temperature">
-      <p>A model outputs $z = [120, 120, 120]$ and you set $T = 0.5$. What happens if you run naive <code>exp(z / T)</code> without max-shifting?</p>
-      <label class="mcq-option" data-explain="Equal logits give uniform probabilities mathematically, but float32 overflows before division happens.">It returns <code>[0.333, 0.333, 0.333]</code> cleanly because all logits are equal.</label>
-      <label class="mcq-option" data-explain="Correct. 120 / 0.5 = 240 &gt; 88.72, so exp(240) overflows to Infinity and Infinity / Infinity produces NaN.">It returns <code>NaN</code> because $240 &gt; 88.72$ overflows <code>float32</code>.</label>
-      <label class="mcq-option" data-explain="Underflow to 0 happens for very negative exponents, not positive exponents like +240.">It underflows to <code>[0, 0, 0]</code>.</label>
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Pool-Query-Only vs. Naive Pooling">
+      <p>In the example above, tokens 1 and 2 have unpooled values $v_1 = 2$ (<code>"not"</code>) and $v_2 = 10$ (<code>"very"</code>). If query $q_1$ assigns attention weights $\alpha = [\frac{3}{4},\; \frac{1}{4},\; 0,\; 0]$ to those two tokens, what is the attention output $\sum_j \alpha_j v_j$ under <span class="term" data-term="pool-query-only">Pool-Query-Only</span> compared to a blind 50/50 average?</p>
+      <label class="mcq-option" data-explain="A 50/50 average gives (2 + 10)/2 = 6, but Pool-Query-Only weights v_1=2 by 3/4 and v_2=10 by 1/4.">Both give $6$, because $q_1$ was created by averaging tokens 1 and 2.</label>
+      <label class="mcq-option" data-explain="Correct. Pool-Query-Only computes (3/4)(2) + (1/4)(10) = 1.5 + 2.5 = 4, preserving the weight on 'not' instead of the blind 50/50 average of 6.">Pool-Query-Only outputs $\frac{3}{4}(2) + \frac{1}{4}(10) = \mathbf{4}$, whereas a blind 50/50 average outputs $\mathbf{6}$.</label>
+      <label class="mcq-option" data-explain="Attention weights sum to 1, so the output is a convex combination between 2 and 10, not their unnormalized sum 12.">Pool-Query-Only outputs $2 + 10 = 12$.</label>
     </details>
 
-    <details class="mcq-box" data-correct="C" data-topic="Interleaved: Identifying the right regime">
-      <p>You want a teacher model's probability distribution to expose relative ranking among runner-up tokens for <span class="term" data-term="distillation">distillation</span>. Which setting fits?</p>
-      <label class="mcq-option" data-explain="Greedy argmax destroys all runner-up information (entropy = 0).">Greedy argmax ($T \to 0$).</label>
-      <label class="mcq-option" data-explain="Low temperature suppresses runner-up tokens toward zero.">Low temperature ($T = 0.2$).</label>
-      <label class="mcq-option" data-explain="Correct. Higher temperature lifts runner-up probabilities so the student sees dark knowledge between non-top tokens.">High temperature ($T &gt; 1$, e.g. $2.0$ to $4.0$).</label>
+    <h2>2. Wait—How Do You Pre-Train It If Most Tokens Are Gone?</h2>
+    <p>
+      Shrinking the sequence to $T/4$ works great when you only care about the final <code>[CLS]</code> vector. Here is the catch: BERT-style encoders are pre-trained with <span class="term" data-term="mlm">Masked Language Modeling (MLM)</span>, where you mask out 15% of the input words and ask the final layer to guess the missing word at <em>every single token position</em>. How can you predict token 7 if the final layer only has a quarter of the tokens left?
+    </p>
+    <p>
+      You need a decoder that stretches the compressed states back out to full length $T$ during pre-training. Instead of building an expensive U-Net that upsamples step-by-step after every block, the authors did something almost comically simple (<span class="term" data-term="bridge-upsample">Bridge Upsampling</span>):
+    </p>
+    <p>
+      Suppose your encoder has $M = 3$ blocks, shrinking the sequence from $T \to T/2 \to T/4$. Each vector in the final compressed output <span class="term" data-term="sym-hm">$h^{(3)}$</span> covers a window of $2^{3-1} = 4$ original words. To get back to length $T$, you just duplicate each compressed vector 4 times in a row (<span class="term" data-term="repeat-upsample">$\text{up-sample}(h^{(M)})$</span>).
+    </p>
+    <p>
+      Of course, four identical copies in a row can't predict four different masked words on their own. So Funnel-Transformer adds a long residual skip connection from <span class="term" data-term="sym-h1">$h^{(1)}$</span>—the last full-length layer at the end of Block 1—straight onto those duplicated vectors, and runs 2 standard Transformer layers on top to blend them into <span class="term" data-term="sym-g">$g$</span>:
+    </p>
+
+    <div class="math-block">
+      $$g = h^{(1)} + \text{up-sample}\bigl(h^{(M)}\bigr)$$
+    </div>
+
+    <p>
+      The upsampled vector $\text{up-sample}(h^{(M)})$ supplies the deep, whole-sentence context, while the skip connection $h^{(1)}$ restores the distinct local word identity for each slot. Once pre-training finishes, if you are fine-tuning on a sentence classification task, you throw the 2-layer decoder away completely and only load the funnel encoder.
+    </p>
+
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Bridge Upsampling Math">
+      <p>A 4-token phrase passes through a 3-block Funnel encoder ($T = 4 \to 2 \to 1$). At the end of Block 1 (full length 4), the token vectors are <span class="term" data-term="sym-h1">$h^{(1)} = [1,\; 3,\; 5,\; 7]$</span>. At the end of Block 3 (length 1), the single compressed vector is <span class="term" data-term="sym-hm">$h^{(3)} = [10]$</span>. What is the fused 4-token sequence <span class="term" data-term="sym-g">$g = h^{(1)} + \text{up-sample}(h^{(3)})$</span>?</p>
+      <label class="mcq-option" data-explain="That's what you get if you forget to add the Block-1 skip connection h^(1), leaving all 4 positions identical.">$[10,\; 10,\; 10,\; 10]$ (all four positions receive the same vector).</label>
+      <label class="mcq-option" data-explain="Repeat-upsampling copies [10] to every slot in the 4-token window, not just the first slot.">$[11,\; 3,\; 5,\; 7]$ (only position 1 receives the $+10$ global vector).</label>
+      <label class="mcq-option" data-explain="Correct. Repeating [10] four times gives [10, 10, 10, 10], and adding h^(1) = [1, 3, 5, 7] gives [11, 13, 15, 17]—giving every token both global context and distinct local identity.">$[11,\; 13,\; 15,\; 17]$ (each slot gets $+10$ from the repeated bottleneck plus its own $h^{(1)}_i$).</label>
     </details>
 
-    <details class="mcq-box" data-correct="A" data-topic="Interleaved: Entropy conservation">
-      <p>If you add $+50$ to every logit in $z$ while holding $T = 1.0$ fixed, what happens to the output <span class="term" data-term="entropy">entropy</span> $H(p)$?</p>
-      <label class="mcq-option" data-explain="Correct. Softmax is shift-invariant; adding a constant cancels in numerator and denominator, so p and H(p) stay identical.">It stays identical because softmax is shift-invariant.</label>
-      <label class="mcq-option" data-explain="Only scaling logits (or changing T) changes entropy; shifting by a constant cancels out.">Entropy drops because all logits are larger.</label>
-      <label class="mcq-option" data-explain="Shifting all logits equally does not flatten differences between them.">Entropy rises toward uniform.</label>
+    <h2>3. What Do You Do With the Saved Compute?</h2>
+    <p>
+      Suppose a standard 12-layer BERT model costs 12 units of compute ($1.0$ unit per full-length layer). If you build a 12-layer Funnel-Transformer with three 4-layer blocks at lengths $T$, $T/2$, and $T/4$ (called <strong>B4-4-4</strong>), each layer at $T/2$ costs at most $0.5$ units and each layer at $T/4$ costs at most $0.25$ units:
+    </p>
+
+    <div class="math-block">
+      $$4 \times (1.0) \;+\; 4 \times (0.5) \;+\; 4 \times (0.25) \;=\; 4 + 2 + 1 \;=\; 7.0\text{ units}$$
+    </div>
+
+    <p>
+      You just cut the encoder's compute bill by 42%. In practice, the paper shows two ways to cash that check (<span class="term" data-term="flop-reinvestment">FLOP reinvestment</span>):
+    </p>
+    <p>
+      If you keep the same 12-layer depth (<strong>B4-4-4</strong>), you get a much faster model that trades away a tiny fraction of a point on token-heavy benchmarks. If instead you reinvest the saved FLOPs by stacking 6 layers in each block (an 18-layer <strong>B6-6-6</strong> model), your model is both <em>deeper</em> (18 layers vs. 12) and still <em>faster</em> than a 12-layer BERT—beating it across GLUE, text classification, and reading comprehension.
+    </p>
+    <p>
+      There is only one place where Funnel-Transformer doesn't fit naturally: causal, left-to-right GPT-style generation. When you pool tokens 1 and 2 together and later upsample them back to position 1, token 2's future information leaks backward into position 1, violating the causal mask. For bidirectional encoders that read the whole prompt at once, however, throwing away token redundancy as you go deeper is practically a free lunch.
+    </p>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 3: FLOP Reinvestment (B6-6-6 vs. Flat L12)">
+      <p>Using the same linear cost scale ($1.0$ unit per layer at length $T$, $0.5$ at $T/2$, and $0.25$ at $T/4$), how many total compute units does an 18-layer <strong>B6-6-6</strong> Funnel encoder (6 layers per block) cost compared to a 12-layer flat BERT ($12.0$ units)?</p>
+      <label class="mcq-option" data-explain="18.0 units would only happen if all 18 layers ran at full length T.">$18.0\text{ units}$ ($50\%$ more expensive than flat 12-layer BERT).</label>
+      <label class="mcq-option" data-explain="Correct. 6(1.0) + 6(0.5) + 6(0.25) = 6 + 3 + 1.5 = 10.5 units—giving 18 layers of depth for fewer FLOPs than 12 flat layers.">$6(1.0) + 6(0.5) + 6(0.25) = \mathbf{10.5\text{ units}}$ (50% deeper than 12-layer BERT while still costing fewer FLOPs).</label>
+      <label class="mcq-option" data-explain="7.0 units is the cost of the 12-layer B4-4-4 schedule.">$7.0\text{ units}$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Check 4: Why Separate-CLS Matters">
+      <p>Why does Funnel-Transformer slice off the <code>[CLS]</code> token before running stride-2 pooling (<span class="term" data-term="separate-cls">Separate-CLS</span>) and prepend it back afterward?</p>
+      <label class="mcq-option" data-explain="Correct. Without isolating [CLS], stride-2 pooling averages [CLS] with the first word of the sentence at every block boundary, polluting the global sentence vector with local early words.">To prevent the global <code>[CLS]</code> summary vector from being averaged with whichever local words happen to sit at the start of the sentence.</label>
+      <label class="mcq-option" data-explain="[CLS] still attends to every token inside self-attention; it is only excluded from the stride-2 spatial pooling window.">To stop <code>[CLS]</code> from attending to content words during self-attention.</label>
+      <label class="mcq-option" data-explain="Even when sequence length is divisible by 2, averaging [CLS] with token 1 still corrupts sequence classification.">Only to keep the sequence length an even number.</label>
     </details>
 
     <div class="score-bar"></div>
@@ -198,207 +132,103 @@
   </main>
 
   <script>
-    function softmax(logits, T) {
-      var m = Math.max.apply(null, logits);
-      var exps = logits.map(function (z) { return Math.exp((z - m) / T); });
-      var sum = exps.reduce(function (a, b) { return a + b; }, 0);
-      return exps.map(function (e) { return e / sum; });
-    }
-
-    function entropyNats(probs) {
-      return probs.reduce(function (acc, p) {
-        return p > 1e-12 ? acc - p * Math.log(p) : acc;
-      }, 0);
-    }
-
     var GLOSSARY = {
-      'logits': {
-        title: 'Logits',
-        body: 'Unnormalized real-valued scores on $(-\\infty, +\\infty)$ output by the final linear layer before <span class="term" data-term="softmax">softmax</span>.'
+      'encoder-stack': {
+        title: 'Bidirectional Transformer Encoder',
+        body: 'A stack of self-attention + <span class="term" data-term="ffn">FFN</span> layers (like BERT or ELECTRA) where every token attends to both left and right context simultaneously.'
+      },
+      'sym-t': {
+        title: 'Sequence Length $T$',
+        body: 'Number of tokens entering the encoder. Funnel-Transformer halves the sequence length at each block transition ($T \\to T/2 \\to T/4$).'
+      },
+      'sym-h': {
+        title: 'Unpooled Hidden States $h$',
+        body: 'The full-length sequence of token vectors ($T \\times d$) before a pooling transition.'
+      },
+      'sym-hprime': {
+        title: 'Pooled Sequence $h\' = \\text{Pool}(h)$',
+        body: 'The half-length sequence ($(T/2) \\times d$) created by averaging adjacent token pairs with stride 2 (while keeping <span class="term" data-term="separate-cls"><code>[CLS]</code></span> unpooled).'
+      },
+      'separate-cls': {
+        title: 'Separate-CLS Rule',
+        body: 'Slicing off the global <code>[CLS]</code> token at position 0 before stride-2 pooling and prepending it back afterward so <code>[CLS]</code> is never averaged with adjacent content words.'
+      },
+      'strided-pooling': {
+        title: 'Stride-2 Average Pooling',
+        body: 'Averaging non-overlapping adjacent pairs of tokens $(h_{2i-1}, h_{2i})$ with window size 2 and stride 2, cutting sequence length in half with zero extra parameters.'
+      },
+      'pool-query-only': {
+        title: 'Pool-Query-Only Attention',
+        body: 'Using the pooled half-length sequence <span class="term" data-term="sym-hprime">$h\'$</span> as the queries $Q$ (and residual base) while keeping the unpooled sequence <span class="term" data-term="sym-h">$h$</span> as keys $K$ and values $V$. Turns compression into a learned, content-weighted attention step.'
+      },
+      'sym-qkv': {
+        title: 'Queries ($Q$), Keys ($K$), Values ($V$)',
+        body: 'Projections in <span class="term" data-term="self-attention">self-attention</span>. The output sequence always has the exact same length as the queries $Q$, while looking up information across the length of keys $K$ and values $V$.'
+      },
+      'self-attention': {
+        title: 'Self-Attention',
+        body: '$\\text{Attn}(Q, K, V) = \\text{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$. Costs $O(T^2 d)$ across sequence length $T$, so halving $T$ cuts the attention matrix size by $4\\times$.'
       },
       'softmax': {
         title: 'Softmax',
-        body: 'Turns <span class="term" data-term="logits">logits</span> into probabilities that are positive and sum to $1$: $p_i = \\frac{e^{(z_i - m)/T}}{\\sum_j e^{(z_j - m)/T}}$.'
+        body: 'Turns raw attention scores into positive weights that sum to $1$: $\\alpha_j = e^{s_j} / \\sum_k e^{s_k}$.'
       },
-      'temperature': {
-        title: 'Temperature (T)',
-        body: 'Positive divisor applied before exponentiation. $T &lt; 1$ sharpens peaks (lower <span class="term" data-term="entropy">entropy</span>); $T &gt; 1$ flattens toward uniform.'
+      'residual-stream': {
+        title: 'Residual Stream ($h\' + \\text{Attn}(\\cdot)$)',
+        body: 'The additive skip connection around each sub-layer. At a compression transition, the residual base must be the pooled <span class="term" data-term="sym-hprime">$h\'$</span> so its length ($T/2$) matches the attention output.'
       },
-      'float32': {
-        title: 'float32',
-        body: '32-bit IEEE floating-point number. Its max finite value is $\\approx 3.4 \\times 10^{38}$, so $\\exp(x)$ overflows to <code>Infinity</code> past $x = 88.72$.'
+      'ffn': {
+        title: 'Position-Wise Feed-Forward Network (FFN)',
+        body: 'Two-layer MLP applied independently to each token vector ($O(T d^2)$ FLOPs). Halving the number of tokens $T$ cuts FFN compute in half.'
       },
-      'entropy': {
-        title: 'Shannon entropy H(p)',
-        body: 'Uncertainty of a distribution: $H(p) = -\\sum_i p_i \\ln p_i$ measured in <span class="term" data-term="nats">nats</span>. Zero means 100% deterministic.'
+      'mlm': {
+        title: 'Masked Language Modeling (MLM)',
+        body: 'Pre-training task where $15\\%$ of input words are masked out and the model must predict the missing word ID at every masked position—requiring full length-$T$ token outputs.'
       },
-      'nats': {
-        title: 'Nats',
-        body: 'Information unit using natural log $\\ln$ instead of $\\log_2$ (bits). $1\\text{ nat} \\approx 1.443\\text{ bits}$.'
+      'bridge-upsample': {
+        title: 'Bridge Upsampling',
+        body: 'Recovering full length $T$ in a single step by repeating each final compressed vector $2^{M-1}$ times and adding the uncompressed Block-1 states <span class="term" data-term="sym-h1">$h^{(1)}$</span>: $g = h^{(1)} + \\text{up-sample}(h^{(M)})$.'
       },
-      'llm': {
-        title: 'LLM (Large Language Model)',
-        body: 'Autoregressive neural network predicting the next token by outputting <span class="term" data-term="logits">logits</span> over the vocabulary.'
+      'repeat-upsample': {
+        title: 'Repeat Upsampling $\\text{up-sample}(h^{(M)})$',
+        body: 'Duplicating each compressed vector $2^{M-1}$ times in a row (e.g. $4\\times$ for $M=3$ blocks) to stretch a $T/4$ sequence back to length $T$.'
       },
-      'schema': {
-        title: 'Mental schema',
-        body: 'Structured mental pattern linking conditions to steps so you can solve new variations without overloading working memory.'
+      'sym-h1': {
+        title: 'Block-1 Output $h^{(1)}$',
+        body: 'The last full-length ($T \\times d$) hidden states from the end of Block 1 before any pooling happens. Added via a residual bridge during upsampling to restore individual token identity.'
       },
-      'distillation': {
-        title: 'Knowledge distillation',
-        body: 'Training a smaller student model to match a teacher model\'s <span class="term" data-term="softmax">softmax</span> probabilities, often at $T &gt; 1$ to expose runner-up rankings.'
+      'sym-hm': {
+        title: 'Final Compressed Bottleneck $h^{(M)}$',
+        body: 'The deeply contextualized hidden states at the end of the final encoder block $M$ (length $T / 2^{M-1}$).'
+      },
+      'sym-g': {
+        title: 'Recovered Full-Length Sequence $g$',
+        body: '$g = h^{(1)} + \\text{up-sample}(h^{(M)}) \\in \\mathbb{R}^{T \\times d}$, fed into a 2-layer decoder for token-level pre-training (<span class="term" data-term="mlm">MLM</span>).'
+      },
+      'flop-reinvestment': {
+        title: 'FLOP Reinvestment',
+        body: 'Spending the compute saved by sequence compression ($T/2, T/4$) on stacking deeper blocks (e.g. 18-layer B6-6-6 instead of 12-layer L12) to get higher accuracy at lower total FLOPs.'
       }
     };
 
-    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
-    function checkFastForward() {
-      var raw = document.getElementById('ff-input').value.trim();
-      var fb = document.getElementById('ff-feedback');
-      fb.style.display = 'block';
-      if (raw === '1' || raw === '1.0' || raw.toLowerCase() === 'e^0') {
-        fb.innerHTML = '<strong>Verified.</strong> <code>exp(100 - 100) = exp(0) = 1</code>. Stages 1&ndash;3 collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Stages 1&ndash;3</button>';
-        toggleScaffolding(false);
-        unlockSlider();
-      } else {
-        fb.innerHTML = 'Not quite (hint: $m = 100$, so $100 - m = 0$). Work through Stages 1&ndash;3 below.';
-        renderMathIn(fb);
-      }
-    }
-
-    function toggleScaffolding(show) {
-      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
-    }
-
-    /* ---------- Stage 1 & 2: POE + Refutation + Slider Unlock ---------- */
-    var poeDone = false;
-    var stepsVisited = { 0: true };
-
-    function unlockSlider() {
-      document.getElementById('slider-gate').style.display = 'none';
-      document.getElementById('slider-unlocked').style.display = 'block';
-      updateTempWidget();
-    }
-
-    function runPOE(choice) {
-      poeDone = true;
-      document.getElementById('poe-reveal').style.display = 'block';
-      var svg = document.getElementById('poe-svg');
-      var guessLabel = choice === 'A' ? 'Your guess: 0.665' : choice === 'B' ? 'Your guess: 1.0' : choice === 'C' ? 'Your guess: NaN' : 'Skipped guess';
-      var guessW = choice === 'A' ? 160 : choice === 'B' ? 240 : 0;
-
-      var html = '';
-      html += '<text x="10" y="34" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + guessLabel + '</text>';
-      html += '<rect x="175" y="16" width="240" height="24" fill="#fff" stroke="#000" stroke-dasharray="4 3"/>';
-      if (guessW > 0) { html += '<rect x="175" y="16" width="' + guessW + '" height="24" fill="#ccc" stroke="#000"/>'; }
-      html += '<text x="10" y="82" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Actual naive: NaN</text>';
-      html += '<rect x="175" y="64" width="240" height="24" fill="#fff" stroke="#000" stroke-width="2"/>';
-      html += '<text x="260" y="81" font-family="monospace" font-size="13" font-weight="bold" fill="#000">Inf / Inf = NaN</text>';
-      svg.innerHTML = html;
-
-      var ref = document.getElementById('poe-refutation');
-      ref.innerHTML = '<div class="refutation-title">Misconception Refutation</div>' +
-        '<p style="margin:0;">Most people guess <strong>0.665</strong> because mathematically $e^{100}/(e^{100}+e^{99}+e^{98})$ equals $e^0/(e^0+e^{-1}+e^{-2}) \\approx 0.665$. ' +
-        'That breaks in <code>float32</code> because <code>exp(100)</code> overflows $3.4 \\times 10^{38}$ to <code>Infinity</code> before the division ever runs, giving <code>Infinity / Infinity = NaN</code>.</p>';
-      renderMathIn(ref);
-      unlockSlider();
-    }
-
-    /* ---------- Stage 3: Discrete Stepper + Persistent Small Multiples ---------- */
-    var STEP_PRESETS = [
-      { T: 0.3, title: 'Step 1: Low (T=0.3)', note: 'Dividing by 0.3 stretches gaps 3.3x. Token A takes 96.5% of mass; entropy drops to 0.160 nats.' },
-      { T: 1.0, title: 'Step 2: Neutral (T=1.0)', note: 'Raw unscaled gaps [2, 1, 0]. Token A gets 66.5%, Token B gets 24.5%, Token C gets 9.0% (H = 0.824 nats).' },
-      { T: 3.0, title: 'Step 3: High (T=3.0)', note: 'Dividing by 3.0 shrinks gaps. Token A drops to 44.6% while Token C rises to 22.9% (H = 1.064 nats).' }
-    ];
-
-    function setStep(idx) {
-      stepsVisited[idx] = true;
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('step-btn-' + i).classList.toggle('active', i === idx);
-      }
-      renderSmallMultiples(idx);
-      document.getElementById('step-explain').textContent = STEP_PRESETS[idx].note;
-      if (Object.keys(stepsVisited).length === 3) { unlockSlider(); }
-    }
-
-    function renderSmallMultiples(activeIdx) {
-      var grid = document.getElementById('sm-grid');
-      var logits = [2.0, 1.0, 0.0];
-      var html = '';
-      STEP_PRESETS.forEach(function (preset, idx) {
-        var probs = softmax(logits, preset.T);
-        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
-        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.85em; margin-bottom:4px;">' + preset.title + '</div>';
-        html += '<svg viewBox="0 0 200 84" width="200" height="84" role="img" aria-label="' + preset.title + '">';
-        probs.forEach(function (p, j) {
-          var y = 6 + j * 25;
-          var w = Math.max(2, Math.round(p * 110));
-          html += '<text x="2" y="' + (y + 14) + '" font-family="monospace" font-size="11" fill="#000">' + ['A', 'B', 'C'][j] + '</text>';
-          html += '<rect x="18" y="' + y + '" width="110" height="18" fill="#fff" stroke="#000" stroke-width="1"/>';
-          html += '<rect x="18" y="' + y + '" width="' + w + '" height="18" fill="#000"/>';
-          html += '<text x="134" y="' + (y + 14) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + fmt(p * 100, 1) + '%</text>';
-        });
-        html += '</svg></div>';
-      });
-      grid.innerHTML = html;
-    }
-
-    function updateTempWidget() {
-      var slider = document.getElementById('temp-slider');
-      var svg = document.getElementById('temp-svg');
-      if (!slider || !svg) { return; }
-      var T = parseFloat(slider.value);
-      document.getElementById('temp-val').textContent = fmt(T, 1);
-
-      var probs = softmax([2.0, 1.0, 0.0], T);
-      var labels = ['A (z=2.0)', 'B (z=1.0)', 'C (z=0.0)'];
-      document.getElementById('stat-p1').textContent = fmt(probs[0], 3);
-      document.getElementById('stat-ent').textContent = fmt(entropyNats(probs), 3);
-      document.getElementById('stat-ratio').textContent = fmt(probs[0] / probs[2], 1) + 'x';
-
-      var out = '';
-      probs.forEach(function (p, i) {
-        var y = 14 + i * 40;
-        var w = Math.max(2, Math.round(p * 240));
-        out += '<text x="10" y="' + (y + 18) + '" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">' + labels[i] + '</text>';
-        out += '<rect x="115" y="' + y + '" width="240" height="25" fill="#fff" stroke="#000" stroke-width="1"/>';
-        out += '<rect x="115" y="' + y + '" width="' + w + '" height="25" fill="#000"/>';
-        out += '<text x="365" y="' + (y + 18) + '" font-family="monospace" font-size="13" font-weight="bold" fill="#000">' + fmt(p * 100, 1) + '%</text>';
-      });
-      svg.innerHTML = out;
-    }
-
-    /* ---------- Stage 4: Faded Step & Closed-Book Recall ---------- */
-    function checkFaded() {
-      var val = parseFloat(document.getElementById('fade-input').value);
-      var fb = document.getElementById('fade-feedback');
-      fb.style.display = 'block';
-      if (!isNaN(val) && Math.abs(val - 0.731) <= 0.02) {
-        fb.innerHTML = '<strong>Correct.</strong> $1.000 / 1.368 \\approx 0.731$ (and $p_1 \\approx 0.269$).';
-      } else {
-        fb.innerHTML = 'Not quite. Divide the unnormalized weight $1.000$ by the sum $1.368$ to get $0.731$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function revealRecall() {
-      var fb = document.getElementById('recall-feedback');
-      fb.style.display = 'block';
-      renderMathIn(fb);
-    }
-
     var SPACED_CARDS = [
-      { q: 'At what exponent $x$ does $\\exp(x)$ overflow <code>float32</code>?', a: '$x > 88.72$ (max <code>float32</code> is $\\approx 3.4 \\times 10^{38}$).' },
-      { q: 'Why does subtracting $m = \\max(z)$ leave softmax unchanged?', a: '$\\frac{\\exp(z_i - m)}{\\sum_j \\exp(z_j - m)}$ cancels $e^{-m}$ in numerator and denominator.' },
-      { q: 'What happens to entropy as $T \\to 0$?', a: 'Entropy collapses toward $0\\text{ nats}$ (approaching greedy $\\arg\\max$).' },
-      { q: 'What happens to probabilities as $T \\to \\infty$?', a: 'All probabilities flatten toward the uniform distribution $1/K$.' },
-      { q: 'Why use $T > 1$ in knowledge distillation?', a: 'Higher $T$ lifts runner-up probabilities so the student learns relative rankings.' }
+      {
+        q: 'In Funnel-Transformer, what is the difference between naive pre-pooling and Pool-Query-Only attention at a block transition ($T \\to T/2$)?',
+        a: 'Naive pre-pooling averages $Q, K, V$ to length $T/2$ before attention (forcing a blind 50/50 average of adjacent tokens). Pool-Query-Only pools only the queries $Q = h\'$ (and residual base) to length $T/2$ while keeping keys and values at unpooled length $T$ ($K = V = h$), so attention learns content-weighted compression.'
+      },
+      {
+        q: 'Why does Funnel-Transformer slice off the <code>[CLS]</code> token before stride-2 pooling (Separate-CLS)?',
+        a: 'Without isolating <code>[CLS]</code>, stride-2 window pooling would average the global <code>[CLS]</code> summary vector with the first content words of the sentence at every block transition.'
+      },
+      {
+        q: 'How does Funnel-Transformer recover full length-$T$ token representations for Masked Language Modeling ($g = h^{(1)} + \\text{up-sample}(h^{(M)})$), and why is $h^{(1)}$ needed?',
+        a: 'It repeats each final compressed vector $2^{M-1}$ times to reach length $T$ and adds the uncompressed Block-1 states $h^{(1)}$. Without adding $h^{(1)}$, every block of $2^{M-1}$ adjacent upsampled positions would be identical copies.'
+      },
+      {
+        q: 'Why can\'t stride-2 Funnel pooling with bridge upsampling be used directly inside a causal left-to-right GPT decoder?',
+        a: 'Pooling adjacent tokens $(2i-1, 2i)$ and upsampling back to both positions mixes token $2i$ into position $2i-1$, leaking future right-hand token information backward across the causal mask.'
+      }
     ];
-
-    document.addEventListener('DOMContentLoaded', function () {
-      var tempSlider = document.getElementById('temp-slider');
-      if (tempSlider) { tempSlider.addEventListener('input', updateTempWidget); }
-      setStep(0);
-    });
   </script>
 </body>
 </html>

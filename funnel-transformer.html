@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Funnel-Transformer: Pool-Query-Only Compression &amp; Token Recovery</title>
+  <title>Funnel-Transformer</title>
 
   <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
   <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
@@ -13,310 +13,117 @@
 </head>
 <body>
   <main>
-    <h1>Funnel-Transformer: Compressing Token Sequences Without Losing Word-Level Detail</h1>
+    <h1>Funnel-Transformer: Why Keep Every Word Separate Across Every Layer?</h1>
 
     <p>
-      When you read a movie review to decide whether it is positive or negative, you don't hold onto every individual word separately from start to finish. As you read, adjacent words merge into phrases, and phrases merge into higher-level ideas. Yet a standard <span class="term" data-term="encoder-stack">Transformer encoder</span> like BERT keeps the exact same number of token vectors <span class="term" data-term="sym-t">$T$</span> across every single layer—burning the same <span class="term" data-term="self-attention">self-attention</span> and <span class="term" data-term="ffn">feed-forward</span> compute in Layer 12 on individual word slots that have already blended into redundant phrase representations by Layer 4.
+      Think about how you read a sentence when your only job is to decide whether a movie review is positive or negative. At the start, you look at individual words. Within a split second, you group those words into phrases ("not very good"), and then into a single takeaway. You don't carry every individual word vector separately all the way to the end of your thought process.
     </p>
     <p>
-      Why not just shrink the sequence length in half every few layers by averaging adjacent token pairs, the same way a vision CNN downsamples an image grid? If you try that naively, two things break right away. First, blindly averaging pairs of tokens <em>before</em> attention runs lets common filler words drown out sharp, high-signal words like <code>"not"</code>. Second, pretraining tasks like <span class="term" data-term="mlm">Masked Language Modeling (MLM)</span> need a distinct prediction at every original token position, which is impossible if your final layer only has a quarter of the tokens left.
+      Standard <span class="term" data-term="encoder-stack">Transformer encoders</span> like BERT do the exact opposite. If you feed BERT <span class="term" data-term="sym-t">$T = 512$</span> tokens, Layer 1 processes 512 tokens, Layer 6 processes 512 tokens, and Layer 12 processes 512 tokens—even though for sequence classification you throw 511 of those output vectors in the trash and only read the final <span class="term" data-term="separate-cls"><code>[CLS]</code></span> token. By the middle layers, neighboring tokens have already blended their information together via <span class="term" data-term="self-attention">self-attention</span>, so keeping 512 separate vectors is mostly wasted math.
     </p>
     <p>
-      <strong>Funnel-Transformer</strong> (Dai et al., NeurIPS 2020) solves both problems with two simple architectural tweaks: at block boundaries, it pools <em>only</em> the <span class="term" data-term="sym-qkv">queries $Q$</span> while letting them attend over the full unpooled <span class="term" data-term="sym-qkv">keys $K$ and values $V$</span> (<span class="term" data-term="pool-query-only">Pool-Query-Only</span>), and when a task needs token-level outputs, it restores the full sequence in a single step by adding the first block's uncompressed token vectors back onto the upsampled bottleneck (<span class="term" data-term="bridge-upsample">Bridge Upsampling</span>).
-    </p>
-
-    <div id="scaffolding-section">
-      <h2 id="s1">1. Why Averaging Everything Before Attention Destroys Signal</h2>
-      <p>
-        To see why naive pooling fails, follow a two-word phrase entering a compression boundary where we want to cut the sequence length in half. Word 1 is a critical negation word (<code>"not"</code>) with scalar value $v_1 = 2$, and Word 2 is a filler intensifier (<code>"very"</code>) with scalar value $v_2 = 10$.
-      </p>
-      <p>
-        If we let a query inspect those two words individually before merging them, their unpooled keys tell the model that <code>"not"</code> is three times as important as <code>"very"</code>, assigning <span class="term" data-term="softmax">softmax</span> attention weights $\alpha_1 = \frac{3}{4}$ to <code>"not"</code> and $\alpha_2 = \frac{1}{4}$ to <code>"very"</code>. Compare what happens under two different ways of halving the sequence:
-      </p>
-      <ul>
-        <li><strong>Case A (Naive Pre-Pooling &mdash; pool $Q, K, V$ first):</strong> You average the two token vectors <em>before</em> attention runs into a single vector $h'_1 = \frac{2 + 10}{2} = \mathbf{6}$. Attention over that single merged slot can only output $\mathbf{6}$.</li>
-        <li><strong>Case B (<span class="term" data-term="pool-query-only">Pool-Query-Only</span> &mdash; pool $Q = h'$, keep unpooled $K, V = h$):</strong> You still average the two tokens to create one compressed query $h'_1$, which cuts the output length in half. However, that compressed query attends directly over the two unpooled values $v_1 = 2$ and $v_2 = 10$ with learned weights $\alpha = [\frac{3}{4},\; \frac{1}{4}]$.</li>
-      </ul>
-
-      <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Quick Prediction</div>
-        <h3>Naive Pre-Pooling vs. Pool-Query-Only Output</h3>
-        <p>What value does Case B (<span class="term" data-term="pool-query-only">Pool-Query-Only</span>) compute from $\alpha_1 v_1 + \alpha_2 v_2 = \frac{3}{4}(2) + \frac{1}{4}(10)$, and how does it differ from Case A?</p>
-        <div class="control-row">
-          <button class="btn btn-small" onclick="runPOE('A')">A) Both output 6 because linear operations commute with averaging</button>
-          <button class="btn btn-small" onclick="runPOE('B')">B) Case B outputs 4 (weighting v₁=2 three times as heavily as v₂=10), whereas Case A forces a blind 50/50 average of 6</button>
-          <button class="btn btn-small" onclick="runPOE('C')">C) Case B outputs 12 by summing both tokens without normalization</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
-        </div>
-        <div id="poe-reveal" style="display:none;">
-          <div class="figure-box">
-            <svg id="poe-svg" viewBox="0 0 460 120" width="460" height="120" role="img" aria-label="Naive pre-pooling vs Pool-Query-Only comparison"></svg>
-          </div>
-          <div class="refutation" id="poe-refutation"></div>
-        </div>
-      </div>
-    </div>
-
-    <h2 id="s2">2. How Pool-Query-Only Attention Compresses a Block</h2>
-    <p>
-      In a Funnel encoder, the layers are grouped into $M$ blocks of progressively shorter sequence length <span class="term" data-term="sym-t">$T_m = T / 2^{m-1}$</span>. For instance, a 12-layer encoder split into three 4-layer blocks (written <strong>B4-4-4</strong>) runs its first four layers at full length $T$, its middle four layers at half length $T/2$, and its final four layers at quarter length $T/4$.
-    </p>
-    <p>
-      Recall a basic property of <span class="term" data-term="self-attention">attention</span>: the output sequence always has the exact same length as the <span class="term" data-term="sym-qkv">queries $Q$</span>, regardless of how many <span class="term" data-term="sym-qkv">keys $K$ and values $V$</span> those queries inspect. So at the very first layer of a new block, Funnel-Transformer runs <span class="term" data-term="strided-pooling">stride-2 mean pooling</span> on the previous block's hidden states $h$ to create a half-length sequence <span class="term" data-term="sym-hprime">$h' = \text{Pool}(h)$</span>. It feeds that short sequence $h'$ as the queries $Q$ and as the <span class="term" data-term="residual-stream">residual stream</span> base, while feeding the unpooled sequence $h$ as keys $K$ and values $V$. That single transition layer turns downsampling into a learned, content-weighted compression step.
-    </p>
-    <p>
-      There is one small catch with the special sentence-summary token <code>[CLS]</code> at position 0. If you ran stride-2 pooling across the whole tensor blindly, <code>[CLS]</code> would get averaged with the first content word of the sentence at Block 2, and then averaged with the first three words at Block 3. To keep the global summary clean, Funnel-Transformer slices off <code>[CLS]</code> before pooling the content tokens and prepends it back onto $h'$ intact (<span class="term" data-term="separate-cls">Separate-CLS</span>).
+      In 2020, Zihang Dai and colleagues asked an obvious question: why not shrink the sequence length as you go deeper, the same way a convolutional network shrinks an image grid from $256 \times 256$ down to $64 \times 64$? Their model, <strong>Funnel-Transformer</strong>, cuts the number of tokens in half every few layers, shaping the encoder like a funnel (<span class="term" data-term="sym-t">$T \to T/2 \to T/4$</span>).
     </p>
 
-    <div class="worked">
-      <p><strong>Tracing a 4-token $\to$ 2-token transition by hand ($\sqrt{d_k} = \sqrt{4} = 2$):</strong></p>
-      <p>
-        Take 4 content tokens with distinct scalar values $V = [2,\; 6,\; 10,\; 14]$ and head dimension <span class="term" data-term="sym-dk">$d_k = 4$</span> so $\sqrt{d_k} = 2$.<br>
-        1. <strong>Stride-2 mean pooling ($h \to h'$):</strong> Average adjacent pairs into 2 query tokens:<br>
-        $$h'_1 = \frac{2 + 6}{2} = \mathbf{4}, \qquad h'_2 = \frac{10 + 14}{2} = \mathbf{12}$$
-        2. <strong>First pooled query $q_1$:</strong> Suppose $q_1$ produces raw dot products $[4,\; 4,\; -100,\; -100]$ against the 4 unpooled keys $K$. Dividing by $\sqrt{d_k} = 2$ gives $[2,\; 2,\; -50,\; -50]$, so <span class="term" data-term="softmax">softmax</span> puts equal weight on the first two tokens: $\alpha^{(1)} = [\frac{1}{2},\; \frac{1}{2},\; 0,\; 0]$.<br>
-        3. <strong>Second pooled query $q_2$:</strong> Suppose $q_2$ attends asymmetrically to tokens 3 and 4 with weights $\alpha^{(2)} = [0,\; 0,\; \frac{1}{4},\; \frac{3}{4}]$ over unpooled values $v_3 = 10$ and $v_4 = 14$.<br>
-        <strong>Your turn &mdash; adding the pooled residual $h'_2 = 12$ to the attention output $\frac{1}{4}(10) + \frac{3}{4}(14) = 2.5 + 10.5$, what is the compressed token $h^{\text{out}}_2$?</strong>
-      </p>
-      <div class="control-row">
-        <label for="wk1-input">$h^{\text{out}}_2 = 12 + 13 =$</label>
-        <input type="number" id="wk1-input" step="1" placeholder="Integer" style="width:6.5rem;">
-        <button class="btn btn-small" onclick="checkWorked1()">Check</button>
-      </div>
-      <div id="wk1-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <div class="math-block">
-      $$h' = \text{Pool}(h), \qquad h \leftarrow \text{LayerNorm}\Bigl(h' + \text{Attn}\bigl(Q=h',\; K=h,\; V=h\bigr)\Bigr)$$
-      <div class="math-hint">Only the boundary transition layer mixes shapes $(T/2) \times T$. Every interior layer after that runs standard self-attention where $Q, K, V$ all have length $T/2$—cutting the $T_m \times T_m$ attention matrix by $4\times$ and the per-token <span class="term" data-term="ffn">FFN</span> work by $2\times$.</div>
-    </div>
-
+    <h2>1. The Naive Pooling Trap (and the "Pool-Query-Only" Fix)</h2>
     <p>
-      Notice why every piece of that update rule has to be there. Using the pooled state <span class="term" data-term="sym-hprime">$h'$</span> as the residual base is not optional: the attention output has length $T/2$, so you cannot add it to the unpooled length-$T$ tensor $h$, and dropping the residual skip connection across block transitions would starve early layers of gradient signal. Furthermore, because each step from index $i$ to $i+1$ in Block 2 now spans <em>two</em> original words instead of one, Funnel-Transformer doubles the <span class="term" data-term="rel-pos">relative positional encoding</span> stride at each block boundary so distance $+1$ in Block 2 aligns with distance $+2$ in Block 1.
-    </p>
-
-    <h2 id="s3">3. Recovering Individual Tokens: Bridge Upsampling &amp; FLOP Reinvestment</h2>
-    <p>
-      If your only goal is sequence classification (like sentiment analysis or <span class="term" data-term="glue">GLUE</span> sentence pairs), you never need the individual token slots back—you just read the final <code>[CLS]</code> vector at the end of Block 3. What if you are pretraining with <span class="term" data-term="mlm">Masked Language Modeling</span> or extracting answer spans on <span class="term" data-term="squad">SQuAD</span>, where you need a distinct vector at every single token $1 \dots T$?
+      The simplest way to cut a sequence of hidden states <span class="term" data-term="sym-h">$h$</span> in half is <span class="term" data-term="strided-pooling">stride-2 average pooling</span>: average tokens 1 and 2 into one vector, average tokens 3 and 4 into the next vector, and call that half-length sequence <span class="term" data-term="sym-hprime">$h' = \text{Pool}(h)$</span>.
     </p>
     <p>
-      Image segmentation networks like U-Net solve this with a heavy mirror-image decoder that upsamples step-by-step after every block. Funnel-Transformer takes a much cheaper shortcut called <span class="term" data-term="bridge-upsample">Bridge Upsampling</span>. It takes the final compressed sequence <span class="term" data-term="sym-hm">$h^{(M)}$</span> (say, at length $T/4$) and simply repeats each vector $2^{M-1} = 4$ times to stretch it back to length $T$ (<span class="term" data-term="repeat-upsample">$h^{\text{up}}$</span>).
+      If you simply replace $h$ with $h'$ and run normal self-attention on $h'$, accuracy drops noticeably. Why? Because plain average pooling is blind. If token 1 is a high-signal word like <code>"not"</code> (value $v_1 = 2$) and token 2 is a filler word like <code>"very"</code> (value $v_2 = 10$), a 50/50 average smashes them into $\frac{2+10}{2} = 6$ before attention ever gets to decide which word mattered more.
     </p>
     <p>
-      Of course, repeating each compressed vector four times makes every group of four adjacent tokens identical copies of one another. To give each position its individual word identity back, Funnel-Transformer adds a long residual bridge directly from the uncompressed end of Block 1 (<span class="term" data-term="sym-h1">$h^{(1)}$</span>), and passes the sum through just 2 standard full-length Transformer decoder layers:
+      Funnel-Transformer fixes this at the boundary layer where the sequence shrinks. In attention, the output sequence always has the exact same length as the <span class="term" data-term="sym-qkv">queries ($Q$)</span>, no matter how many <span class="term" data-term="sym-qkv">keys ($K$)</span> and <span class="term" data-term="sym-qkv">values ($V$)</span> you look up. So at the transition layer, Funnel-Transformer uses the pooled half-length sequence <span class="term" data-term="sym-hprime">$h'$</span> as the queries $Q$ (and as the <span class="term" data-term="residual-stream">residual stream</span> base), while keeping the full, unpooled sequence <span class="term" data-term="sym-h">$h$</span> as the keys $K$ and values $V$ (<span class="term" data-term="pool-query-only">Pool-Query-Only</span>):
     </p>
 
     <div class="math-block">
-      $$\forall i \in \{1,\dots,T\}:\quad h^{\text{up}}_i = h^{(M)}_{\lfloor i / 2^{M-1} \rfloor}, \qquad g = h^{(1)} + h^{\text{up}}$$
-      <div class="math-hint">Once pretraining finishes, you can throw the 2-layer decoder away completely for classification fine-tuning—or keep it for token-level tagging.</div>
+      $$h \leftarrow \text{LayerNorm}\Bigl(h' + \text{Attn}\bigl(Q = h',\; K = h,\; V = h\bigr)\Bigr)$$
     </div>
+
+    <p>
+      Because each compressed query in $h'$ attends over the individual unpooled tokens in $h$, the attention head learns <em>how</em> to weight each word during compression instead of settling for a blind 50/50 average. And once that single transition layer finishes, the sequence is officially half as long ($T/2$), so every interior layer after it runs four times faster on attention and twice as fast on the <span class="term" data-term="ffn">feed-forward network (FFN)</span>.
+    </p>
+    <p>
+      (One practical detail: you never want the global <span class="term" data-term="separate-cls"><code>[CLS]</code></span> token at position 0 to get averaged with the first word of the sentence. So Funnel-Transformer slices <code>[CLS]</code> off before pooling the content tokens and sticks <code>[CLS]</code> back on the front afterward.)
+    </p>
 
     <div class="worked">
-      <p><strong>Tracing Bridge Upsampling on our 4-token phrase ($M = 3$ blocks $\implies$ repeat factor $2^{3-1} = 4$):</strong></p>
+      <p><strong>Worked Example (4 tokens $\to$ 2 tokens with distinct mental-math numbers):</strong></p>
       <p>
-        Suppose our 4-token phrase passes through a 3-block encoder ($T_1 = 4 \to T_2 = 2 \to T_3 = 1$):<br>
-        &bull; <strong>Uncompressed Block-1 output <span class="term" data-term="sym-h1">$h^{(1)}$</span> (length 4, distinct local token values):</strong> $h^{(1)} = [1,\; 3,\; 5,\; 7]$.<br>
-        &bull; <strong>Final compressed Block-3 output <span class="term" data-term="sym-hm">$h^{(3)}$</span> (length 1 global context summary):</strong> $h^{(3)} = [10]$.<br>
-        &bull; <strong>Step 1 (Repeat $h^{(3)}$ four times to match length 4):</strong> $h^{\text{up}} = [10,\; 10,\; 10,\; 10]$. All four slots are identical copies.<br>
-        &bull; <strong>Step 2 (Add the Block-1 bridge $g = h^{(1)} + h^{\text{up}}$):</strong> The first three tokens become $g_1 = 1 + 10 = 11$, $g_2 = 3 + 10 = 13$, and $g_3 = 5 + 10 = 15$.<br>
-        <strong>Your turn &mdash; what is the restored representation $g_4 = h^{(1)}_4 + h^{\text{up}}_4$ at token 4?</strong>
+        Suppose 4 unpooled tokens have values $V = [2,\; 6,\; 10,\; 14]$.<br>
+        1. <strong>Stride-2 pooling ($h \to h'$):</strong> Average pairs $(2, 6)$ and $(10, 14)$ into 2 pooled queries: $h'_1 = \frac{2+6}{2} = \mathbf{4}$ and $h'_2 = \frac{10+14}{2} = \mathbf{12}$.<br>
+        2. <strong>Selective compression on pair 2:</strong> Suppose query $q_2$ (built from $h'_2 = 12$) attends over unpooled tokens 3 and 4 ($v_3 = 10, v_4 = 14$) with sharp <span class="term" data-term="softmax">softmax</span> weights $\alpha = [0,\; 0,\; \frac{1}{4},\; \frac{3}{4}]$ instead of $50/50$.<br>
+        3. <strong>Attention + pooled residual:</strong> The attention weighted sum is $\frac{1}{4}(10) + \frac{3}{4}(14) = 2.5 + 10.5 = \mathbf{13}$. Adding the pooled residual $h'_2 = 12$ gives the compressed token $h^{\text{out}}_2 = 12 + 13 = \mathbf{25}$.
       </p>
-      <div class="control-row">
-        <label for="wk2-input">$g_4 = 7 + 10 =$</label>
-        <input type="number" id="wk2-input" step="1" placeholder="Integer" style="width:6.5rem;">
-        <button class="btn btn-small" onclick="checkWorked2()">Check</button>
-      </div>
-      <div id="wk2-feedback" class="readout" style="display:none;"></div>
+    </div>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Pool-Query-Only vs. Naive Pooling">
+      <p>In the example above, tokens 1 and 2 have unpooled values $v_1 = 2$ (<code>"not"</code>) and $v_2 = 10$ (<code>"very"</code>). If query $q_1$ assigns attention weights $\alpha = [\frac{3}{4},\; \frac{1}{4},\; 0,\; 0]$ to those two tokens, what is the attention output $\sum_j \alpha_j v_j$ under <span class="term" data-term="pool-query-only">Pool-Query-Only</span> compared to a blind 50/50 average?</p>
+      <label class="mcq-option" data-explain="A 50/50 average gives (2 + 10)/2 = 6, but Pool-Query-Only weights v_1=2 by 3/4 and v_2=10 by 1/4.">Both give $6$, because $q_1$ was created by averaging tokens 1 and 2.</label>
+      <label class="mcq-option" data-explain="Correct. Pool-Query-Only computes (3/4)(2) + (1/4)(10) = 1.5 + 2.5 = 4, preserving the weight on 'not' instead of the blind 50/50 average of 6.">Pool-Query-Only outputs $\frac{3}{4}(2) + \frac{1}{4}(10) = \mathbf{4}$, whereas a blind 50/50 average outputs $\mathbf{6}$.</label>
+      <label class="mcq-option" data-explain="Attention weights sum to 1, so the output is a convex combination between 2 and 10, not their unnormalized sum 12.">Pool-Query-Only outputs $2 + 10 = 12$.</label>
+    </details>
+
+    <h2>2. Wait—How Do You Pre-Train It If Most Tokens Are Gone?</h2>
+    <p>
+      Shrinking the sequence to $T/4$ works great when you only care about the final <code>[CLS]</code> vector. Here is the catch: BERT-style encoders are pre-trained with <span class="term" data-term="mlm">Masked Language Modeling (MLM)</span>, where you mask out 15% of the input words and ask the final layer to guess the missing word at <em>every single token position</em>. How can you predict token 7 if the final layer only has a quarter of the tokens left?
+    </p>
+    <p>
+      You need a decoder that stretches the compressed states back out to full length $T$ during pre-training. Instead of building an expensive U-Net that upsamples step-by-step after every block, the authors did something almost comically simple (<span class="term" data-term="bridge-upsample">Bridge Upsampling</span>):
+    </p>
+    <p>
+      Suppose your encoder has $M = 3$ blocks, shrinking the sequence from $T \to T/2 \to T/4$. Each vector in the final compressed output <span class="term" data-term="sym-hm">$h^{(3)}$</span> covers a window of $2^{3-1} = 4$ original words. To get back to length $T$, you just duplicate each compressed vector 4 times in a row (<span class="term" data-term="repeat-upsample">$\text{up-sample}(h^{(M)})$</span>).
+    </p>
+    <p>
+      Of course, four identical copies in a row can't predict four different masked words on their own. So Funnel-Transformer adds a long residual skip connection from <span class="term" data-term="sym-h1">$h^{(1)}$</span>—the last full-length layer at the end of Block 1—straight onto those duplicated vectors, and runs 2 standard Transformer layers on top to blend them into <span class="term" data-term="sym-g">$g$</span>:
+    </p>
+
+    <div class="math-block">
+      $$g = h^{(1)} + \text{up-sample}\bigl(h^{(M)}\bigr)$$
     </div>
 
     <p>
-      This sequence compression unlocks a powerful trade-off that Dai et al. call <span class="term" data-term="flop-reinvestment">FLOP reinvestment</span>. Because layers running at length $T/2$ and $T/4$ cost half or a quarter as much compute as a full-length layer, you can either pocket the savings to run a 12-layer model $\sim 42\%$ faster (<strong>B4-4-4</strong>), or spend the saved FLOPs on stacking deeper blocks (like an 18-layer <strong>B6-6-6</strong> encoder) that still finishes faster than a flat 12-layer BERT while beating it on accuracy.
+      The upsampled vector $\text{up-sample}(h^{(M)})$ supplies the deep, whole-sentence context, while the skip connection $h^{(1)}$ restores the distinct local word identity for each slot. Once pre-training finishes, if you are fine-tuning on a sentence classification task, you throw the 2-layer decoder away completely and only load the funnel encoder.
     </p>
 
-    <div class="interactive-card" id="stepper-widget">
-      <div class="widget-label">Side-by-Side Schedule Comparison</div>
-      <h3>Flat 12-Layer Encoder vs. B4-4-4 Funnel vs. Deep Reinvested B6-6-6</h3>
-      <p style="margin:0.2rem 0 0.5rem 0; font-size:0.88rem;">
-        Set 1 full-length layer at length $T$ equal to <strong>$1.0\text{ compute unit}$</strong>. In medium-length sequences where linear projections and the <span class="term" data-term="ffn">FFN</span> dominate ($O(T d^2)$), halving $T$ halves the layer cost ($1.0 \to 0.5 \to 0.25$):
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small active" id="step-btn-0" onclick="setFunnelStep(0)">Flat L12 (12.0 units)</button>
-        <button class="btn btn-small" id="step-btn-1" onclick="setFunnelStep(1)">Funnel B4-4-4 (7.0 units)</button>
-        <button class="btn btn-small" id="step-btn-2" onclick="setFunnelStep(2)">Deep B6-6-6 (10.5 units)</button>
-      </div>
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Bridge Upsampling Math">
+      <p>A 4-token phrase passes through a 3-block Funnel encoder ($T = 4 \to 2 \to 1$). At the end of Block 1 (full length 4), the token vectors are <span class="term" data-term="sym-h1">$h^{(1)} = [1,\; 3,\; 5,\; 7]$</span>. At the end of Block 3 (length 1), the single compressed vector is <span class="term" data-term="sym-hm">$h^{(3)} = [10]$</span>. What is the fused 4-token sequence <span class="term" data-term="sym-g">$g = h^{(1)} + \text{up-sample}(h^{(3)})$</span>?</p>
+      <label class="mcq-option" data-explain="That's what you get if you forget to add the Block-1 skip connection h^(1), leaving all 4 positions identical.">$[10,\; 10,\; 10,\; 10]$ (all four positions receive the same vector).</label>
+      <label class="mcq-option" data-explain="Repeat-upsampling copies [10] to every slot in the 4-token window, not just the first slot.">$[11,\; 3,\; 5,\; 7]$ (only position 1 receives the $+10$ global vector).</label>
+      <label class="mcq-option" data-explain="Correct. Repeating [10] four times gives [10, 10, 10, 10], and adding h^(1) = [1, 3, 5, 7] gives [11, 13, 15, 17]—giving every token both global context and distinct local identity.">$[11,\; 13,\; 15,\; 17]$ (each slot gets $+10$ from the repeated bottleneck plus its own $h^{(1)}_i$).</label>
+    </details>
 
-      <div class="small-multiples" id="funnel-sm-grid"></div>
-      <div class="readout" id="funnel-step-explain"></div>
-
-      <div id="sim-gate-box" style="margin-top:0.9rem; border-top:1px solid #000; padding-top:0.75rem;">
-        <div class="widget-label">Quick Check Before Unlocking Explorer</div>
-        <p style="margin:0.25rem 0 0.5rem 0; font-size:0.9rem;">
-          In a 3-block <strong>B4-4-4</strong> encoder (4 layers at length $T$ costing $1.0$ each, 4 layers at $T/2$ costing $0.5$ each, and 4 layers at $T/4$ costing $0.25$ each), what is the total encoder cost in units ($4\times 1 + 4\times 0.5 + 4\times 0.25$)?
-        </p>
-        <div class="control-row">
-          <label for="gate-input">Total B4-4-4 cost =</label>
-          <input type="number" id="gate-input" step="0.5" placeholder="Units" style="width:5.5rem;">
-          <span>units (vs. $12$ for flat L12)</span>
-          <button class="btn btn-small" onclick="checkSimGate(false)">Verify &amp; Unlock</button>
-          <button class="btn btn-small" onclick="checkSimGate(true)">Show me</button>
-        </div>
-        <div id="gate-feedback" class="readout" style="display:none;"></div>
-      </div>
-
-      <div id="sim-unlocked" style="display:none; margin-top:0.9rem; border-top:1px solid #000; padding-top:0.8rem;">
-        <div class="widget-label">Interactive Funnel Schedule &amp; Decoder Cost Explorer</div>
-        <p style="margin:0.2rem 0 0.5rem 0; font-size:0.88rem;">
-          Adjust the layers per block $L_{\text{block}}$ across the 3 blocks ($T \to T/2 \to T/4$) and toggle the 2-layer full-length <span class="term" data-term="mlm">MLM</span> decoder to compare total compute against a 12-layer flat BERT baseline:
-        </p>
-        <div class="control-row">
-          <button class="btn btn-small active" onclick="setFunnelPreset(4, 0)">B4-4-4 Classifier (No Decoder)</button>
-          <button class="btn btn-small" onclick="setFunnelPreset(4, 2)">B4-4-4 + 2L MLM Decoder</button>
-          <button class="btn btn-small" onclick="setFunnelPreset(6, 0)">B6-6-6 Reinvested (18 Layers)</button>
-        </div>
-        <div class="control-row">
-          <label for="l-slider">Layers per block ($M=3$ blocks):</label>
-          <input type="range" id="l-slider" min="2" max="8" step="2" value="4" oninput="updateFunnelSim()">
-          <span class="val" id="l-val">4 (B4-4-4, 12L total)</span>
-        </div>
-        <div class="control-row">
-          <label for="dec-slider">Full-length decoder layers:</label>
-          <input type="range" id="dec-slider" min="0" max="2" step="2" value="0" oninput="updateFunnelSim()">
-          <span class="val" id="dec-val">0 (Classification only)</span>
-        </div>
-        <div class="figure-box">
-          <svg id="funnel-svg" viewBox="0 0 460 135" width="460" height="135" role="img" aria-label="Funnel block cost breakdown vs flat 12-layer baseline"></svg>
-        </div>
-        <div class="stat-grid">
-          <div class="stat"><div class="k">Total Layers</div><div class="v" id="st-layers">12 enc + 0 dec</div></div>
-          <div class="stat"><div class="k">Linear/FFN Cost</div><div class="v" id="st-ffn">7.0 / 12.0 (58%)</div></div>
-          <div class="stat"><div class="k">Attn Matrix Cost</div><div class="v" id="st-attn">5.25 / 12.0 (44%)</div></div>
-          <div class="stat"><div class="k">Bottleneck Length</div><div class="v" id="st-len">T / 4 (25%)</div></div>
-        </div>
-      </div>
-    </div>
-
-    <h2 id="s4">4. Where Funnel-Transformer Breaks &amp; Hands-On Practice</h2>
+    <h2>3. What Do You Do With the Saved Compute?</h2>
     <p>
-      If Funnel-Transformer saves so much compute on BERT-style encoders, why don't autoregressive GPT decoders use stride-2 pooling in the middle of the network? Because in next-token generation, position $2i-1$ is forbidden from seeing future token $2i$. Averaging token pair $(2i-1, 2i)$ and later upsampling it back to both slots leaks token $2i$ backward into position $2i-1$, breaking the causal mask. Funnel pooling is built for bidirectional encoders that read the full input prompt at once.
+      Suppose a standard 12-layer BERT model costs 12 units of compute ($1.0$ unit per full-length layer). If you build a 12-layer Funnel-Transformer with three 4-layer blocks at lengths $T$, $T/2$, and $T/4$ (called <strong>B4-4-4</strong>), each layer at $T/2$ costs at most $0.5$ units and each layer at $T/4$ costs at most $0.25$ units:
     </p>
 
-    <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Try It By Hand</div>
-      <h3>Count Query-Key Pairs Across a $T = 8 \to 4 \to 2$ Funnel Stack</h3>
-      <p>
-        Follow a sequence of <span class="term" data-term="sym-t">$T = 8$</span> content tokens from Block 1 into Block 2:<br>
-        <strong>Step 1 (Block 1 interior layer at length $T_1 = 8$):</strong><br>
-        Both queries and keys have length $8$, so self-attention evaluates $8 \times 8 = \mathbf{64\text{ query-key pairs}}$.<br>
-        <strong>Step 2 (Block 1 $\to$ Block 2 <span class="term" data-term="pool-query-only">Pool-Query-Only</span> transition layer):</strong><br>
-        Queries are pooled to length $T_2 = 4$ ($Q = h'$), while keys stay at unpooled length $T_1 = 8$ ($K = h$). This boundary layer evaluates $4 \times 8 = \mathbf{32\text{ query-key pairs}}$.<br>
-        <strong>Step 3 (Your turn &mdash; Block 2 interior layer at length $T_2 = 4$):</strong><br>
-        Inside Block 2's remaining layers, both queries and keys use the compressed sequence of length $T_2 = 4$. How many query-key pairs ($T_2 \times T_2$) does an interior Block 2 layer evaluate?
-      </p>
-      <div class="control-row">
-        <label for="fade-input">Block 2 interior pairs $= 4 \times 4 =$</label>
-        <input type="number" id="fade-input" step="1" placeholder="Pairs" style="width:6.5rem;">
-        <span>pairs (a $4\times$ drop from $64$)</span>
-        <button class="btn btn-small" onclick="checkFaded()">Check</button>
-      </div>
-      <div id="fade-feedback" class="readout" style="display:none;"></div>
+    <div class="math-block">
+      $$4 \times (1.0) \;+\; 4 \times (0.5) \;+\; 4 \times (0.25) \;=\; 4 + 2 + 1 \;=\; 7.0\text{ units}$$
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Quick Boundary Checks</div>
-      <h3>Test the Two Failure Modes</h3>
+    <p>
+      You just cut the encoder's compute bill by 42%. In practice, the paper shows two ways to cash that check (<span class="term" data-term="flop-reinvestment">FLOP reinvestment</span>):
+    </p>
+    <p>
+      If you keep the same 12-layer depth (<strong>B4-4-4</strong>), you get a much faster model that trades away a tiny fraction of a point on token-heavy benchmarks. If instead you reinvest the saved FLOPs by stacking 6 layers in each block (an 18-layer <strong>B6-6-6</strong> model), your model is both <em>deeper</em> (18 layers vs. 12) and still <em>faster</em> than a 12-layer BERT—beating it across GLUE, text classification, and reading comprehension.
+    </p>
+    <p>
+      There is only one place where Funnel-Transformer doesn't fit naturally: causal, left-to-right GPT-style generation. When you pool tokens 1 and 2 together and later upsample them back to position 1, token 2's future information leaks backward into position 1, violating the causal mask. For bidirectional encoders that read the whole prompt at once, however, throwing away token redundancy as you go deeper is practically a free lunch.
+    </p>
 
-      <p style="margin-bottom:0.35rem;">
-        <strong>1. Deleting the Block-1 Bridge $h^{(1)}$:</strong> Suppose you remove <span class="term" data-term="sym-h1">$h^{(1)}$</span> from <span class="term" data-term="sym-g">$g = h^{(1)} + \text{up-sample}(h^{(M)})$</span> in a 3-block encoder ($M = 3$, expansion factor $2^{3-1} = 4$). How many adjacent token positions in $g$ receive the exact same vector before entering the decoder layers?
-      </p>
-      <div class="control-row">
-        <label for="bc-rep">Identical adjacent tokens per window =</label>
-        <input type="text" id="bc-rep" placeholder="Integer" style="width:6.5rem;">
-        <button class="btn btn-small" onclick="checkBoundary1()">Check</button>
-      </div>
-      <div id="bc1-feedback" class="readout" style="display:none;"></div>
-
-      <p style="margin:0.85rem 0 0.35rem 0;">
-        <strong>2. Causal Mask Leak:</strong> Why does stride-2 pooling with bridge upsampling break standard left-to-right causal language modeling?
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="checkBoundary2('A')">A) Pooling tokens $(2i-1, 2i)$ merges token $2i$ into the representation used at position $2i-1$, leaking future right-hand token information backward</button>
-        <button class="btn btn-small" onclick="checkBoundary2('B')">B) Causal attention matrices cannot multiply Rectangular query and key tensors</button>
-      </div>
-      <div id="bc2-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <h2 id="s5">5. When to Use Which Schedule &amp; Diagnostic Checks</h2>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Architecture Variant</th>
-            <th>Sequence Length Schedule</th>
-            <th>Relative Encoder FLOPs</th>
-            <th>Primary Failure Mode</th>
-            <th>Best Use Case</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>Flat Transformer (BERT / RoBERTa L12)</strong></td>
-            <td>$T \to T \to T$ (constant across all 12 layers)</td>
-            <td class="num">$1.00\times$ ($12.0$ units)</td>
-            <td>Wastes full $O(T^2 d + T d^2)$ compute on redundant phrase-level states in deep layers</td>
-            <td>Tasks requiring full token resolution at every single layer without a decoder</td>
-          </tr>
-          <tr>
-            <td><strong>Funnel Matched-Depth (B4-4-4)</strong></td>
-            <td>$T \to T/2 \to T/4$ (4 layers per block)</td>
-            <td class="num">$\sim 0.58\times$ ($7.0$ units)</td>
-            <td>Slightly lower capacity than flat L12 on fine token tasks if saved FLOPs are not reinvested</td>
-            <td>Fast sequence classification / reranking at $\sim 42\%$ lower encoder FLOPs</td>
-          </tr>
-          <tr>
-            <td><strong>Funnel <span class="term" data-term="flop-reinvestment">FLOP-Reinvested</span> (B6-6-6 / B10-10-10)</strong></td>
-            <td>$T \to T/2 \to T/4$ (6 or 10 layers per block)</td>
-            <td class="num">$\sim 0.88\times$ ($10.5$ units for B6-6-6)</td>
-            <td>Larger parameter count ($1.5\times$ deeper) requires proportional memory for weights</td>
-            <td><strong>Best accuracy-per-FLOP</strong> on <span class="term" data-term="glue">GLUE</span>, text classification, and long-context <span class="term" data-term="race">RACE</span></td>
-          </tr>
-          <tr>
-            <td><strong>Funnel + 2-Layer <span class="term" data-term="bridge-upsample">Bridge Decoder</span></strong></td>
-            <td>Encoder $T \to T/4$, then upsample $+ h^{(1)} \to T$</td>
-            <td class="num">$\sim 0.75\times$ ($7.0 + 2.0 = 9.0$ units)</td>
-            <td>Fails completely on token tasks if the <span class="term" data-term="sym-h1">$h^{(1)}$</span> residual bridge is omitted</td>
-            <td><span class="term" data-term="mlm">MLM</span> / ELECTRA pretraining (discard decoder during classification fine-tuning!)</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <details class="mcq-box" data-correct="B" data-topic="Pool-Query-Only vs Full Pre-Pooling">
-      <p>At a block transition where sequence length halves from $T$ to $T/2$, what is the exact difference between <strong><span class="term" data-term="pool-query-only">Pool-Query-Only</span></strong> attention and naive pre-pooling?</p>
-      <label class="mcq-option" data-explain="Pooling K and V while keeping Q at length T would keep the output sequence at full length T instead of compressing it to T/2.">Pool-Query-Only keeps queries $Q$ at full length $T$ and pools keys $K$ and values $V$ to length $T/2$.</label>
-      <label class="mcq-option" data-explain="Correct. Setting Q = h' (length T/2) produces an output of length T/2, while keeping K = V = h (length T) lets each compressed query attend with learned weights over every unpooled token.">Pool-Query-Only pools only the queries $Q = h'$ (and residual stream) to length $T/2$ while computing keys $K = h$ and values $V = h$ from the unpooled length-$T$ sequence.</label>
-      <label class="mcq-option" data-explain="Strided mean pooling has zero trainable parameters; the learned compression comes from Q=h' attending over unpooled K,V=h.">Pool-Query-Only replaces multi-head dot-product attention with a $3\times 3$ depthwise convolution.</label>
+    <details class="mcq-box" data-correct="B" data-topic="Check 3: FLOP Reinvestment (B6-6-6 vs. Flat L12)">
+      <p>Using the same linear cost scale ($1.0$ unit per layer at length $T$, $0.5$ at $T/2$, and $0.25$ at $T/4$), how many total compute units does an 18-layer <strong>B6-6-6</strong> Funnel encoder (6 layers per block) cost compared to a 12-layer flat BERT ($12.0$ units)?</p>
+      <label class="mcq-option" data-explain="18.0 units would only happen if all 18 layers ran at full length T.">$18.0\text{ units}$ ($50\%$ more expensive than flat 12-layer BERT).</label>
+      <label class="mcq-option" data-explain="Correct. 6(1.0) + 6(0.5) + 6(0.25) = 6 + 3 + 1.5 = 10.5 units—giving 18 layers of depth for fewer FLOPs than 12 flat layers.">$6(1.0) + 6(0.5) + 6(0.25) = \mathbf{10.5\text{ units}}$ (50% deeper than 12-layer BERT while still costing fewer FLOPs).</label>
+      <label class="mcq-option" data-explain="7.0 units is the cost of the 12-layer B4-4-4 schedule.">$7.0\text{ units}$.</label>
     </details>
 
-    <details class="mcq-box" data-correct="A" data-topic="Why Separate-CLS Is Required">
-      <p>Why does Funnel-Transformer slice off the <code>[CLS]</code> token before running stride-2 pooling (<span class="term" data-term="separate-cls">Separate-CLS</span>) and concatenate it back afterward?</p>
-      <label class="mcq-option" data-explain="Correct. Without isolating [CLS], a stride-2 window averages [CLS] with token 1 at the first transition, then with tokens 1-3 at the second transition, polluting the global summary vector with early local tokens.">Because pooling <code>[CLS]</code> together with adjacent text tokens averages the global sequence summary vector with whichever local words happen to sit at the start of the sentence.</label>
-      <label class="mcq-option" data-explain="Even if T+1 is even, averaging [CLS] with token 1 still corrupts the global representation.">Only to keep the tensor length divisible by 2 when $T$ is even.</label>
-      <label class="mcq-option" data-explain="[CLS] still participates in self-attention with all tokens inside every layer; it is only excluded from the spatial stride-2 pooling window.">To prevent <code>[CLS]</code> from attending to any content tokens during self-attention.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="C" data-topic="Bridge Upsampling Residual Connection">
-      <p>In the Funnel decoder equation <span class="term" data-term="sym-g">$g = h^{(1)} + \text{up-sample}(h^{(M)})$</span>, why is adding the first block's full-length output <span class="term" data-term="sym-h1">$h^{(1)}$</span> essential for <span class="term" data-term="mlm">Masked Language Modeling</span>?</p>
-      <label class="mcq-option" data-explain="h^(1) and up-sample(h^(M)) both have shape T x d; addition does not change the sequence dimension.">Because $\text{up-sample}(h^{(M)})$ has length $T/4$ and cannot reach length $T$ without adding $h^{(1)}$.</label>
-      <label class="mcq-option" data-explain="Repeat-upsampling is parameter-free and produces non-zero copies of h^(M).">Because $\text{up-sample}(h^{(M)})$ sets all non-boundary token vectors to zero.</label>
-      <label class="mcq-option" data-explain="Correct. Repeat-upsampling copies each compressed vector 2^(M-1) times, making adjacent positions identical. Adding the uncompressed Block-1 states h^(1) restores distinct token-level identity and positional detail to each slot.">Because $\text{up-sample}(h^{(M)})$ duplicates each compressed vector across $2^{M-1}$ adjacent positions; adding $h^{(1)}$ restores distinct local token representations so the decoder can distinguish neighboring words.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="B" data-topic="FLOP Reinvestment Tradeoff">
-      <p>How does a <strong>B6-6-6</strong> Funnel-Transformer (18 encoder layers total across 3 blocks of lengths $T, T/2, T/4$) outperform a standard 12-layer flat BERT-Base on <span class="term" data-term="glue">GLUE</span> and <span class="term" data-term="race">RACE</span> while still running faster?</p>
-      <label class="mcq-option" data-explain="Funnel-Transformer keeps the exact same hidden dimension d and FFN multiplier as standard BERT.">By doubling the hidden dimension $d$ at every layer while keeping all 18 layers at full length $T$.</label>
-      <label class="mcq-option" data-explain="Correct. Because layers in Block 2 (T/2) cost <= 1/2 as much and layers in Block 3 (T/4) cost <= 1/4 as much, 6 + 6(0.5) + 6(0.25) = 10.5 full-layer equivalents—giving 50% more depth (18 vs 12 layers) for fewer total FLOPs.">Layers at length $T/2$ and $T/4$ cost $2\times$ to $4\times$ fewer FLOPs, so stacking 6 layers per block ($6 + 3 + 1.5 = 10.5$ full-layer equivalents) gives $18$ layers of abstract compositional depth for less compute than $12$ flat layers.</label>
-      <label class="mcq-option" data-explain="The 2-layer decoder is discarded completely when fine-tuning on sequence-level classification tasks like GLUE and RACE.">By running the 2-layer full-length MLM decoder recurrently 3 times during GLUE classification.</label>
+    <details class="mcq-box" data-correct="A" data-topic="Check 4: Why Separate-CLS Matters">
+      <p>Why does Funnel-Transformer slice off the <code>[CLS]</code> token before running stride-2 pooling (<span class="term" data-term="separate-cls">Separate-CLS</span>) and prepend it back afterward?</p>
+      <label class="mcq-option" data-explain="Correct. Without isolating [CLS], stride-2 pooling averages [CLS] with the first word of the sentence at every block boundary, polluting the global sentence vector with local early words.">To prevent the global <code>[CLS]</code> summary vector from being averaged with whichever local words happen to sit at the start of the sentence.</label>
+      <label class="mcq-option" data-explain="[CLS] still attends to every token inside self-attention; it is only excluded from the stride-2 spatial pooling window.">To stop <code>[CLS]</code> from attending to content words during self-attention.</label>
+      <label class="mcq-option" data-explain="Even when sequence length is divisible by 2, averaging [CLS] with token 1 still corrupts sequence classification.">Only to keep the sequence length an even number.</label>
     </details>
 
     <div class="score-bar"></div>
@@ -331,374 +138,97 @@
         body: 'A stack of self-attention + <span class="term" data-term="ffn">FFN</span> layers (like BERT or ELECTRA) where every token attends to both left and right context simultaneously.'
       },
       'sym-t': {
-        title: 'Sequence Length $T$ (or $T_m$)',
-        body: 'Number of tokens entering the encoder. In Funnel-Transformer, block $m$ operates on compressed length $T_m = T / 2^{m-1}$ (so Block 1 has $T$, Block 2 has $T/2$, Block 3 has $T/4$).'
+        title: 'Sequence Length $T$',
+        body: 'Number of tokens entering the encoder. Funnel-Transformer halves the sequence length at each block transition ($T \\to T/2 \\to T/4$).'
       },
-      'separate-cls': {
-        title: 'Separate-CLS Rule',
-        body: 'Slicing off the global <code>[CLS]</code> token before stride-2 pooling and prepending it back afterward so <code>[CLS]</code> is never averaged with adjacent content tokens.'
-      },
-      'pool-query-only': {
-        title: 'Pool-Query-Only Attention',
-        body: 'At a block compression boundary, feeding the pooled half-length sequence <span class="term" data-term="sym-hprime">$h\' = \\text{Pool}(h)$</span> as queries $Q$ (and the residual base) while keeping the full unpooled sequence $h$ as keys $K$ and values $V$.'
-      },
-      'strided-pooling': {
-        title: 'Stride-2 Mean Pooling $\\text{Pool}(h)$',
-        body: 'Averaging non-overlapping adjacent token pairs $(h_{2i-1}, h_{2i})$ with window size $2$ and stride $2$, halving sequence length from $T$ to $T/2$ with zero extra parameters.'
+      'sym-h': {
+        title: 'Unpooled Hidden States $h$',
+        body: 'The full-length sequence of token vectors ($T \\times d$) before a pooling transition.'
       },
       'sym-hprime': {
         title: 'Pooled Sequence $h\' = \\text{Pool}(h)$',
-        body: 'The downsampled hidden state tensor of shape $(T/2) \\times d$ that acts as the query input $Q$ and residual stream at the start of a new Funnel block.'
+        body: 'The half-length sequence ($(T/2) \\times d$) created by averaging adjacent token pairs with stride 2 (while keeping <span class="term" data-term="separate-cls"><code>[CLS]</code></span> unpooled).'
+      },
+      'separate-cls': {
+        title: 'Separate-CLS Rule',
+        body: 'Slicing off the global <code>[CLS]</code> token at position 0 before stride-2 pooling and prepending it back afterward so <code>[CLS]</code> is never averaged with adjacent content words.'
+      },
+      'strided-pooling': {
+        title: 'Stride-2 Average Pooling',
+        body: 'Averaging non-overlapping adjacent pairs of tokens $(h_{2i-1}, h_{2i})$ with window size 2 and stride 2, cutting sequence length in half with zero extra parameters.'
+      },
+      'pool-query-only': {
+        title: 'Pool-Query-Only Attention',
+        body: 'Using the pooled half-length sequence <span class="term" data-term="sym-hprime">$h\'$</span> as the queries $Q$ (and residual base) while keeping the unpooled sequence <span class="term" data-term="sym-h">$h$</span> as keys $K$ and values $V$. Turns compression into a learned, content-weighted attention step.'
       },
       'sym-qkv': {
         title: 'Queries ($Q$), Keys ($K$), Values ($V$)',
-        body: 'Linear projections of hidden states in <span class="term" data-term="self-attention">self-attention</span>. The output sequence always has the same length as the queries $Q$, while attending over the length of keys $K$ and values $V$.'
-      },
-      'residual-stream': {
-        title: 'Residual Stream ($x + f(x)$)',
-        body: 'The additive skip connection around each sub-layer. At a Funnel compression boundary, the residual base must be the pooled <span class="term" data-term="sym-hprime">$h\'$</span> so its length matches the $(T/2) \\times d$ attention output.'
-      },
-      'bridge-upsample': {
-        title: 'Single-Step Bridge Upsampling',
-        body: 'Recovering full length $T$ in one shot by repeating each final compressed vector $2^{M-1}$ times and adding the uncompressed Block-1 output <span class="term" data-term="sym-h1">$h^{(1)}$</span>: $g = h^{(1)} + \\text{up-sample}(h^{(M)})$.'
-      },
-      'mlm': {
-        title: 'Masked Language Modeling (MLM)',
-        body: 'Pretraining task where $15\\%$ of input tokens are masked out and the model must reconstruct the original token ID at every masked position—requiring full-length $T$ token outputs.'
-      },
-      'squad': {
-        title: 'SQuAD (Extractive Question Answering)',
-        body: 'Token-level benchmark where the model predicts the exact start token and end token indices of an answer span inside a passage, requiring fine-grained length-$T$ decoder states.'
-      },
-      'repeat-upsample': {
-        title: 'Repeat / Interleave Upsampling $h^{\\text{up}}$',
-        body: 'Expanding a compressed length-$(T/2^{M-1})$ sequence back to length $T$ by duplicating each vector $2^{M-1}$ times: $h^{\\text{up}}_i = h^{(M)}_{\\lfloor i / 2^{M-1} \\rfloor}$.'
-      },
-      'sym-h1': {
-        title: 'Uncompressed Block-1 Output $h^{(1)}$',
-        body: 'The full-length ($T \\times d$) hidden states from the end of Block 1 (right before the first pooling layer). Preserves local token-level identity for the decoder bridge <span class="term" data-term="sym-g">$g$</span>.'
-      },
-      'sym-hm': {
-        title: 'Compressed Final Block Output $h^{(M)}$',
-        body: 'The deep bottleneck hidden sequence of length $T / 2^{M-1}$ at the end of the $M$-th encoder block.'
-      },
-      'sym-g': {
-        title: 'Fused Decoder Input $g$',
-        body: 'The full-length ($T \\times d$) token representation formed by summing local Block-1 states and upsampled bottleneck states: $g = h^{(1)} + \\text{up-sample}(h^{(M)})$.'
-      },
-      'flop-reinvestment': {
-        title: 'FLOP Reinvestment',
-        body: 'Spending the compute saved in compressed blocks ($T/2, T/4$) on stacking deeper blocks (e.g. B6-6-6 with 18 layers instead of 12) or wider layers under the same total FLOP budget.'
-      },
-      'ffn': {
-        title: 'Position-Wise Feed-Forward Network (FFN)',
-        body: 'Two-layer MLP applied independently to each token position in a layer. Because it runs per token, its FLOP cost scales linearly with sequence length $O(T d^2)$ and drops by $2\\times$ every time $T$ halves.'
+        body: 'Projections in <span class="term" data-term="self-attention">self-attention</span>. The output sequence always has the exact same length as the queries $Q$, while looking up information across the length of keys $K$ and values $V$.'
       },
       'self-attention': {
-        title: 'Scaled Dot-Product Self-Attention',
-        body: '$\\text{Attn}(Q,K,V) = \\text{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$. Its score matrix costs $O(T_Q T_K d)$ FLOPs, which shrinks by $4\\times$ inside blocks where both $T_Q$ and $T_K$ halve.'
+        title: 'Self-Attention',
+        body: '$\\text{Attn}(Q, K, V) = \\text{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$. Costs $O(T^2 d)$ across sequence length $T$, so halving $T$ cuts the attention matrix size by $4\\times$.'
       },
       'softmax': {
         title: 'Softmax',
-        body: 'Converts attention scores into positive weights summing to $1$ across keys: $\\alpha_{ij} = e^{s_{ij}} / \\sum_k e^{s_{ik}}$.'
+        body: 'Turns raw attention scores into positive weights that sum to $1$: $\\alpha_j = e^{s_j} / \\sum_k e^{s_k}$.'
       },
-      'sym-dk': {
-        title: 'Head Dimension $d_k$',
-        body: 'Dimension of each query/key projection vector. Dot products are divided by $\\sqrt{d_k}$ so variance stays near $1$ before <span class="term" data-term="softmax">softmax</span>.'
+      'residual-stream': {
+        title: 'Residual Stream ($h\' + \\text{Attn}(\\cdot)$)',
+        body: 'The additive skip connection around each sub-layer. At a compression transition, the residual base must be the pooled <span class="term" data-term="sym-hprime">$h\'$</span> so its length ($T/2$) matches the attention output.'
       },
-      'glue': {
-        title: 'GLUE Benchmark',
-        body: 'General Language Understanding Evaluation suite of sequence-level classification tasks (sentiment, entailment, paraphrase) that read the final <span class="term" data-term="separate-cls"><code>[CLS]</code></span> representation.'
+      'ffn': {
+        title: 'Position-Wise Feed-Forward Network (FFN)',
+        body: 'Two-layer MLP applied independently to each token vector ($O(T d^2)$ FLOPs). Halving the number of tokens $T$ cuts FFN compute in half.'
       },
-      'race': {
-        title: 'RACE Reading Comprehension',
-        body: 'Long-passage multiple-choice reading comprehension benchmark where Funnel-Transformer\'s extra reinvested depth yields large accuracy gains (+2 to +3 points over flat baselines).'
+      'mlm': {
+        title: 'Masked Language Modeling (MLM)',
+        body: 'Pre-training task where $15\\%$ of input words are masked out and the model must predict the missing word ID at every masked position—requiring full length-$T$ token outputs.'
       },
-      'vanishing-grad': {
-        title: 'Vanishing Gradient Across Blocks',
-        body: 'Without the pooled residual shortcut $h\' + \\text{Attn}(h\', h, h)$, gradients from deep blocks must pass strictly through softmax attention weights to reach Block 1, stalling early layers.'
+      'bridge-upsample': {
+        title: 'Bridge Upsampling',
+        body: 'Recovering full length $T$ in a single step by repeating each final compressed vector $2^{M-1}$ times and adding the uncompressed Block-1 states <span class="term" data-term="sym-h1">$h^{(1)}$</span>: $g = h^{(1)} + \\text{up-sample}(h^{(M)})$.'
       },
-      'rel-pos': {
-        title: 'Stride-Scaled Relative Positional Encoding',
-        body: 'Transformer-XL style relative positional attention where pairwise token index distances are multiplied by $2^{m-1}$ in block $m$ so physical span distances stay aligned after pooling.'
+      'repeat-upsample': {
+        title: 'Repeat Upsampling $\\text{up-sample}(h^{(M)})$',
+        body: 'Duplicating each compressed vector $2^{M-1}$ times in a row (e.g. $4\\times$ for $M=3$ blocks) to stretch a $T/4$ sequence back to length $T$.'
+      },
+      'sym-h1': {
+        title: 'Block-1 Output $h^{(1)}$',
+        body: 'The last full-length ($T \\times d$) hidden states from the end of Block 1 before any pooling happens. Added via a residual bridge during upsampling to restore individual token identity.'
+      },
+      'sym-hm': {
+        title: 'Final Compressed Bottleneck $h^{(M)}$',
+        body: 'The deeply contextualized hidden states at the end of the final encoder block $M$ (length $T / 2^{M-1}$).'
+      },
+      'sym-g': {
+        title: 'Recovered Full-Length Sequence $g$',
+        body: '$g = h^{(1)} + \\text{up-sample}(h^{(M)}) \\in \\mathbb{R}^{T \\times d}$, fed into a 2-layer decoder for token-level pre-training (<span class="term" data-term="mlm">MLM</span>).'
+      },
+      'flop-reinvestment': {
+        title: 'FLOP Reinvestment',
+        body: 'Spending the compute saved by sequence compression ($T/2, T/4$) on stacking deeper blocks (e.g. 18-layer B6-6-6 instead of 12-layer L12) to get higher accuracy at lower total FLOPs.'
       }
     };
 
-    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
-    function checkFastForward() {
-      var raw = document.getElementById('ff-input').value.trim().replace(/x$/i, '');
-      var fb = document.getElementById('ff-feedback');
-      fb.style.display = 'block';
-      if (raw === '4' || raw === '4.0' || raw === '1/4') {
-        fb.innerHTML = '<strong>Verified.</strong> Halving both query length ($T/2$) and key length ($T/2$) shrinks the $(T/2)\\times(T/2)$ attention matrix by $2 \\times 2 = 4\\times$. Section 1 collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Section 1</button>';
-        toggleScaffolding(false);
-      } else {
-        fb.innerHTML = 'Not quite (hint: both rows $T/2$ and columns $T/2$ halve inside the block, so $(T/2)^2 = T^2 / 4$). Work through Section 1 below.';
-      }
-      renderMathIn(fb);
-    }
-
-    function toggleScaffolding(show) {
-      var el = document.getElementById('scaffolding-section');
-      if (el) { el.style.display = show ? 'block' : 'none'; }
-    }
-
-    /* ---------- Stage 1 & 2: POE + Refutation ---------- */
-    function runPOE(choice) {
-      document.getElementById('poe-reveal').style.display = 'block';
-      var svg = document.getElementById('poe-svg');
-      var guessNote = choice === 'A' ? 'Your guess: Both = 6' : choice === 'B' ? 'Your guess: Case B = 4 (Correct!)' : choice === 'C' ? 'Your guess: Case B = 12' : 'Skipped guess';
-
-      var html = '';
-      html += '<text x="10" y="20" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">' + guessNote + ' | Input tokens: v1 = 2 ("not", weight 3/4), v2 = 10 ("very", weight 1/4)</text>';
-
-      html += '<text x="10" y="54" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Case A (Pool Q,K,V):</text>';
-      html += '<rect x="150" y="38" width="180" height="22" fill="#fff" stroke="#000" stroke-dasharray="4 2"/>';
-      html += '<rect x="150" y="38" width="150" height="22" fill="#ccc" stroke="#000"/>';
-      html += '<text x="338" y="54" font-family="monospace" font-size="12" font-weight="bold" fill="#000">(2+10)/2 = 6 (blind 50/50)</text>';
-
-      html += '<text x="10" y="92" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Case B (Pool-Q-Only):</text>';
-      html += '<rect x="150" y="76" width="180" height="22" fill="#fff" stroke="#000"/>';
-      html += '<rect x="150" y="76" width="100" height="22" fill="#000"/>';
-      html += '<text x="338" y="92" font-family="monospace" font-size="12" font-weight="bold" fill="#000">(3/4)(2)+(1/4)(10) = 4</text>';
-      svg.innerHTML = html;
-
-      var ref = document.getElementById('poe-refutation');
-      ref.innerHTML = '<div class="refutation-title">Misconception Refutation</div>' +
-        '<p style="margin:0;">Most people guess that pooling before or during attention gives roughly the same summary because pooling is linear. ' +
-        'That breaks here because <strong>softmax attention weights are content-dependent</strong>: pooling $K$ and $V$ first (Case A) irreversibly fuses <code>"not"</code> ($2$) and <code>"very"</code> ($10$) into their unweighted midpoint $6$ before attention ever sees the keys, whereas <strong>Pool-Query-Only</strong> (Case B) lets the pooled query attend selectively over the unpooled tokens to compute $\\frac{3}{4}(2) + \\frac{1}{4}(10) = 4$.</p>';
-      renderMathIn(ref);
-    }
-
-    /* ---------- Worked Example Inline Faded Checks ---------- */
-    function checkWorked1() {
-      var v = parseFloat(document.getElementById('wk1-input').value);
-      var fb = document.getElementById('wk1-feedback');
-      fb.style.display = 'block';
-      if (!isNaN(v) && Math.abs(v - 25) <= 0.01) {
-        fb.innerHTML = '<strong>Correct ($h^{\\text{out}}_2 = 25$).</strong> The attention output is $\\frac{1}{4}(10) + \\frac{3}{4}(14) = 2.5 + 10.5 = 13$, which adds onto the pooled residual $h\'_2 = 12$ to yield $12 + 13 = 25$.';
-      } else {
-        fb.innerHTML = 'Not quite. Add the pooled residual $h\'_2 = 12$ to the weighted value sum $2.5 + 10.5 = 13$ to get $12 + 13 = 25$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function checkWorked2() {
-      var v = parseFloat(document.getElementById('wk2-input').value);
-      var fb = document.getElementById('wk2-feedback');
-      fb.style.display = 'block';
-      if (!isNaN(v) && Math.abs(v - 17) <= 0.01) {
-        fb.innerHTML = '<strong>Correct ($g_4 = 17$).</strong> Adding $h^{(1)} = [1, 3, 5, 7]$ to the repeated vector $h^{\\text{up}} = [10, 10, 10, 10]$ produces distinct fused representations $g = [11, 13, 15, 17]$ across all 4 token positions.';
-      } else {
-        fb.innerHTML = 'Not quite. Add the local Block-1 state $h^{(1)}_4 = 7$ to the upsampled value $h^{\\text{up}}_4 = 10$ to get $7 + 10 = 17$.';
-      }
-      renderMathIn(fb);
-    }
-
-    /* ---------- Stage 3: Discrete Stepper + Persistent Small Multiples ---------- */
-    var FUNNEL_STEPS = [
-      {
-        title: 'Step 1: Flat L12',
-        blocks: [
-          { label: 'B1: 4L @ T', cost: 4.0, lenW: 110 },
-          { label: 'B2: 4L @ T', cost: 4.0, lenW: 110 },
-          { label: 'B3: 4L @ T', cost: 4.0, lenW: 110 }
-        ],
-        total: '12.0 units (100%)',
-        note: 'Step 1 (Standard Flat L12): All 12 layers process 100% of tokens (length T). Total cost = 4(1.0) + 4(1.0) + 4(1.0) = 12.0 full-layer units.'
-      },
-      {
-        title: 'Step 2: Funnel B4-4-4',
-        blocks: [
-          { label: 'B1: 4L @ T', cost: 4.0, lenW: 110 },
-          { label: 'B2: 4L @ T/2', cost: 2.0, lenW: 55 },
-          { label: 'B3: 4L @ T/4', cost: 1.0, lenW: 28 }
-        ],
-        total: '7.0 units (58%)',
-        note: 'Step 2 (Matched-Depth Funnel B4-4-4): Block 2 runs 4 layers at T/2 (4 x 0.5 = 2.0 units) and Block 3 runs 4 layers at T/4 (4 x 0.25 = 1.0 unit). Total cost drops from 12.0 to 7.0 units (-42% FLOPs).'
-      },
-      {
-        title: 'Step 3: Deep B6-6-6',
-        blocks: [
-          { label: 'B1: 6L @ T', cost: 6.0, lenW: 110 },
-          { label: 'B2: 6L @ T/2', cost: 3.0, lenW: 55 },
-          { label: 'B3: 6L @ T/4', cost: 1.5, lenW: 28 }
-        ],
-        total: '10.5 units (88%)',
-        note: 'Step 3 (FLOP-Reinvested B6-6-6, 18 Layers): Reinvesting saved FLOPs into 6 layers per block gives 18 layers total for 6(1.0) + 6(0.5) + 6(0.25) = 10.5 units—still 12.5% cheaper than flat 12-layer BERT while substantially deeper.'
-      }
-    ];
-
-    function setFunnelStep(idx) {
-      for (var i = 0; i < 3; i++) {
-        var btn = document.getElementById('step-btn-' + i);
-        if (btn) { btn.classList.toggle('active', i === idx); }
-      }
-      renderFunnelSmallMultiples(idx);
-      document.getElementById('funnel-step-explain').textContent = FUNNEL_STEPS[idx].note;
-    }
-
-    function renderFunnelSmallMultiples(activeIdx) {
-      var grid = document.getElementById('funnel-sm-grid');
-      if (!grid) { return; }
-      var html = '';
-      FUNNEL_STEPS.forEach(function (st, idx) {
-        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
-        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.84em; margin-bottom:4px;">' + st.title + '</div>';
-        html += '<svg viewBox="0 0 205 92" width="205" height="92" role="img" aria-label="' + st.title + '">';
-        st.blocks.forEach(function (b, j) {
-          var y = 6 + j * 23;
-          html += '<text x="2" y="' + (y + 13) + '" font-family="monospace" font-size="10" fill="#000">' + b.label + '</text>';
-          html += '<rect x="78" y="' + y + '" width="110" height="16" fill="#fff" stroke="#000" stroke-width="1"/>';
-          html += '<rect x="78" y="' + y + '" width="' + b.lenW + '" height="16" fill="#000"/>';
-        });
-        html += '<text x="2" y="86" font-family="monospace" font-size="10.5" font-weight="bold" fill="#000">Cost: ' + st.total + '</text>';
-        html += '</svg></div>';
-      });
-      grid.innerHTML = html;
-    }
-
-    /* ---------- Micro-Prediction Gate & Simulator ---------- */
-    function checkSimGate(skip) {
-      var fb = document.getElementById('gate-feedback');
-      fb.style.display = 'block';
-      var v = parseFloat(document.getElementById('gate-input').value);
-      if (skip || (!isNaN(v) && Math.abs(v - 7) <= 0.05)) {
-        fb.innerHTML = '<strong>Verified ($7\\text{ units}$).</strong> $4(1) + 4(0.5) + 4(0.25) = 4 + 2 + 1 = 7\\text{ units}$ (saving $5\\text{ units}$, or $41.7\\%$, vs. $12$ flat layers). Explorer unlocked below.';
-        document.getElementById('sim-unlocked').style.display = 'block';
-        updateFunnelSim();
-      } else {
-        fb.innerHTML = 'Not quite. Add the 3 blocks: $4\\times 1.0 = 4$ (Block 1) $+\\; 4\\times 0.5 = 2$ (Block 2) $+\\; 4\\times 0.25 = 1$ (Block 3) $= 7$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function setFunnelPreset(lPerBlock, decLayers) {
-      document.getElementById('l-slider').value = lPerBlock;
-      document.getElementById('dec-slider').value = decLayers;
-      updateFunnelSim();
-    }
-
-    function updateFunnelSim() {
-      var lSlider = document.getElementById('l-slider');
-      var decSlider = document.getElementById('dec-slider');
-      var svg = document.getElementById('funnel-svg');
-      if (!lSlider || !decSlider || !svg) { return; }
-
-      var L = parseInt(lSlider.value, 10);
-      var D = parseInt(decSlider.value, 10);
-
-      document.getElementById('l-val').textContent = L + ' (B' + L + '-' + L + '-' + L + ', ' + (3 * L) + 'L enc)';
-      document.getElementById('dec-val').textContent = D + (D === 0 ? ' (Classification only)' : ' (MLM / token task)');
-
-      var b1Ffn = L * 1.0;
-      var b2Ffn = L * 0.5;
-      var b3Ffn = L * 0.25;
-      var decFfn = D * 1.0;
-      var totFfn = b1Ffn + b2Ffn + b3Ffn + decFfn;
-
-      /* Quadratic attention matrix cost: 1st layer of compressed block is (T_m x T_{m-1}), remaining L-1 layers are (T_m x T_m) */
-      var b1Attn = L * 1.0;
-      var b2Attn = 0.5 + (L - 1) * 0.25;
-      var b3Attn = 0.125 + (L - 1) * 0.0625;
-      var decAttn = D * 1.0;
-      var totAttn = b1Attn + b2Attn + b3Attn + decAttn;
-
-      document.getElementById('st-layers').textContent = (3 * L) + ' enc + ' + D + ' dec';
-      document.getElementById('st-ffn').textContent = fmt(totFfn, 1) + ' / 12.0 (' + Math.round((totFfn / 12) * 100) + '%)';
-      document.getElementById('st-attn').textContent = fmt(totAttn, 2) + ' / 12.0 (' + Math.round((totAttn / 12) * 100) + '%)';
-      document.getElementById('st-len').textContent = D > 0 ? 'T/4 -> upsampled T' : 'T / 4 (25%)';
-
-      var maxBar = 16.0;
-      var scale = 230 / maxBar;
-      var rows = [
-        { label: 'Flat L12 Base', val: 12.0, dashed: true },
-        { label: 'Funnel FFN Cost', val: totFfn, dashed: false },
-        { label: 'Funnel Attn Cost', val: totAttn, dashed: false }
-      ];
-
-      var out = '';
-      rows.forEach(function (r, i) {
-        var y = 14 + i * 38;
-        var w = Math.min(230, Math.max(3, Math.round(r.val * scale)));
-        out += '<text x="8" y="' + (y + 17) + '" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">' + r.label + '</text>';
-        out += '<rect x="132" y="' + y + '" width="230" height="23" fill="#fff" stroke="#000" stroke-width="1"/>';
-        if (r.dashed) {
-          out += '<rect x="132" y="' + y + '" width="' + w + '" height="23" fill="#ccc" stroke="#000" stroke-dasharray="4 2"/>';
-        } else {
-          out += '<rect x="132" y="' + y + '" width="' + w + '" height="23" fill="#000"/>';
-        }
-        out += '<text x="368" y="' + (y + 17) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">' + fmt(r.val, 2) + ' u</text>';
-      });
-      svg.innerHTML = out;
-    }
-
-    /* ---------- Stage 4: Backward-Faded & Boundary Checks ---------- */
-    function checkFaded() {
-      var v = parseFloat(document.getElementById('fade-input').value);
-      var fb = document.getElementById('fade-feedback');
-      fb.style.display = 'block';
-      if (!isNaN(v) && Math.abs(v - 16) <= 0.01) {
-        fb.innerHTML = '<strong>Correct ($16\\text{ pairs}$).</strong> Block 1 interior layers evaluate $8\\times 8 = 64$ pairs; the Pool-Query-Only transition layer evaluates $4\\times 8 = 32$ pairs; and Block 2 interior layers evaluate $4\\times 4 = 16$ pairs (a $4\\times$ drop).';
-      } else {
-        fb.innerHTML = 'Not quite. Multiply the compressed query length $T_2 = 4$ by the compressed key length $T_2 = 4$ to get $4 \\times 4 = 16$ pairs.';
-      }
-      renderMathIn(fb);
-    }
-
-    function checkBoundary1() {
-      var raw = document.getElementById('bc-rep').value.trim();
-      var fb = document.getElementById('bc1-feedback');
-      fb.style.display = 'block';
-      if (raw === '4' || raw === '4.0') {
-        fb.innerHTML = '<strong>Correct ($4$ identical adjacent tokens).</strong> With $M = 3$ blocks, $\\text{up-sample}(h^{(3)})$ repeats each vector $2^{3-1} = 4$ times ($h^{\\text{up}}_i = h^{(3)}_{\\lfloor i/4 \\rfloor}$). Without adding the distinct Block-1 states $h^{(1)}$, every group of 4 neighboring tokens has identical queries, keys, and values, collapsing token-level MLM accuracy.';
-      } else {
-        fb.innerHTML = 'Not quite. With $M = 3$ blocks, the sequence halved twice ($T \\to T/2 \\to T/4$), so the repeat factor is $2^{M-1} = 2^2 = 4$ identical adjacent tokens.';
-      }
-      renderMathIn(fb);
-    }
-
-    function checkBoundary2(choice) {
-      var fb = document.getElementById('bc2-feedback');
-      fb.style.display = 'block';
-      if (choice === 'A') {
-        fb.innerHTML = '<strong>Correct.</strong> Strided pooling averages token $2i-1$ with future token $2i$, and subsequent upsampling broadcasts that merged state back to position $2i-1$. In an autoregressive decoder, position $2i-1$ would illegally see token $2i$ before predicting it.';
-      } else {
-        fb.innerHTML = 'Not quite. Causal self-attention still uses a square $T \\times T$ lower-triangular mask; the real issue is that pooling adjacent tokens $(2i-1, 2i)$ leaks future token $2i$ backward into position $2i-1$.';
-      }
-      renderMathIn(fb);
-    }
-
     var SPACED_CARDS = [
       {
-        q: 'How does Funnel-Transformer\'s "Pool-Query-Only" attention work at a block transition where sequence length halves from $T$ to $T/2$?',
-        a: 'It pools the hidden states to half length $h\' = \\text{Pool}(h) \\in \\mathbb{R}^{(T/2)\\times d}$ and uses $h\'$ only for the queries $Q$ and the residual shortcut, while keeping the full unpooled sequence $h \\in \\mathbb{R}^{T\\times d}$ as keys $K$ and values $V$: $h \\leftarrow \\text{LayerNorm}(h\' + \\text{Attn}(Q=h\', K=h, V=h))$.'
+        q: 'In Funnel-Transformer, what is the difference between naive pre-pooling and Pool-Query-Only attention at a block transition ($T \\to T/2$)?',
+        a: 'Naive pre-pooling averages $Q, K, V$ to length $T/2$ before attention (forcing a blind 50/50 average of adjacent tokens). Pool-Query-Only pools only the queries $Q = h\'$ (and residual base) to length $T/2$ while keeping keys and values at unpooled length $T$ ($K = V = h$), so attention learns content-weighted compression.'
       },
       {
-        q: 'Why does Funnel-Transformer apply the "Separate-CLS" rule during stride-2 sequence pooling?',
-        a: 'Slicing off <code>[CLS]</code> before pooling and prepending it back afterward prevents the global sequence-level summary vector from being averaged together with local words at the start of the sentence.'
+        q: 'Why does Funnel-Transformer slice off the <code>[CLS]</code> token before stride-2 pooling (Separate-CLS)?',
+        a: 'Without isolating <code>[CLS]</code>, stride-2 window pooling would average the global <code>[CLS]</code> summary vector with the first content words of the sentence at every block transition.'
       },
       {
-        q: 'How does Funnel-Transformer recover full length-$T$ token representations for Masked Language Modeling (MLM) or SQuAD, and what is the bridge equation?',
-        a: 'It uses a single-shot bridge upsampler that repeats each compressed vector $2^{M-1}$ times ($h^{\\text{up}}_i = h^{(M)}_{\\lfloor i/2^{M-1} \\rfloor}$) and adds the uncompressed Block-1 states $h^{(1)}$ via a residual skip connection ($g = h^{(1)} + \\text{up-sample}(h^{(M)})$), followed by 2 standard Transformer decoder layers.'
+        q: 'How does Funnel-Transformer recover full length-$T$ token representations for Masked Language Modeling ($g = h^{(1)} + \\text{up-sample}(h^{(M)})$), and why is $h^{(1)}$ needed?',
+        a: 'It repeats each final compressed vector $2^{M-1}$ times to reach length $T$ and adds the uncompressed Block-1 states $h^{(1)}$. Without adding $h^{(1)}$, every block of $2^{M-1}$ adjacent upsampled positions would be identical copies.'
       },
       {
-        q: 'What breaks in Funnel-Transformer\'s decoder if you delete the $h^{(1)}$ skip connection from $g = h^{(1)} + \\text{up-sample}(h^{(M)})$?',
-        a: 'Because $\\text{up-sample}(h^{(M)})$ simply repeats each bottleneck vector $2^{M-1}$ times, every group of $2^{M-1}$ adjacent token positions would receive the exact same vector, destroying local token identity and collapsing MLM/token-level accuracy.'
-      },
-      {
-        q: 'When Funnel-Transformer halves sequence length ($T \\to T/2$), by what factor do per-layer self-attention matrix FLOPs ($O(T^2 d)$) and FFN FLOPs ($O(T d^2)$) drop inside the compressed block?',
-        a: 'Self-attention score/aggregation FLOPs ($O(T^2 d)$) drop by $4\\times$ because both query and key lengths halve, while linear projection and FFN FLOPs ($O(T d^2)$) drop by $2\\times$.'
-      },
-      {
-        q: 'How does Funnel-Transformer use "FLOP reinvestment" (e.g., B6-6-6 vs. flat 12-layer BERT-Base) to improve GLUE and RACE accuracy without increasing compute?',
-        a: 'Because layers in the $T/2$ and $T/4$ blocks cost $2\\times$ to $4\\times$ fewer FLOPs, it stacks more layers per block (e.g., 18 layers in B6-6-6 costing $\\le 10.5$ full-layer equivalents vs. 12 flat layers), trading sequential redundancy for deeper compositional capacity.'
+        q: 'Why can\'t stride-2 Funnel pooling with bridge upsampling be used directly inside a causal left-to-right GPT decoder?',
+        a: 'Pooling adjacent tokens $(2i-1, 2i)$ and upsampling back to both positions mixes token $2i$ into position $2i-1$, leaking future right-hand token information backward across the causal mask.'
       }
     ];
-
-    document.addEventListener('DOMContentLoaded', function () {
-      setFunnelStep(0);
-    });
   </script>
 </body>
 </html>
