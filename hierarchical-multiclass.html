@@ -13,95 +13,41 @@
 </head>
 <body>
   <main>
-    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
     <h1>Hierarchical Multiclass Classification: Taxonomy Losses, Chain-Rule Routing &amp; Rollup</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Why flat <span class="term" data-term="cross-entropy">cross-entropy</span> fails on trees:</strong> Standard $K$-way <span class="term" data-term="softmax">softmax</span> treats every wrong <span class="term" data-term="leaf-node">leaf</span> as equally wrong (<span class="term" data-term="tree-distance">tree distance</span> ignored). Worse, picking the highest-probability leaf (<span class="term" data-term="flat-argmax">leaf argmax</span>) lets an unsplit class win even when two sibling leaves share $60\%$ of the total mass on a rival branch.</li>
-        <li><strong>Chain-rule factorization vs. leaf rollup:</strong> Along any root-to-leaf path <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span>, a leaf's probability is the product of <span class="term" data-term="local-classifier">local parent-to-child conditionals</span>: <span class="term" data-term="chain-rule-tree">$P(y) = \prod_{v \in \text{Anc}(y)} P(v \mid \text{pa}(v))$</span>. In reverse, a parent node's probability is the exact sum of its descendant leaves (<span class="term" data-term="bottom-up-rollup">bottom-up rollup</span>): $P(u) = \sum_{\ell \in \text{Leaves}(u)} P(\ell)$.</li>
-        <li><strong>Stopping at an internal node (<span class="term" data-term="selective-backoff">selective abstention</span>):</strong> When leaf uncertainty is high but parent branch mass $P(u)$ is high, backing off to the parent node avoids a high-cost leaf guess while preserving actionable <span class="term" data-term="hierarchical-f1">hierarchical precision and recall ($hF_1$)</span>.</li>
-        <li><strong>Where top-down routing breaks:</strong> <span class="term" data-term="greedy-routing">Greedy top-down routing</span> commits to the winning child at level 1 and prunes all other branches forever (<span class="term" data-term="error-propagation">error propagation</span>). Either sum/multiply full path probabilities across the tree or decode with <span class="term" data-term="beam-search-tree">beam search</span>.</li>
-      </ul>
-    </div>
+    <p>
+      Most real-world classification catalogs are not flat lists of unrelated labels; they are trees. An e-commerce catalog splits into <strong>Apparel</strong> and <strong>Electronics</strong>, <strong>Apparel</strong> splits into <strong>Footwear</strong> and <strong>Outerwear</strong>, and <strong>Footwear</strong> splits into fine-grained leaves like <code>Boot</code>, <code>Sneaker</code>, and <code>RunningSandal</code>. Similarly, medical billing codes (ICD-10) and biological species sit inside strict parent-child taxonomies where every leaf belongs to a hierarchy of broader categories.
+    </p>
+    <p>
+      If you ignore that tree and train a standard flat <span class="term" data-term="softmax">softmax</span> classifier over all $L$ leaf classes with <span class="term" data-term="cross-entropy">cross-entropy</span>, two bad things happen. During training, flat cross-entropy treats mistaking a <code>Pug</code> for its sibling <code>Husky</code> as the exact same penalty as mistaking a <code>Pug</code> for a <code>DumpTruck</code>. Worse, at test time, picking the single leaf with the highest score (<span class="term" data-term="flat-argmax">flat leaf argmax</span>) falls victim to a vote-splitting trap: whenever a model is sure an item belongs to a broad branch like <strong>Footwear</strong> ($60\%$ total probability) but unsure which exact shoe style it is, it splits that $60\%$ across several sibling shoe leaves—letting an unrelated, unsplit leaf like <code>Cable</code> ($40\%$) steal first place.
+    </p>
+    <p>
+      Respecting the tree fixes both problems. By coupling parent and child probabilities—either bottom-up by summing leaf probabilities into their parent branches (<span class="term" data-term="bottom-up-rollup">rollup</span>), or top-down by multiplying local parent-to-child conditionals (<span class="term" data-term="chain-rule-tree">chain-rule factorization</span>)—the model keeps its probability mass consistent across every level of the tree and can safely back off to a parent category like <code>Footwear</code> whenever the leaf-level photo is too blurry to call.
+    </p>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Formula / Invariant</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="sym-pa">$\text{pa}(v)$</span>, <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span></td>
-            <td>Immediate parent of node $v$, and the path of all non-root ancestor nodes from root to leaf $y$ (inclusive)</td>
-            <td class="num">$\text{Root} \to u \to y$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="bottom-up-rollup">$P(u)$</span></td>
-            <td>Marginal probability of internal branch node $u$, obtained by summing its descendant <span class="term" data-term="leaf-node">leaves</span></td>
-            <td class="num">$P(u) = \sum_{\ell \in \text{Leaves}(u)} P(\ell)$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="tree-distance">$d_T(y, \hat{y})$</span></td>
-            <td>Shortest-path edge count between true leaf $y$ and predicted leaf $\hat{y}$ through their <span class="term" data-term="lca">Lowest Common Ancestor (LCA)</span></td>
-            <td class="num">Sibling $= 2$, Cousin $= 4$</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="hierarchical-f1">$hP, hR, hF_1$</span></td>
-            <td>Hierarchical precision, recall, and $F_1$ computed by intersecting ancestor sets $|\text{Anc}(y) \cap \text{Anc}(\hat{y})|$</td>
-            <td class="num">Partial credit for shared branch</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already know tree chain-rule factorization and bottom-up probability rollup? Solve this mental-math check to collapse Section 1 and jump straight to the mechanism traces.</p>
-      <div class="control-row">
-        <label for="ff-input">A parent branch $A$ has marginal probability $P(A) = \frac{1}{2}$ (so $-\log_2 P(A) = 1\text{ bit}$), and its child leaf $A_1$ has conditional probability $P(A_1 \mid A) = \frac{1}{4}$ ($2\text{ bits}$). What is the joint leaf cross-entropy $-\log_2 P(A, A_1)$ in bits?</label>
-        <input type="text" id="ff-input" placeholder="Enter integer bits" style="flex:1; min-width:140px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#s1">1. Contrasting Cases: The Split-Vote Trap in Flat Leaf Argmax</a></li>
-        <li><a href="#s2">2. Chain-Rule Factorization vs. Bottom-Up Rollup &amp; Equation Anatomy</a></li>
-        <li><a href="#s3">3. Tree-Distance Cost, LCA Metrics ($hF_1$) &amp; Selective Backoff</a></li>
-        <li><a href="#s4">4. Backward-Faded Practice &amp; Boundary Counterexamples</a></li>
-        <li><a href="#s5">5. Contrastive Matrix, Diagnostic Checks &amp; Spaced Cards</a></li>
-      </ol>
-    </nav>
-
-    <!-- === STAGE 1 & 2: CONTRASTING 2-CASE PREDICTION HOOK & REFUTATION === -->
     <div id="scaffolding-section">
-      <h2 id="s1">1. Contrasting cases: why flat leaf argmax picks the wrong branch</h2>
+      <h2 id="s1">1. The Split-Vote Trap in Flat Leaf Argmax</h2>
       <p>
-        Suppose an e-commerce catalog has two top-level branches—<strong>Apparel</strong> and <strong>Electronics</strong>—and three leaf classes:
+        Let's trace that vote-splitting failure on a minimal 3-leaf product catalog with two top-level branches, <strong>Apparel</strong> and <strong>Electronics</strong>:
       </p>
       <ul>
-        <li><strong>Apparel</strong> splits into two fine-grained sibling leaves: <code>Boot</code> and <code>Sneaker</code>.</li>
-        <li><strong>Electronics</strong> has a single coarse leaf: <code>Cable</code>.</li>
+        <li><strong>Apparel</strong> splits into two sibling footwear leaves: <code>Boot</code> and <code>Sneaker</code>.</li>
+        <li><strong>Electronics</strong> has a single unsplit leaf: <code>Cable</code>.</li>
       </ul>
       <p>
-        A user uploads a blurry photo of footwear. Because the model cannot tell whether the shoe is a boot or a sneaker, it splits the footwear probability across the two siblings, outputting flat leaf probabilities:
+        A seller uploads a blurry photo of a dark shoe. Because the classifier cannot tell whether the shoe is a boot or a sneaker, it divides the footwear probability evenly between the two sibling leaves, outputting valid leaf probabilities that sum to $100\%$:
         $$P(\text{Boot}) = 30\%, \qquad P(\text{Sneaker}) = 30\%, \qquad P(\text{Cable}) = 40\%$$
       </p>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Predict-Observe-Explain (Contrasting Cases First)</div>
-        <h3>Prediction: Compare Flat Leaf Argmax vs. Hierarchical Branch Rollup</h3>
-        <p>What does a standard flat classifier predict here, and what is the true probability that the item belongs to the <strong>Apparel</strong> branch?</p>
+        <div class="widget-label">Quick Prediction</div>
+        <h3>Flat Leaf Argmax vs. Branch Probability Rollup</h3>
+        <p>What class does standard flat leaf argmax predict here, and what is the true probability that the item belongs to the <strong>Apparel</strong> branch?</p>
         <div class="control-row">
           <button class="btn btn-small" onclick="runPOE('A')">A) Both flat argmax and branch rollup pick Electronics (40%)</button>
           <button class="btn btn-small" onclick="runPOE('B')">B) Flat argmax picks Cable (40%), even though Apparel holds 30% + 30% = 60% of the probability mass</button>
-          <button class="btn btn-small" onclick="runPOE('C')">C) Flat argmax averages Boot and Sneaker to 30% andabstains</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) Flat argmax averages Boot and Sneaker to 30% and abstains</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
         </div>
         <div id="poe-reveal" style="display:none;">
           <div class="figure-box">
@@ -112,24 +58,28 @@
       </div>
     </div>
 
-    <!-- === STAGE 3A: CHAIN-RULE FACTORIZATION VS BOTTOM-UP ROLLUP === -->
-    <h2 id="s2">2. Chain-rule factorization vs. bottom-up rollup</h2>
+    <h2 id="s2">2. Coupling Parent and Leaf Probabilities: Chain Rule vs. Bottom-Up Rollup</h2>
     <p>
-      In a strict <span class="term" data-term="taxonomy-tree">tree taxonomy</span>, every leaf <span class="term" data-term="leaf-node">$y$</span> has a unique path of ancestors <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span> from the root. That tree structure gives you two mathematically equivalent ways to couple parent and leaf probabilities so they stay 100% consistent:
+      In a strict <span class="term" data-term="taxonomy-tree">tree taxonomy</span>, every leaf <span class="term" data-term="leaf-node">$y$</span> has a single unique path of ancestor nodes <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span> leading down from the root, and the leaves under any parent node $u$ are mutually exclusive events. Basic probability demands one consistency law across the tree: <strong>a parent node's probability must equal the exact sum of its children's probabilities</strong>.
     </p>
-    <ol>
-      <li><strong>Top-Down Conditional Factorization (<span class="term" data-term="local-classifier">Local Classifiers</span>):</strong> Train a small softmax at each parent node <span class="term" data-term="sym-pa">$\text{pa}(v)$</span> over its immediate children. By the <span class="term" data-term="chain-rule-tree">chain rule of probability</span>, a leaf's probability is the product of conditionals along its root-to-leaf path, and the total loss is the <strong>sum of local cross-entropies</strong> along that path.</li>
-      <li><strong>Bottom-Up Marginal Rollup (Flat Leaf Head + Sum):</strong> Keep a single flat softmax over all $L$ leaves, and define every internal parent node's probability as the exact sum of its descendant leaves: <span class="term" data-term="bottom-up-rollup">$P(u) = \sum_{\ell \in \text{Leaves}(u)} P(\ell)$</span>.</li>
-    </ol>
+    <p>
+      If you violate that law by training independent binary <span class="term" data-term="sigmoid-inconsistency">sigmoid</span> classifiers at every node, your model will regularly output embarrassing <span class="term" data-term="hierarchy-violation">hierarchy violations</span> at test time—like predicting $P(\text{Pug}) = 0.80$ while its own parent node predicts $P(\text{Dog}) = 0.20$. Instead, you can guarantee $100\%$ tree consistency in one of two mathematically equivalent ways.
+    </p>
+    <p>
+      The first way is <strong>top-down <span class="term" data-term="chain-rule-tree">chain-rule factorization</span></strong>: place a small <span class="term" data-term="local-classifier">local softmax</span> at each parent node <span class="term" data-term="sym-pa">$\text{pa}(v)$</span> that only predicts conditional probabilities $P(v \mid \text{pa}(v))$ among its immediate children. To get the joint probability of a leaf at the bottom of the tree, you multiply the conditional probabilities along its ancestor path <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span>. And because the logarithm of a product is the sum of the logarithms, the hierarchical cross-entropy loss of a leaf simply adds the local cross-entropy losses at every level along its path.
+    </p>
+    <p>
+      The second way is <strong><span class="term" data-term="bottom-up-rollup">bottom-up marginal rollup</span></strong>: keep a single flat softmax head over all $L$ leaves, and compute any internal parent node's probability $P(u)$ by summing the probabilities of all descendant leaves in its subtree: $P(u) = \sum_{\ell \in \text{Leaves}(u)} P(\ell)$. Even with a single leaf softmax head, you can add a multi-level training loss $\mathcal{L}_{\text{total}} = -\log P(y) - \lambda \log P(\text{pa}(y))$ so that rare leaves with only a handful of training examples still get pulled into the right parent branch by thousands of sibling examples.
+    </p>
 
     <div class="worked">
-      <p><strong>Worked mental-math trace in base-2 bits (3-level taxonomy: $\text{Root} \to \text{Animal} \to \text{Dog} \to \text{Pug}$):</strong></p>
+      <p><strong>Tracing top-down chain-rule loss in base-2 bits ($\text{Root} \to \text{Animal} \to \text{Dog} \to \text{Pug}$):</strong></p>
       <p>
-        Suppose at each node along the path to <code>Pug</code>, our <span class="term" data-term="local-classifier">local classifiers</span> assign dyadic powers of $\frac{1}{2}$ (distinct numbers so you can trace each level):<br>
+        Suppose at each split along the path to <code>Pug</code>, our <span class="term" data-term="local-classifier">local classifiers</span> assign distinct powers of $\frac{1}{2}$ so every base-2 logarithm is an exact integer:<br>
         1. <strong>Level 1 (Root $\to$ Animal vs. Vehicle):</strong> $P(\text{Animal} \mid \text{Root}) = \mathbf{\frac{1}{2}} \implies -\log_2 P = \mathbf{1\text{ bit}}$.<br>
         2. <strong>Level 2 (Animal $\to$ Dog vs. Cat):</strong> $P(\text{Dog} \mid \text{Animal}) = \mathbf{\frac{1}{4}} \implies -\log_2 P = \mathbf{2\text{ bits}}$.<br>
         3. <strong>Level 3 (Dog $\to$ Pug vs. Husky):</strong> $P(\text{Pug} \mid \text{Dog}) = \mathbf{\frac{1}{8}} \implies -\log_2 P = \mathbf{3\text{ bits}}$.<br>
-        <strong>Your turn &mdash; multiplying probabilities $\frac{1}{2} \times \frac{1}{4} \times \frac{1}{8} = \frac{1}{64}$ adds their base-2 bit losses. What is the total hierarchical cross-entropy $\mathcal{L}_{\text{hier}}(\text{Pug})$ in bits?</strong>
+        <strong>Your turn &mdash; multiplying the three path conditionals $\frac{1}{2} \times \frac{1}{4} \times \frac{1}{8} = \frac{1}{64}$ adds their bit losses. What is the total hierarchical cross-entropy $\mathcal{L}_{\text{hier}}(\text{Pug})$ in bits?</strong>
       </p>
       <div class="control-row">
         <label for="wk1-input">$\mathcal{L}_{\text{hier}}(\text{Pug}) = 1 + 2 + 3 =$</label>
@@ -142,60 +92,30 @@
 
     <div class="math-block">
       $$P(y) = \prod_{v \in \text{Anc}(y)} P\bigl(v \mid \text{pa}(v)\bigr), \qquad \mathcal{L}_{\text{hier}}(y) = -\log_2 P(y) = \sum_{v \in \text{Anc}(y)} \bigl[-\log_2 P\bigl(v \mid \text{pa}(v)\bigr)\bigr]$$
-      <div class="math-hint">Why train with multi-level loss $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{leaf}} + \lambda\,\mathcal{L}_{\text{parent}}$ even if you use a single trunk? Because rare leaves with only 5 training examples share the parent term $-\log P(u)$ with prolific siblings, pulling the shared representation into the right coarse branch.</div>
+      <div class="math-hint">Watch out for a common inference trap with top-down local classifiers: if you use <span class="term" data-term="greedy-routing">greedy top-down routing</span> (picking only the winning branch at Level 1 and throwing away the runner-up branch forever), a $51\%$ branch split ten ways ($5.1\%$ per leaf) will beat a $49\%$ branch concentrated on a single $49\%$ leaf! Always multiply full path probabilities or use <span class="term" data-term="beam-search-tree">beam search</span>.</div>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Sub-Expression / Design Choice</th>
-            <th>Functional Subgoal (Job)</th>
-            <th>What Breaks If Deleted or Replaced?</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>Conditional product $\prod_{v \in \text{Anc}(y)} P(v \mid \text{pa}(v))$</strong></td>
-            <td>Guarantees every parent $P(u)$ equals the sum of its children and all leaves sum to $1$</td>
-            <td>If you train independent <span class="term" data-term="sigmoid-inconsistency">per-node sigmoids</span> without conditioning, a child can score $P(\text{Pug}) = 0.80$ while its parent scores $P(\text{Dog}) = 0.20$ (<span class="term" data-term="hierarchy-violation">hierarchy violation</span>).</td>
-          </tr>
-          <tr>
-            <td><strong>Ancestor loss sum $\sum_{v \in \text{Anc}(y)} [-\log P(v \mid \text{pa}(v))]$</strong></td>
-            <td>Penalizes wrong-branch mistakes more heavily than sibling mistakes via shared parent gradients</td>
-            <td>If you drop ancestor terms and only penalize independent local heads without negative sampling, a child classifier $P(\cdot \mid \text{Dog})$ never sees non-Dog images during training and fires wildly on trucks at test time.</td>
-          </tr>
-          <tr>
-            <td><strong>Exact path product vs. <span class="term" data-term="greedy-routing">greedy top-down argmax</span></strong></td>
-            <td>Finds the leaf or branch maximizing true joint probability $P(y)$</td>
-            <td>If you pick $\arg\max$ at Level 1 and prune the runner-up branch, a $51\%$ split branch whose children score $26\%$ and $25\%$ beats a $49\%$ branch with a single $49\%$ leaf!</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- === STAGE 3B: TREE DISTANCE, LCA METRICS (hF1) & SELECTIVE BACKOFF === -->
-    <h2 id="s3">3. Tree-distance cost, LCA metrics ($hF_1$) &amp; selective backoff</h2>
+    <h2 id="s3">3. Grading Mistakes by Tree Distance &amp; Backing Off to a Parent Node</h2>
     <p>
-      Why does hierarchy matter even when the model makes an unavoidable mistake? Because mistaking a <code>Pug</code> for its sibling <code>Husky</code> (<span class="term" data-term="lca">Lowest Common Ancestor</span> $= \text{Dog}$, <span class="term" data-term="tree-distance">tree distance</span> $d_T = 2$ edges) is far less harmful than mistaking a <code>Pug</code> for a <code>DumpTruck</code> ($\text{LCA} = \text{Root}$, $d_T = 6$ edges).
+      Even a well-trained classifier will sometimes face an ambiguous input where it cannot tell two sibling leaves apart. When that happens, flat accuracy treats every non-exact prediction as a total $0\%$ failure. In a hierarchy, we care about <em>how far</em> the prediction landed from the truth.
     </p>
     <p>
-      Flat accuracy scores both mistakes as $0$. <strong><span class="term" data-term="hierarchical-f1">Hierarchical Precision and Recall ($hP, hR, hF_1$)</span></strong> instead grade the full ancestor path <span class="term" data-term="sym-anc">$\text{Anc}(\hat{y})$</span> against the true non-root ancestor path <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span>:
+      We can measure that severity in two ways. First, <span class="term" data-term="tree-distance">tree distance</span> $d_T(y, \hat{y})$ counts the shortest-path edges between the true node $y$ and predicted node $\hat{y}$ through their <span class="term" data-term="lca">Lowest Common Ancestor (LCA)</span>: two siblings like <code>Pug</code> and <code>Husky</code> sit just $2$ edges apart (up to <code>Dog</code> and back down), whereas cousins in different subtrees sit $4$ or $6$ edges apart. Second, <span class="term" data-term="hierarchical-f1">Hierarchical Precision and Recall ($hP, hR, hF_1$)</span> compare the full set of non-root ancestors <span class="term" data-term="sym-anc">$\text{Anc}(\hat{y})$</span> against the true ancestor path <span class="term" data-term="sym-anc">$\text{Anc}(y)$</span>, giving partial credit for every shared ancestor node along the branch:
     </p>
 
     <div class="math-block">
       $$hP = \frac{|\text{Anc}(y) \cap \text{Anc}(\hat{y})|}{|\text{Anc}(\hat{y})|}, \qquad hR = \frac{|\text{Anc}(y) \cap \text{Anc}(\hat{y})|}{|\text{Anc}(y)|}, \qquad \hat{y}_{\text{CRM}} = \arg\min_{\hat{y}} \sum_{y} P(y)\, C(y, \hat{y})$$
-      <div class="math-hint">Here <span class="term" data-term="crm">$C(y, \hat{y})$</span> is the tree-distance cost matrix (e.g. $d_T(y, \hat{y})$). Picking $\hat{y}_{\text{CRM}}$ (<span class="term" data-term="crm">Conditional Risk Minimization</span>) chooses the node with the lowest expected tree-distance penalty—or backs off to an internal parent node $u$ when $P(u) \ge \tau_{\text{parent}}$ while no leaf exceeds $\tau_{\text{leaf}}$.</div>
+      <div class="math-hint">Look at the denominator of $hP$: $|\text{Anc}(\hat{y})|$ is the depth of your prediction. If no leaf is confident enough, <span class="term" data-term="selective-backoff">selective backoff</span> stops at the internal parent node (say, <code>Dog</code> at depth 2 instead of guessing a wrong breed at depth 3), shrinking the denominator of $hP$ so every predicted ancestor is $100\%$ accurate!</div>
     </div>
 
     <div class="worked">
-      <p><strong>Worked trace of Hierarchical Precision, Recall &amp; Backoff on $\text{Animal} \to \text{Dog} \to \text{Pug}$:</strong></p>
+      <p><strong>Tracing Hierarchical Precision, Recall &amp; Backoff on $\text{Animal} \to \text{Dog} \to \text{Pug}$:</strong></p>
       <p>
         True label $y = \text{Pug}$ has <strong>3 non-root ancestors</strong>: $\text{Anc}(y) = \{\text{Animal},\; \text{Dog},\; \text{Pug}\}$ ($|\text{Anc}(y)| = 3$). Compare three predictions:<br>
-        &bull; <strong>Case 1 (Cross-branch mistake $\hat{y} = \text{Truck}$):</strong> $\text{Anc}(\hat{y}) = \{\text{Vehicle},\; \text{Auto},\; \text{Truck}\}$. Intersection $= \emptyset$ ($0$ shared nodes) $\implies hP = 0/3 = \mathbf{0\%}$, $hR = 0/3 = \mathbf{0\%}$.<br>
-        &bull; <strong>Case 2 (Sibling mistake $\hat{y} = \text{Husky}$):</strong> $\text{Anc}(\hat{y}) = \{\text{Animal},\; \text{Dog},\; \text{Husky}\}$ ($|\text{Anc}(\hat{y})| = 3$). Shared ancestors $= \{\text{Animal},\; \text{Dog}\}$ ($2$ nodes) $\implies hP = \mathbf{\frac{2}{3}}$, $hR = \mathbf{\frac{2}{3}}$.<br>
-        &bull; <strong>Case 3 (<span class="term" data-term="selective-backoff">Selective backoff</span> to parent $\hat{y} = \text{Dog}$):</strong> The model abstains at the leaf level and outputs internal node <code>Dog</code>, so $\text{Anc}(\hat{y}) = \{\text{Animal},\; \text{Dog}\}$ ($|\text{Anc}(\hat{y})| = 2$). Both predicted nodes are correct ($|\text{Anc}(y) \cap \text{Anc}(\hat{y})| = 2$), so hierarchical recall is $hR = \frac{2}{3}$.<br>
-        <strong>Your turn &mdash; what is the hierarchical precision $hP = \frac{|\text{Anc}(y) \cap \text{Anc}(\hat{y})|}{|\text{Anc}(\hat{y})|} = \frac{2}{2}$ (in $\%$) when backing off to <code>Dog</code>?</strong>
+        &bull; <strong>Wrong top-level branch ($\hat{y} = \text{Truck}$):</strong> $\text{Anc}(\hat{y}) = \{\text{Vehicle},\; \text{Auto},\; \text{Truck}\}$. Zero overlap $\implies hP = \mathbf{0\%}$, $hR = \mathbf{0\%}$.<br>
+        &bull; <strong>Wrong sibling leaf ($\hat{y} = \text{Husky}$):</strong> $\text{Anc}(\hat{y}) = \{\text{Animal},\; \text{Dog},\; \text{Husky}\}$ ($3$ nodes). Shared ancestors $= \{\text{Animal},\; \text{Dog}\}$ ($2$ nodes) $\implies hP = \mathbf{\frac{2}{3}}$, $hR = \mathbf{\frac{2}{3}}$.<br>
+        &bull; <strong><span class="term" data-term="selective-backoff">Selective backoff</span> to parent ($\hat{y} = \text{Dog}$):</strong> Instead of guessing between <code>Pug</code> and <code>Husky</code>, the model outputs internal node <code>Dog</code>, so $\text{Anc}(\hat{y}) = \{\text{Animal},\; \text{Dog}\}$ ($|\text{Anc}(\hat{y})| = 2$). Both predicted nodes are correct ($|\text{Anc}(y) \cap \text{Anc}(\hat{y})| = 2$), keeping recall at $hR = \frac{2}{3}$.<br>
+        <strong>Your turn &mdash; what is the hierarchical precision $hP = \frac{|\text{Anc}(y) \cap \text{Anc}(\hat{y})|}{|\text{Anc}(\hat{y})|} = \frac{2}{2}$ (in $\%$) when the model backs off to <code>Dog</code>?</strong>
       </p>
       <div class="control-row">
         <label for="wk2-input">Backoff $hP =$</label>
@@ -206,33 +126,32 @@
       <div id="wk2-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <!-- === DISCRETE STEPPER + SMALL MULTIPLES + GATED SIMULATOR === -->
     <div class="interactive-card" id="stepper-widget">
-      <div class="widget-label">Discrete Stepper + Persistent Small Multiples</div>
-      <h3>Compare Flat Argmax vs. Greedy Top-Down vs. Rollup + Selective Backoff</h3>
+      <div class="widget-label">Side-by-Side Routing Comparison</div>
+      <h3>Flat Argmax vs. Rollup Leaf Pick vs. Selective Parent Backoff</h3>
       <p style="margin:0.2rem 0 0.5rem 0; font-size:0.88rem;">
-        Examine a 4-leaf taxonomy where branch <strong>Dog</strong> has leaves $(\text{Pug}=22\%, \text{Husky}=21\%, \text{Beagle}=20\% \implies P(\text{Dog}) = 63\%)$ and branch <strong>Truck</strong> has a single leaf $(\text{Pickup}=37\% \implies P(\text{Truck}) = 37\%)$:
+        Compare how three decision rules handle a 4-leaf taxonomy where branch <strong>Dog</strong> has leaves $(\text{Pug}=22\%, \text{Husky}=21\%, \text{Beagle}=20\% \implies P(\text{Dog}) = 63\%)$ and branch <strong>Truck</strong> has a single leaf $(\text{Pickup}=37\% \implies P(\text{Truck}) = 37\%)$:
       </p>
       <div class="control-row">
-        <button class="btn btn-small active" id="step-btn-0" onclick="setHierStep(0)">Step 1: Flat Leaf Argmax</button>
-        <button class="btn btn-small" id="step-btn-1" onclick="setHierStep(1)">Step 2: Rollup + Leaf Pick</button>
-        <button class="btn btn-small" id="step-btn-2" onclick="setHierStep(2)">Step 3: Selective Backoff</button>
+        <button class="btn btn-small active" id="step-btn-0" onclick="setHierStep(0)">Flat Leaf Argmax</button>
+        <button class="btn btn-small" id="step-btn-1" onclick="setHierStep(1)">Rollup + Leaf Pick</button>
+        <button class="btn btn-small" id="step-btn-2" onclick="setHierStep(2)">Selective Backoff</button>
       </div>
 
       <div class="small-multiples" id="hier-sm-grid"></div>
       <div class="readout" id="hier-step-explain"></div>
 
       <div id="sim-gate-box" style="margin-top:0.9rem; border-top:1px solid #000; padding-top:0.75rem;">
-        <div class="widget-label">Micro-Prediction Gate (Unlock Greedy Routing vs. Exact Tree Explorer)</div>
+        <div class="widget-label">Quick Check Before Unlocking Explorer</div>
         <p style="margin:0.25rem 0 0.5rem 0; font-size:0.9rem;">
-          Suppose branch $A$ gets $P(A) = 60\%$ and splits evenly into two leaves $A_1, A_2$ ($P(A_1 \mid A) = 50\%$, $P(A_2 \mid A) = 50\%$), while branch $B$ gets $P(B) = 40\%$ and puts $100\%$ of its mass on leaf $B_1$ ($P(B_1 \mid B) = 100\%$). What is the joint probability $P(A_1) = 60\% \times 50\%$ (in $\%$), which loses to $P(B_1) = 40\%$ under exact leaf argmax even though greedy top-down routing picks $A_1$?
+          Suppose branch $A$ gets $P(A) = 60\%$ and splits evenly into two leaves $A_1, A_2$ ($P(A_1 \mid A) = 50\%$, $P(A_2 \mid A) = 50\%$), while branch $B$ gets $P(B) = 40\%$ and puts $100\%$ of its mass on leaf $B_1$. What is the joint leaf probability $P(A_1) = 60\% \times 50\%$ (in $\%$)?
         </p>
         <div class="control-row">
           <label for="gate-input">Joint $P(A_1) =$</label>
           <input type="number" id="gate-input" step="1" placeholder="%" style="width:5.5rem;">
           <span>$\%$</span>
           <button class="btn btn-small" onclick="checkSimGate(false)">Verify &amp; Unlock</button>
-          <button class="btn btn-small" onclick="checkSimGate(true)">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="checkSimGate(true)">Show me</button>
         </div>
         <div id="gate-feedback" class="readout" style="display:none;"></div>
       </div>
@@ -268,59 +187,57 @@
       </div>
     </div>
 
-    <!-- === STAGE 4: BACKWARD-FADED PRACTICE & PALMA-FRIENDLY BOUNDARY CARDS === -->
-    <h2 id="s4">4. Backward-faded practice &amp; boundary checks</h2>
+    <h2 id="s4">4. Hands-On Practice: Minimizing Expected Tree Distance</h2>
     <p>
-      Finish the final step of the expected tree-distance cost trace mentally, then complete the two boundary checks below.
+      Instead of picking whichever leaf has the highest raw probability, <span class="term" data-term="crm">Conditional Risk Minimization (CRM)</span> picks the node $\hat{y}$ that minimizes expected <span class="term" data-term="tree-distance">tree distance</span> $\mathbb{E}[d_T(y, \hat{y})]$. Notice how weighting errors by tree distance automatically rescues a split branch without even needing a hand-tuned threshold.
     </p>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Backward-Faded Worked Example (Expected Tree-Distance Risk)</div>
+      <div class="widget-label">Try It By Hand</div>
       <h3>Pick the Leaf That Minimizes Expected Tree Distance</h3>
       <p>
-        A taxonomy has two sibling leaves under branch $A$ ($A_1, A_2$, separated by <span class="term" data-term="tree-distance">tree distance</span> $d_T(A_1, A_2) = 2$ edges) and one cousin leaf under branch $B$ ($B_1$, separated from $A_1$ and $A_2$ by $d_T = 4$ edges). For a test item, the model predicts:<br>
+        In our 3-leaf tree, sibling leaves $A_1$ and $A_2$ sit $d_T(A_1, A_2) = 2$ edges apart, while cousin leaf $B_1$ sits $d_T = 4$ edges away from both $A_1$ and $A_2$. The model outputs:<br>
         $$P(A_1) = 0.30, \qquad P(A_2) = 0.30, \qquad P(B_1) = 0.40$$
-        <strong>Step 1 (Expected distance if you predict flat winner $\hat{y} = B_1$):</strong><br>
-        If $A_1$ is true ($0.30$), distance is $4$; if $A_2$ is true ($0.30$), distance is $4$; if $B_1$ is true ($0.40$), distance is $0$:<br>
+        <strong>Step 1 (Expected distance if you pick flat winner $\hat{y} = B_1$):</strong><br>
+        If $A_1$ is true ($0.30$), you miss by $4$ edges; if $A_2$ is true ($0.30$), you miss by $4$ edges; if $B_1$ is true ($0.40$), distance is $0$:<br>
         $$\mathbb{E}[d_T \mid \hat{y} = B_1] = 0.30(4) + 0.30(4) + 0.40(0) = 1.2 + 1.2 + 0 = \mathbf{2.4\text{ edges}}$$
-        <strong>Step 2 (Your turn &mdash; Expected distance if you predict $\hat{y} = A_1$):</strong><br>
-        If $A_1$ is true ($0.30$), distance is $0$; if sibling $A_2$ is true ($0.30$), distance is $2$; if cousin $B_1$ is true ($0.40$), distance is $4$. Compute $\mathbb{E}[d_T \mid \hat{y} = A_1] = 0.30(0) + 0.30(2) + 0.40(4)$:
+        <strong>Step 2 (Your turn &mdash; Expected distance if you pick $\hat{y} = A_1$):</strong><br>
+        If $A_1$ is true ($0.30$), distance is $0$; if sibling $A_2$ is true ($0.30$), distance is only $2$; if cousin $B_1$ is true ($0.40$), distance is $4$. Compute $\mathbb{E}[d_T \mid \hat{y} = A_1] = 0.30(0) + 0.30(2) + 0.40(4)$:
       </p>
       <div class="control-row">
         <label for="fade-input">$\mathbb{E}[d_T \mid \hat{y} = A_1] =$</label>
         <input type="number" id="fade-input" step="0.1" placeholder="0.0" style="width:6.5rem;">
-        <span>edges (vs. $2.4$ for $B_1$)</span>
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 2</button>
+        <span>edges (lower risk than $2.4$ for $B_1$!)</span>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
     <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Closed-Book Boundary &amp; Counterexample Checks</div>
-      <h3>Test the Two Critical Hierarchy Invariants</h3>
+      <div class="widget-label">Quick Boundary Checks</div>
+      <h3>Test the Two Hierarchy Rules</h3>
 
       <p style="margin-bottom:0.35rem;">
-        <strong>Card 1 (Consistency Violation Boundary):</strong> Suppose you train independent binary <span class="term" data-term="sigmoid-inconsistency">sigmoid</span> heads for parent node <code>Dog</code> and its three mutually exclusive leaves (<code>Pug</code>, <code>Husky</code>, <code>Beagle</code>). If the three leaves output probabilities $[0.25,\; 0.15,\; 0.10]$, what is the <em>exact</em> probability $P(\text{Dog})$ required for the parent node to be probabilistically consistent with its leaves (in decimal or $\%$)?
+        <strong>1. Parent-Child Sum Consistency:</strong> Suppose parent node <code>Dog</code> has three mutually exclusive leaves (<code>Pug</code>, <code>Husky</code>, <code>Beagle</code>) whose predicted probabilities are $[0.25,\; 0.15,\; 0.10]$. What is the exact probability $P(\text{Dog})$ required for the parent node to be consistent with its leaves (in decimal or $\%$)?
       </p>
       <div class="control-row">
         <label for="bc-p">$P(\text{Dog}) =$</label>
         <input type="text" id="bc-p" placeholder="e.g. 0.50 or 50%" style="width:7.5rem;">
-        <button class="btn btn-small" onclick="checkBoundary1()">Check Sum Rule</button>
+        <button class="btn btn-small" onclick="checkBoundary1()">Check</button>
       </div>
       <div id="bc1-feedback" class="readout" style="display:none;"></div>
 
       <p style="margin:0.85rem 0 0.35rem 0;">
-        <strong>Card 2 (When Greedy Top-Down Beats or Loses to Exact Path Product):</strong> Why can <span class="term" data-term="greedy-routing">greedy top-down routing</span> pick a leaf $A_1$ whose joint probability $P(A_1) = P(A)\,P(A_1 \mid A)$ is strictly <em>smaller</em> than a leaf $B_1$ in another branch?
+        <strong>2. Greedy Top-Down vs. Exact Joint Probability:</strong> Why can <span class="term" data-term="greedy-routing">greedy top-down routing</span> end up picking a leaf $A_1$ whose true joint probability $P(A_1) = P(A)\,P(A_1 \mid A)$ is smaller than a leaf $B_1$ in another branch?
       </p>
       <div class="control-row">
-        <button class="btn btn-small" onclick="checkBoundary2('A')">A) Because greedy routing commits to the parent with highest $P(A)$ at Level 1 before seeing that $A$'s mass is fragmented across many children while $B$'s mass is concentrated on one leaf $B_1$</button>
-        <button class="btn btn-small" onclick="checkBoundary2('B')">B) Because multiplying conditional probabilities along a tree path makes parent probabilities smaller than child probabilities</button>
+        <button class="btn btn-small" onclick="checkBoundary2('A')">A) Greedy routing commits to the parent with highest $P(A)$ at Level 1 before seeing that $A$'s mass is fragmented across many children while $B$'s mass is concentrated on one leaf $B_1$</button>
+        <button class="btn btn-small" onclick="checkBoundary2('B')">B) Multiplying conditional probabilities along a tree path makes parent probabilities smaller than child probabilities</button>
       </div>
       <div id="bc2-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <!-- === STAGE 5: CONTRASTIVE MATRIX, DIAGNOSTIC MCQS & SPACED EXPORT === -->
-    <h2 id="s5">5. Contrastive matrix, diagnostic checks &amp; spaced recall</h2>
+    <h2 id="s5">5. When to Use Which Hierarchical Design &amp; Diagnostic Checks</h2>
 
     <div class="table-wrap">
       <table>

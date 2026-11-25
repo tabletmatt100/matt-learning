@@ -12,68 +12,22 @@
   <script src="common.js"></script>
 </head>
 <body>
-  <header id="top">
-    <div class="header-inner">
-      <div class="nav-links">
-        <a href="index.html">&larr; All Articles</a>
-        <a href="rl-algorithms.html">Part 2: Q*, PPO &amp; GRPO &rarr;</a>
-      </div>
-      <div class="font-controls">
-        <button id="font-dec" aria-label="Decrease font size">A-</button>
-        <span class="font-size-label" id="font-size-label">18px</span>
-        <button id="font-inc" aria-label="Increase font size">A+</button>
-      </div>
-    </div>
-  </header>
-
   <main>
     <h1>Reinforcement Learning From Scratch: How Agents Learn Without an Answer Key</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Why standard machine learning isn't enough:</strong> In <span class="term" data-term="supervised-learning">supervised learning</span>, a teacher immediately labels every decision as right or wrong. In <span class="term" data-term="rl">reinforcement learning (RL)</span>, there is no answer key—an <span class="term" data-term="agent">agent</span> takes a chain of <span class="term" data-term="action">actions</span> and only discovers several steps later whether it earned a big <span class="term" data-term="reward">reward</span> or failed.</li>
-        <li><strong>The central problem (<span class="term" data-term="credit-assignment">Credit Assignment</span>):</strong> When a warehouse robot reaches a charging dock for <code>+80</code> points at the end of a hallway, how does it figure out that the quiet early steps (which paid <code>0</code> at the time) were actually valuable?</li>
-        <li><strong>The solution (<span class="term" data-term="bootstrapping">Bootstrapping</span> via <span class="term" data-term="td-learning">Temporal-Difference Learning</span>):</strong> Instead of waiting until the end of a long run, each <span class="term" data-term="state">state</span> peeks one step ahead at its neighbor's scorecard <span class="term" data-term="value-function">$V(S_{t+1})$</span>, discounts it by <span class="term" data-term="discount-factor">$\gamma$</span>, and nudges its own score using the surprise (<span class="term" data-term="td-error">TD error $\delta_t$</span>).</li>
-      </ul>
-    </div>
-
     <p>
-      <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="state">$S_t$</span>, <span class="term" data-term="discount-factor">$\gamma$</span>, <span class="term" data-term="return">$G_t$</span>, or <span class="term" data-term="td-error">$\delta_t$</span>) anywhere on this page to open an explanation popover. Every calculation and question uses mental-math numbers—no calculator needed.</em>
-    </p>
-
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Quick Pre-Check (Optional Skip)</div>
-      <p style="margin-top:0.3rem;">If you already know how discounted returns work: suppose a 2-step trip pays <span class="term" data-term="reward">$R_1 = 0$</span> on step 1 and <span class="term" data-term="reward">$R_2 = 80$</span> on step 2, and each step of delay cuts value in half (<span class="term" data-term="discount-factor">$\gamma = 0.5$</span>). What is the discounted return <span class="term" data-term="return">$G_0$</span> at the start?</p>
-      <div class="control-row">
-        <label for="ff-input"><span class="term" data-term="return">$G_0$</span> $=$</label>
-        <input type="text" id="ff-input" placeholder="Mental math: half of 80" style="flex:1; min-width:160px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Story Outline</div>
-      <ol>
-        <li><a href="#sec-story">1. The Setup: Why Learning Without a Teacher Is Hard</a></li>
-        <li><a href="#sec-discount">2. Immediate Bribes vs. Delayed Payoffs: Discounted Return ($G_t$)</a></li>
-        <li><a href="#sec-td">3. Learning Before the Episode Ends: Bootstrapping &amp; TD Error ($\delta_t$)</a></li>
-        <li><a href="#sec-practice">4. Hands-On Trace: Updating the Scorecard by Hand</a></li>
-        <li><a href="#sec-q">5. From Scoring Tiles ($V$) to Picking Moves ($Q$) &amp; Summary Checks</a></li>
-      </ol>
-    </nav>
-
-    <!-- === SECTION 1: THE NARRATIVE SETUP === -->
-    <h2 id="sec-story">1. The Setup: Why Learning Without a Teacher Is Hard</h2>
-    <p>
-      To see why <span class="term" data-term="rl">reinforcement learning</span> exists, compare how you teach a photo classifier versus how you train a game player, a warehouse robot, or a reasoning LLM.
+      To see why <span class="term" data-term="rl">reinforcement learning (RL)</span> exists, compare how you teach an image classifier versus how you train a game-playing agent, a warehouse robot, or a reasoning language model. In <span class="term" data-term="supervised-learning">supervised learning</span>, a teacher hands the model an exact answer key on every single example: <em>"This photo is a cat."</em> If the model guesses <em>"dog,"</em> it knows immediately on that step what the right answer was.
     </p>
     <p>
-      In <span class="term" data-term="supervised-learning">supervised learning</span>, you hand the model a photo and an exact answer key: <em>"This is a cat."</em> If the model guesses <em>"dog,"</em> it knows immediately on that exact step what the right answer was.
+      In reinforcement learning, there is no answer key. An <span class="term" data-term="agent">agent</span> takes a chain of <span class="term" data-term="action">actions</span> and only discovers several steps later whether that sequence led to a big <span class="term" data-term="reward">reward</span> or a dead end. When a warehouse robot finally reaches a charging dock for <code>+80</code> points at the end of a long hallway, how does it figure out that the quiet early steps—which paid <code>0</code> points at the time—were actually the move that made the jackpot possible (<span class="term" data-term="credit-assignment">credit assignment</span>)?
     </p>
     <p>
-      Now picture a delivery robot placed in a 3-tile warehouse hallway (<span class="term" data-term="mdp">Markov Decision Process</span>):
+      Instead of waiting until the end of every run to look back, RL solves this with <span class="term" data-term="bootstrapping">bootstrapping</span> (<span class="term" data-term="td-learning">Temporal-Difference learning</span>): each <span class="term" data-term="state">state</span> peeks one step ahead at its neighbor's current scorecard <span class="term" data-term="value-function">$V(S_{t+1})$</span>, discounts it by <span class="term" data-term="discount-factor">$\gamma$</span>, and updates its own score using the surprise (<span class="term" data-term="td-error">TD error $\delta_t$</span>).
+    </p>
+
+    <h2 id="sec-story">1. The Warehouse Hallway: Why Immediate Feedback Lies</h2>
+    <p>
+      Picture a delivery robot placed in a 3-tile warehouse hallway (<span class="term" data-term="mdp">Markov Decision Process</span>):
     </p>
 
     <div class="story-box">
@@ -288,20 +242,6 @@
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Self-Explanation Check</div>
-      <h3>Why Bootstrap Instead of Waiting?</h3>
-      <p>In one sentence, why does <span class="term" data-term="td-learning">TD learning</span> update <span class="term" data-term="value-function">$V(S_t)$</span> using the next tile's estimate <span class="term" data-term="value-function">$V(S_{t+1})$</span> instead of waiting until the episode ends?</p>
-      <textarea id="recall-input" placeholder="Jot down your explanation in plain words..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-feedback" class="readout" style="display:none;">
-        <strong>Key idea:</strong> By <span class="term" data-term="bootstrapping">bootstrapping</span> off the neighbor's current scorecard <span class="term" data-term="value-function">$V(S_{t+1})$</span>, the agent learns immediately after every single move—even in very long or never-ending tasks—without waiting for the run to finish.
-      </div>
-    </div>
-
-    <!-- === SECTION 5: FROM V(S) TO Q(S,A) & SUMMARY CHECKS === -->
     <h2 id="sec-q">5. From Scoring Tiles (<span class="term" data-term="value-function">$V$</span>) to Picking Moves (<span class="term" data-term="q-function">$Q$</span>)</h2>
     <p>
       There is one piece left in our story. Knowing that <em>"Tile 1 is worth 10 points"</em> (<span class="term" data-term="value-function">$V(s)$</span>) tells you how good it is to stand on Tile 1, but it does <strong>not</strong> tell you which button to press (Go Left vs. Go Right) unless you know which move leads where!

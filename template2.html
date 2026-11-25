@@ -13,55 +13,33 @@
 </head>
 <body>
   <main>
-    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
     <h1>Softmax Temperature and Numerical Overflow</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Problem:</strong> Neural networks output unbounded <span class="term" data-term="logits">logits</span>, which must be turned into probabilities without overflowing <span class="term" data-term="float32">float32</span>.</li>
-        <li><strong>Core mechanism:</strong> <span class="term" data-term="softmax">Softmax</span> divides $e^{(z_i - m)/T}$ by the sum of all terms, where subtracting $m = \max(z)$ prevents overflow and <span class="term" data-term="temperature">temperature</span> $T$ controls sharpness.</li>
-        <li><strong>Where it breaks:</strong> Naive <code>exp(z)</code> turns into <code>NaN</code> once any logit exceeds $88.72$, and setting $T \to 0$ collapses <span class="term" data-term="entropy">entropy</span> to zero.</li>
-      </ul>
-    </div>
+    <p>
+      The final layer of a <span class="term" data-term="llm">language model</span> does not output probabilities directly. It outputs raw, unbounded scores called <span class="term" data-term="logits">logits</span>—numbers that can be $-15$, $+4.2$, or $+100$. To sample the next word or compute cross-entropy loss, we have to turn that vector of arbitrary scores into a valid probability distribution where every entry is positive and the whole vector adds up to $1$.
+    </p>
+    <p>
+      The standard tool for that job is <span class="term" data-term="softmax">softmax</span>, which exponentiates each score ($e^{z_i}$) and divides by the sum. On paper, exponentiation looks harmless. On an actual GPU running <span class="term" data-term="float32">float32</span> arithmetic, feeding raw logits into $e^{z_i}$ is a ticking time bomb that crashes training runs with <code>NaN</code> the moment a single logit drifts past $88.72$.
+    </p>
+    <p>
+      Fixing that crash takes a one-line algebraic shift—subtracting the maximum logit before exponentiating—while a single divisor called <span class="term" data-term="temperature">temperature</span> ($T$) lets us reshape how sharply or evenly probability mass spreads across competing tokens.
+    </p>
 
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already know log-sum-exp shifting and temperature scaling? Answer this 1-line check to collapse Stages 1&ndash;3 and jump to practice.</p>
-      <div class="control-row">
-        <label for="ff-input"><code>exp(100 - m)</code> = ?</label>
-        <input type="text" id="ff-input" placeholder="Value of exp(100 - max([100, 99, 98]))" style="flex:1; min-width:180px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#stage-1">Stage 1 &amp; 2: Predict the Overflow Trap</a></li>
-        <li><a href="#stage-3">Stage 3: Step-by-Step Mechanism and Small Multiples</a></li>
-        <li><a href="#stage-4">Stage 4: Backward-Faded Practice and Free Recall</a></li>
-        <li><a href="#stage-5">Stage 5: Contrastive Matrix, Interleaved Checks, and Recall Cards</a></li>
-      </ol>
-    </nav>
-
-    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
     <div id="scaffolding-section">
-      <h2 id="stage-1">1. Predict first: what breaks on large logits?</h2>
+      <h2 id="stage-1">1. Why Naive Softmax Crashes on Large Logits</h2>
       <p>
-        Suppose a <span class="term" data-term="llm">language model</span> outputs logits $z = [100, 99, 98]$ in <span class="term" data-term="float32">float32</span>. Before looking at any formula, commit to what naive <code>exp(z) / sum(exp(z))</code> returns.
+        Suppose a <span class="term" data-term="llm">language model</span> scores three candidate words with logits $z = [100, 99, 98]$ in <span class="term" data-term="float32">float32</span>. The relative gaps between those three scores are tiny ($+1$ and $+2$), so the top word should cleanly take about two-thirds of the probability mass. What actually happens if you run naive <code>exp(z) / sum(exp(z))</code>?
       </p>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Stage 1: Predict-Observe-Explain (Guess First)</div>
-        <h3>Prediction: Naive Softmax on <code>[100, 99, 98]</code></h3>
-        <p>Pick what you expect <code>p[0]</code> to be, then reveal the true computation.</p>
+        <div class="widget-label">Quick Prediction</div>
+        <h3>Naive Softmax on <code>[100, 99, 98]</code></h3>
+        <p>Pick what you expect <code>p[0]</code> to return in standard 32-bit floating point:</p>
         <div class="control-row">
           <button class="btn btn-small" onclick="runPOE('A')">A) ~0.665 (normal probability)</button>
           <button class="btn btn-small" onclick="runPOE('B')">B) 1.0 (winner takes all)</button>
           <button class="btn btn-small" onclick="runPOE('C')">C) NaN (overflow crash)</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
         </div>
         <div id="poe-reveal" style="display:none;">
           <div class="figure-box">
@@ -71,19 +49,18 @@
         </div>
       </div>
 
-      <!-- === STAGE 3: SEGMENTED MECHANISM + WORKED EXAMPLE + STEPPER === -->
-      <h2 id="stage-3">2. Shift by the max, then scale by temperature</h2>
+      <h2 id="stage-3">2. Shift by the Max, Then Scale by Temperature</h2>
       <p>
-        Subtracting a constant $m$ from every logit leaves softmax unchanged mathematically because $e^{-m}$ cancels in numerator and denominator. Choosing $m = \max(z)$ guarantees every exponent is $\le 0$, so $e^{z_i - m}$ stays in $(0, 1]$ and never overflows.
+        Why can we fix the overflow without changing the math? If you subtract any constant $m$ from every logit, you multiply every numerator and every term in the denominator by $e^{-m}$. Because $e^{-m} / e^{-m} = 1$, the constant cancels out completely. Choosing $m = \max(z)$ guarantees that the largest shifted logit is $0$ and every other shifted logit is negative, so $e^{z_i - m}$ stays safely inside $(0, 1]$.
       </p>
 
       <div class="worked">
-        <p><strong>Concrete trace before the general formula:</strong> Take $z = [100, 99, 98]$ at $T = 1.0$.</p>
+        <p><strong>Tracing max-shifted softmax on $z = [100, 99, 98]$ at $T = 1.0$:</strong></p>
         <p>
-          1. Find $m = \max(100, 99, 98) = 100$.<br>
-          2. Shift: $z - m = [0, -1, -2]$.<br>
-          3. Exponentiate: $[e^0, e^{-1}, e^{-2}] = [1.000, 0.368, 0.135]$, sum $= 1.503$.<br>
-          4. Normalize: $p = [0.665, 0.245, 0.090]$.
+          1. Pull out the maximum score: $m = \max(100, 99, 98) = 100$.<br>
+          2. Subtract $m$ from every entry: $z - m = [0, -1, -2]$.<br>
+          3. Exponentiate the shifted scores: $[e^0, e^{-1}, e^{-2}] \approx [1.000, 0.368, 0.135]$, which sum to $1.503$.<br>
+          4. Divide by the sum to get valid probabilities: $p = [0.665, 0.245, 0.090]$.
         </p>
       </div>
 
@@ -92,27 +69,27 @@
       </div>
 
       <p>
-        Step through the three <span class="term" data-term="temperature">temperature</span> regimes below. All three states stay visible side-by-side so you can compare slopes without losing earlier frames.
+        Once the overflow is tamed, dividing the shifted logits by <span class="term" data-term="temperature">temperature</span> $T$ controls how aggressively softmax favors the leader. A low temperature ($T &lt; 1$) stretches the gaps between scores before exponentiation, pushing almost all mass onto the top token. A high temperature ($T &gt; 1$) compresses the gaps toward zero, flattening the distribution toward uniform.
       </p>
 
       <div class="interactive-card" id="stepper-widget">
-        <div class="widget-label">Stage 3: Discrete Stepper + Persistent Small Multiples</div>
+        <div class="widget-label">Side-by-Side Comparison</div>
         <h3>How Temperature Shapes <code>z = [2.0, 1.0, 0.0]</code></h3>
         <div class="control-row">
-          <button class="btn btn-small active" id="step-btn-0" onclick="setStep(0)">Step 1: Low (T=0.3)</button>
-          <button class="btn btn-small" id="step-btn-1" onclick="setStep(1)">Step 2: Neutral (T=1.0)</button>
-          <button class="btn btn-small" id="step-btn-2" onclick="setStep(2)">Step 3: High (T=3.0)</button>
+          <button class="btn btn-small active" id="step-btn-0" onclick="setStep(0)">Low (T=0.3)</button>
+          <button class="btn btn-small" id="step-btn-1" onclick="setStep(1)">Neutral (T=1.0)</button>
+          <button class="btn btn-small" id="step-btn-2" onclick="setStep(2)">High (T=3.0)</button>
         </div>
 
         <div class="small-multiples" id="sm-grid"></div>
         <div class="readout" id="step-explain"></div>
 
         <div id="slider-gate" class="locked-note">
-          Complete the prediction above (or step through all 3 presets) to unlock the free temperature slider.
+          Try the prediction above (or tap through the 3 presets) to unlock the live temperature slider.
         </div>
         <div id="slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
           <div class="control-row">
-            <label for="temp-slider">Free slider $T$</label>
+            <label for="temp-slider">Temperature $T$</label>
             <input type="range" id="temp-slider" min="0.2" max="3.0" step="0.1" value="1.0">
             <span class="val" id="temp-val">1.0</span>
           </div>
@@ -128,43 +105,28 @@
       </div>
     </div>
 
-    <!-- === STAGE 4: BACKWARD-FADED EXAMPLE + CLOSED-BOOK RETRIEVAL === -->
-    <h2 id="stage-4">3. Faded practice and closed-book recall</h2>
+    <h2 id="stage-4">3. Hands-On Practice</h2>
     <p>
-      Reading a worked trace feels effortless; finishing the last step yourself tests whether the <span class="term" data-term="schema">schema</span> actually stuck.
+      Test the shift-and-scale mechanics on a two-token example where the mental math comes out clean.
     </p>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Stage 4: Backward-Faded Worked Example</div>
-      <h3>Complete Step 3 for <code>z = [4.0, 2.0]</code> at <code>T = 2.0</code></h3>
+      <div class="widget-label">Try It By Hand</div>
+      <h3>Finish the Softmax Trace for <code>z = [4.0, 2.0]</code> at <code>T = 2.0</code></h3>
       <p>
-        <strong>Step 1 (Shift by max):</strong> $m = 4.0$, so $(z - m)/T = [0.0, -1.0]$.<br>
-        <strong>Step 2 (Exponentiate):</strong> $e^{0.0} = 1.000$, $e^{-1.0} \approx 0.368$. Sum $= 1.368$.<br>
-        <strong>Step 3 (Your turn &mdash; normalize):</strong> Compute $p_0 = 1.000 / 1.368$ to 2 decimal places.
+        <strong>Step 1 (Shift by max and divide by $T$):</strong> $m = 4.0$, so $(z - m)/T = [0.0, -1.0]$.<br>
+        <strong>Step 2 (Exponentiate):</strong> $e^{0.0} = 1.000$ and $e^{-1.0} \approx 0.368$, giving a total sum of $1.368$.<br>
+        <strong>Step 3 (Your turn &mdash; normalize):</strong> What is the top token's probability $p_0 = 1.000 / 1.368$ (to 2 decimal places)?
       </p>
       <div class="control-row">
         <label for="fade-input">$p_0 \approx$</label>
         <input type="number" id="fade-input" step="0.01" placeholder="0.00" style="width:8rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Stage 4: Closed-Book Retrieval (Blank-Sheet Test)</div>
-      <h3>Reconstruct the Stability Rule</h3>
-      <p>Without scrolling up, write in one sentence why subtracting $\max(z)$ fixes overflow without changing the output probabilities.</p>
-      <textarea id="recall-input" placeholder="Type your explanation from memory..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-feedback" class="readout" style="display:none;">
-        <strong>Canonical answer:</strong> Subtracting $m = \max(z)$ multiplies both numerator and denominator by $e^{-m}$, which cancels out in the ratio, while keeping every exponent $\le 0$ so $e^{z_i - m} \in (0, 1]$ never exceeds the <span class="term" data-term="float32">float32</span> limit ($88.72$).
-      </div>
-    </div>
-
-    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
-    <h2 id="stage-5">4. Contrastive matrix, interleaved checks, and spaced cards</h2>
+    <h2 id="stage-5">4. When to Use Which Temperature &amp; Diagnostic Checks</h2>
     <div class="table-wrap">
       <table>
         <thead>

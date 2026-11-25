@@ -13,61 +13,36 @@
 </head>
 <body>
   <main>
-    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
     <h1>Backpropagation From Scratch: How Gradients Flow Through Graphs &amp; Matrices</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Why not just wiggle each weight?</strong> Evaluating the <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span> after nudging each of <span class="term" data-term="sym-d">$d$</span> weights one by one (<span class="term" data-term="finite-diff">finite differences</span>) requires $d + 1$ full forward passes. <span class="term" data-term="backprop">Backpropagation</span> (<span class="term" data-term="reverse-autodiff">reverse-mode autodiff</span>) gets all $d$ exact <span class="term" data-term="partial">partial derivatives</span> in <strong>one</strong> forward pass plus <strong>one</strong> backward pass.</li>
-        <li><strong>Every node obeys one local rule:</strong> A node receives an <span class="term" data-term="upstream-grad">upstream gradient</span> <span class="term" data-term="sym-dLdz">$\frac{\partial L}{\partial z}$</span> from its output, multiplies it by its <span class="term" data-term="local-grad">local derivative</span> <span class="term" data-term="sym-dzdx">$\frac{\partial z}{\partial x}$</span>, and passes the product backward (<span class="term" data-term="chain-rule">Chain Rule</span>). If a variable feeds two branches, you <strong>add</strong> the incoming gradients from both branches.</li>
-        <li><strong>Forward values become backward multipliers:</strong> In <span class="term" data-term="sym-z">$z = w \cdot x + b$</span>, the backward gradient into <span class="term" data-term="sym-w">$w$</span> multiplies by the cached forward activation <span class="term" data-term="sym-x">$x$</span>, while the backward gradient into $x$ multiplies by $w$. That is why training requires storing intermediate <span class="term" data-term="activations">activations</span> in memory (and why <span class="term" data-term="inference">inference</span> does not).</li>
-        <li><strong>Where it breaks:</strong> Any local derivative equal to $0$ (like a negative input into <span class="term" data-term="relu">ReLU</span>) kills all upstream signal behind it (<span class="term" data-term="dead-relu">dead neuron</span>), and multiplying many local slopes $< 1$ or $> 1$ across deep layers causes <span class="term" data-term="vanishing-grad">vanishing</span> or <span class="term" data-term="exploding-grad">exploding gradients</span> unless <span class="term" data-term="residual">residual connections</span> create an additive $+1$ highway.</li>
-      </ul>
-    </div>
+    <p>
+      Suppose a neural network with one million weights makes a prediction on an image and gets a high <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span>. How do you figure out which direction to nudge each of those one million weights to make the loss smaller?
+    </p>
+    <p>
+      The brute-force approach—nudging weight $w_1$ by $+0.0001$, running the entire network forward to see if the loss went up or down, and repeating that for $w_2, w_3, \dots, w_{1{,}000{,}000}$ (<span class="term" data-term="finite-diff">finite differences</span>)—would require **one million separate forward passes** just to take a single gradient step. Training a modern language model that way would take longer than the age of the universe.
+    </p>
+    <p>
+      <strong><span class="term" data-term="backprop">Backpropagation</span></strong> (<span class="term" data-term="reverse-autodiff">reverse-mode automatic differentiation</span>) computes the exact <span class="term" data-term="partial">partial derivative</span> for all one million weights in **one** forward pass plus **one** backward sweep. Instead of treating the network as a giant algebraic formula, it breaks every layer down into tiny elementary gates ($+$, $\times$, $\max$). On the forward pass, each gate caches its input values; on the backward pass, each gate receives an <span class="term" data-term="upstream-grad">upstream gradient</span> from the right, multiplies it by its own <span class="term" data-term="local-grad">local derivative</span> (<span class="term" data-term="chain-rule">Chain Rule</span>), and hands the result to the left.
+    </p>
 
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Stage 0: Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already comfortable with scalar computation graphs and local gate rules? Answer this 1-line check to collapse Stages 1&ndash;2 and jump straight to matrix backprop and practice.</p>
-      <div class="control-row">
-        <label for="ff-input">If $z = w \cdot x$ with $w = 3, x = 4$ and upstream $\bar{z} = \frac{\partial L}{\partial z} = -2$, what is $\bar{w} = \frac{\partial L}{\partial w}$?</label>
-        <input type="text" id="ff-input" placeholder="Enter integer for dL/dw" style="flex:1; min-width:160px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#s1">1. Stage 1 &amp; 2: The Multiply Gate Swap (Predict First)</a></li>
-        <li><a href="#s2">2. Stage 3A: The Three Elementary Gates &amp; Full Graph Trace</a></li>
-        <li><a href="#s3">3. Stage 3B: Matrix Backprop Without Index Headaches</a></li>
-        <li><a href="#s4">4. Stage 3C: Why Deep Gradients Vanish (and Why ResNets Fix It)</a></li>
-        <li><a href="#s5">5. Stage 4: Backward-Faded Practice &amp; Closed-Book Retrieval</a></li>
-        <li><a href="#s6">6. Stage 5: Contrastive Matrix, Interleaved Checks &amp; Spaced Cards</a></li>
-      </ol>
-    </nav>
-
-    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
     <div id="scaffolding-section">
-      <h2 id="s1">1. Predict first: who gets the larger gradient at a multiply gate?</h2>
+      <h2 id="s1">1. The Multiply Gate Partner Swap: Who Gets the Larger Gradient?</h2>
       <p>
-        Consider a single linear neuron without bias: <span class="term" data-term="sym-z">$z = w \cdot x$</span>, feeding directly into a squared error <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L = \frac{1}{2}(z - y)^2$</span>.
+        Consider a single linear neuron without bias: <span class="term" data-term="sym-z">$z = w \cdot x$</span>, feeding into a squared error <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L = \frac{1}{2}(z - y)^2$</span>.
       </p>
       <p>
-        Suppose on the <span class="term" data-term="forward-pass">forward pass</span> the input feature is huge, <span class="term" data-term="sym-x">$x = 10$</span>, the weight is tiny, <span class="term" data-term="sym-w">$w = 0.5$</span>, and the target is <span class="term" data-term="sym-y">$y = 3$</span>. The prediction is $z = 0.5 \times 10 = 5$, so the error signal arriving at $z$ is <span class="term" data-term="sym-dLdz">$\bar{z} = \frac{\partial L}{\partial z} = z - y = 5 - 3 = +2$</span>.
+        Suppose on the <span class="term" data-term="forward-pass">forward pass</span> the input feature is large, <span class="term" data-term="sym-x">$x = 10$</span>, the weight is small, <span class="term" data-term="sym-w">$w = 0.5$</span>, and the target is <span class="term" data-term="sym-y">$y = 3$</span>. The prediction is $z = 0.5 \times 10 = 5$, so the error signal arriving at $z$ is <span class="term" data-term="sym-dLdz">$\bar{z} = \frac{\partial L}{\partial z} = z - y = 5 - 3 = +2$</span>.
       </p>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Stage 1: Predict-Observe-Explain (Guess First)</div>
-        <h3>Prediction: Which parameter has the larger sensitivity, $\bar{w} = \frac{\partial L}{\partial w}$ or $\bar{x} = \frac{\partial L}{\partial x}$?</h3>
+        <div class="widget-label">Quick Prediction</div>
+        <h3>Which Parameter Has the Larger Sensitivity, $\bar{w} = \frac{\partial L}{\partial w}$ or $\bar{x} = \frac{\partial L}{\partial x}$?</h3>
         <p>Commit to a prediction before revealing the backward flow on the graph:</p>
         <div class="control-row">
           <button class="btn btn-small" onclick="runPOE('A')">A) $\bar{x} = 20$ is huge because $x = 10$ is huge; $\bar{w} = 1$ is tiny</button>
           <button class="btn btn-small" onclick="runPOE('B')">B) $\bar{w} = 20$ is huge and $\bar{x} = 1$ is tiny (they swap partners)</button>
           <button class="btn btn-small" onclick="runPOE('C')">C) Both equal $+2$ because the upstream error is $+2$</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
         </div>
         <div id="poe-reveal" style="display:none;">
           <div class="figure-box">
@@ -77,8 +52,7 @@
         </div>
       </div>
 
-      <!-- === STAGE 3A: SEGMENTED MECHANISM + WORKED EXAMPLE + STEPPER === -->
-      <h2 id="s2">2. The three local gate rules &amp; full computation graph</h2>
+      <h2 id="s2">2. The Three Local Gate Rules &amp; Full Computation Graph</h2>
       <p>
         Every neural network—whether a 2-layer MLP or a 70-billion-parameter Transformer—decomposes into a <span class="term" data-term="comp-graph">computation graph</span> built from three wiring patterns. During the <span class="term" data-term="backward-pass">backward pass</span>, each gate only needs to know its own local rule:
       </p>
@@ -153,13 +127,13 @@
       </p>
 
       <div class="interactive-card" id="graph-stepper-widget">
-        <div class="widget-label">Stage 3A: Discrete Computation Graph Stepper</div>
-        <h3>Step-by-Step Forward Cache &amp; Backward Tape (<code>x=2, w=3, b=-1, y=2</code>)</h3>
+        <div class="widget-label">Step-by-Step Computation Graph</div>
+        <h3>Forward Cache &amp; Backward Tape (<code>x=2, w=3, b=-1, y=2</code>)</h3>
         <div class="control-row">
-          <button class="btn btn-small active" id="gstep-0" onclick="setGraphStep(0)">Step 1: Forward Pass</button>
-          <button class="btn btn-small" id="gstep-1" onclick="setGraphStep(1)">Step 2: Loss &amp; ReLU Grad</button>
-          <button class="btn btn-small" id="gstep-2" onclick="setGraphStep(2)">Step 3: Add Gate ($\bar{u}, \bar{b}$)</button>
-          <button class="btn btn-small" id="gstep-3" onclick="setGraphStep(3)">Step 4: Multiply Gate ($\bar{w}, \bar{x}$)</button>
+          <button class="btn btn-small active" id="gstep-0" onclick="setGraphStep(0)">1: Forward Pass</button>
+          <button class="btn btn-small" id="gstep-1" onclick="setGraphStep(1)">2: Loss &amp; ReLU Grad</button>
+          <button class="btn btn-small" id="gstep-2" onclick="setGraphStep(2)">3: Add Gate ($\bar{u}, \bar{b}$)</button>
+          <button class="btn btn-small" id="gstep-3" onclick="setGraphStep(3)">4: Multiply Gate ($\bar{w}, \bar{x}$)</button>
         </div>
 
         <div class="figure-box">
@@ -168,7 +142,7 @@
         <div class="readout" id="graph-step-explain"></div>
 
         <div id="graph-slider-gate" class="locked-note">
-          Complete the Stage 1 prediction above (or step through all 4 graph stages) to unlock the live computation graph inspector.
+          Try the Section 1 prediction above (or tap through all 4 graph stages) to unlock the live computation graph inspector.
         </div>
         <div id="graph-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
           <div class="widget-label">Live Graph &amp; Dead-ReLU Explorer (Presets + Sliders)</div>
@@ -257,12 +231,12 @@
     </p>
 
     <div class="interactive-card" id="depth-widget">
-      <div class="widget-label">Stage 3C: Persistent Small Multiples &mdash; Gradient Magnitude Across 8 Layers</div>
-      <h3>Compare Plain Sigmoid vs. Exploding Linear vs. Residual Highway</h3>
+      <div class="widget-label">Side-by-Side Comparison &mdash; Gradient Magnitude Across 8 Layers</div>
+      <h3>Plain Sigmoid vs. Exploding Linear vs. Residual Highway</h3>
       <div class="control-row">
-        <button class="btn btn-small active" id="dstep-0" onclick="setDepthRegime(0)">Regime 1: Sigmoid (slope 0.25)</button>
-        <button class="btn btn-small" id="dstep-1" onclick="setDepthRegime(1)">Regime 2: Exploding (slope 1.5)</button>
-        <button class="btn btn-small" id="dstep-2" onclick="setDepthRegime(2)">Regime 3: Residual (1 + F' = 1.05)</button>
+        <button class="btn btn-small active" id="dstep-0" onclick="setDepthRegime(0)">Sigmoid (slope 0.25)</button>
+        <button class="btn btn-small" id="dstep-1" onclick="setDepthRegime(1)">Exploding (slope 1.5)</button>
+        <button class="btn btn-small" id="dstep-2" onclick="setDepthRegime(2)">Residual (1 + F' = 1.05)</button>
       </div>
       <div class="small-multiples" id="depth-sm-grid"></div>
       <div class="readout" id="depth-explain"></div>
@@ -286,14 +260,13 @@
       </div>
     </details>
 
-    <!-- === STAGE 4: BACKWARD-FADED PRACTICE + CLOSED-BOOK RETRIEVAL === -->
-    <h2 id="s5">5. Backward-faded practice &amp; closed-book retrieval</h2>
+    <h2 id="s5">5. Hands-On Practice</h2>
     <p>
-      Finish the final step of the branched computation graph below in your head (no calculator needed), then test your blank-sheet recall.
+      Finish the final step of the branched computation graph below in your head:
     </p>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Stage 4A: Backward-Faded Worked Example (Fan-Out Branch)</div>
+      <div class="widget-label">Try It By Hand (Fan-Out Branch)</div>
       <h3>Compute $\bar{w} = \frac{\partial L}{\partial w}$ When $w$ Feeds Two Branches</h3>
       <p>
         Suppose weight $w = 2$ feeds <strong>two</strong> paths that add together: $u = 3w$, $v = w^2$, and $L = u + v$.<br>
@@ -304,28 +277,12 @@
       <div class="control-row">
         <label for="fade-input">$\bar{w} = \frac{\partial L}{\partial w} =$</label>
         <input type="number" id="fade-input" step="1" placeholder="Integer" style="width:8rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Stage 4B: Closed-Book Retrieval (Blank-Sheet Test)</div>
-      <h3>Why Does Training Use 3&ndash;4x More Memory Than Inference?</h3>
-      <p>
-        Without scrolling up, explain in one or two sentences why a neural network must keep intermediate forward activations $x_\ell$ in GPU/RAM during the forward pass when training, whereas inference can discard each layer's activations immediately.
-      </p>
-      <textarea id="recall-input" placeholder="Type your explanation from memory (hint: look at the formula for dW in a multiply/linear gate)..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-feedback" class="readout" style="display:none;">
-        <strong>Canonical answer:</strong> At every linear or multiply gate $z_\ell = W_\ell x_\ell + b_\ell$, the local derivative with respect to the weights is the forward activation itself ($\bar{W}_\ell = \bar{z}_\ell x_\ell^\top$), and the derivative through nonlinearities like ReLU or Sigmoid depends on the forward pre-activation $z_\ell$. During training, every layer's forward activations $x_\ell$ must stay cached in memory until the backward pass reaches layer $\ell$ (unless <span class="term" data-term="grad-checkpoint">activation checkpointing</span> recomputes them), whereas inference never runs a backward pass and overwrites activation buffers immediately.
-      </div>
-    </div>
-
-    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
-    <h2 id="s6">6. Contrastive matrix, interleaved checks &amp; spaced recall</h2>
+    <h2 id="s6">6. When to Use Which Differentiation Mode &amp; Diagnostic Checks</h2>
 
     <div class="table-wrap">
       <table>

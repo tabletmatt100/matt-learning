@@ -15,29 +15,18 @@
   <main>
     <h1>Overfitting, Underfitting, and the Bias-Variance Tradeoff</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong><span class="term" data-term="underfitting">Underfitting</span> (High <span class="term" data-term="bias">Bias</span>):</strong> The model is too simple to capture the real signal (like fitting a flat line to a curve). Both <span class="term" data-term="train-error">training error</span> and <span class="term" data-term="val-error">validation error</span> are high. Adding more training rows will not save an underfit model—you need more <span class="term" data-term="capacity">capacity</span> or better features.</li>
-        <li><strong><span class="term" data-term="overfitting">Overfitting</span> (High <span class="term" data-term="variance">Variance</span>):</strong> The model has too much freedom and memorizes random sample noise along with the signal. <span class="term" data-term="train-error">Training error</span> drops near $0$, while <span class="term" data-term="val-error">validation error</span> shoots up (a wide <span class="term" data-term="gen-gap">generalization gap</span>). Fix it with more data, <span class="term" data-term="regularization">regularization</span>, shallower trees, or <span class="term" data-term="bagging">bagging</span>.</li>
-        <li><strong>The <span class="term" data-term="bias-variance">Bias-Variance Decomposition</span>:</strong> Expected test <span class="term" data-term="mse">MSE</span> splits into three non-negative pieces: $\text{MSE} = \text{Bias}^2 + \text{Variance} + \sigma^2$. Increasing model complexity lowers <span class="term" data-term="bias">$\text{Bias}^2$</span> (systematic aim error) but raises <span class="term" data-term="variance">$\text{Variance}$</span> (wobble across different training samples), while <span class="term" data-term="irreducible-error">irreducible noise $\sigma^2$</span> sets a hard floor no model can beat.</li>
-      </ul>
-    </div>
-
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already know the bias-variance math? At $x = 2$, the true signal is $f(2) = 10$ with noise variance $\sigma^2 = 1$. Across repeated training runs, a model's predictions have mean $\bar{f}(2) = 8$ and variance $\text{Var} = 3$. What is the expected test <span class="term" data-term="mse">MSE</span>?</p>
-      <div class="control-row">
-        <label for="ff-input">Expected Test MSE =</label>
-        <input type="text" id="ff-input" placeholder="(8 - 10)^2 + 3 + 1 = ?" style="flex:1; min-width:160px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
+    <p>
+      Every supervised learning model can fail in two opposite ways. If the model is too rigid—like trying to fit a straight line through a curved depreciation chart—it misses the underlying pattern right in front of it (<span class="term" data-term="underfitting">underfitting</span>, or high <span class="term" data-term="bias">bias</span>). If the model has too much freedom—like a high-degree polynomial or an unpruned decision tree that bends to hit every single training point—it memorizes random sample noise and falls apart the moment it sees new data (<span class="term" data-term="overfitting">overfitting</span>, or high <span class="term" data-term="variance">variance</span>).
+    </p>
+    <p>
+      Why does distinguishing those two failures matter before you try to fix a bad model? Because the cure for overfitting is poison for an underfit model, and vice versa. Spending two weeks collecting $10\times$ more training rows or cranking up regularization will rescue an overfit model, but will do nothing at all to help a high-bias model that is too simple to bend around the signal.
+    </p>
+    <p>
+      By comparing <span class="term" data-term="train-error">training error</span> against <span class="term" data-term="val-error">validation error</span>—and breaking expected test <span class="term" data-term="mse">MSE</span> into <span class="term" data-term="bias-sq">$\text{Bias}^2$</span> (aim error), <span class="term" data-term="variance">$\text{Variance}$</span> (sample wobble), and <span class="term" data-term="irreducible-error">irreducible noise $\sigma^2$</span>—you can tell immediately which failure mode you are in and which lever will actually move the needle.
+    </p>
 
     <div id="scaffolding-section">
-      <!-- SECTION 1 -->
-      <h2 id="s1">1. Diagnosing Underfitting vs. Overfitting from Error Gaps</h2>
+      <h2 id="s1">1. Diagnosing Underfitting vs. Overfitting From Error Gaps</h2>
 
       <div class="story-box">
         <div class="story-label">Running Scenario: Used Car Price Curve</div>
@@ -47,7 +36,7 @@
       </div>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Predict First: When Does Adding More Training Data Fail?</div>
+        <div class="widget-label">Quick Prediction</div>
         <h3>Your Model Has High Validation Error ($\text{MSE}_{\text{val}} = 9$). Will $10\times$ More Data Fix It?</h3>
         <p>
           Suppose your model has <strong><span class="term" data-term="train-error">Training MSE</span> $= 8.8$</strong> and <strong><span class="term" data-term="val-error">Validation MSE</span> $= 9.0$</strong> (where the noise floor is $\sigma^2 = 1.0$). Your teammate proposes spending two weeks collecting $10\times$ more training rows without changing the model. What happens if you add $10\times$ more data?
@@ -103,7 +92,7 @@
       </div>
 
       <div class="interactive-card" id="stepper-widget">
-        <div class="widget-label">Discrete Stepper + Persistent Small Multiples</div>
+        <div class="widget-label">Side-by-Side Comparison</div>
         <h3>Watch the Model Fit and Repeated-Sample Wobble Across 3 Complexity Regimes</h3>
         <p style="margin-top:0.2rem;">
           In each panel below, the <strong>dashed curve</strong> is the true signal <span class="term" data-term="true-fn">$f(x)$</span>, and the <strong>3 solid curves</strong> are models <span class="term" data-term="hat-f">$\hat{f}^{(1)}, \hat{f}^{(2)}, \hat{f}^{(3)}$</span> fit on 3 different random training samples drawn from the exact same process.
@@ -189,11 +178,10 @@
       </div>
     </div>
 
-    <!-- SECTION 3: BACKWARD-FADED PRACTICE & RECALL -->
-    <h2 id="s3">3. Faded Practice &amp; Blank-Sheet Check</h2>
+    <h2 id="s3">3. Hands-On Practice</h2>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Backward-Faded Worked Example (No Calculator Needed)</div>
+      <div class="widget-label">Try It By Hand</div>
       <h3>Compute the Total Expected Test MSE for Model C</h3>
       <p>
         At test point $x = 5$, the true target is <span class="term" data-term="true-fn">$f(5) = 10$</span> and irreducible noise is <span class="term" data-term="irreducible-error">$\sigma^2 = 1$</span>. A regularized tree (Model C) trained on $3$ datasets predicts $\hat{f}_C = [8, \, 9, \, 10]$:
@@ -208,25 +196,15 @@
       <div class="control-row">
         <label for="fade-input">Total Test MSE =</label>
         <input type="number" id="fade-input" step="1" placeholder="?" style="width:7rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Closed-Book Retrieval</div>
-      <h3>Why Do Random Forests Use Deep Trees While Gradient Boosting Uses Shallow Stumps?</h3>
-      <p>Without looking ahead, state in one sentence which side of the bias-variance equation <span class="term" data-term="bagging">Bagging (Random Forests)</span> reduces versus which side <span class="term" data-term="boosting">Boosting (XGBoost)</span> reduces.</p>
-      <textarea id="recall-input" placeholder="Bagging averages independent models to reduce..., whereas Boosting chains residual corrections to reduce..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-feedback" class="readout" style="display:none;">
-        <strong>Canonical answer:</strong> Averaging $B$ independent models divides <span class="term" data-term="variance"><strong>variance</strong></span> by up to $B$ without changing their mean (<span class="term" data-term="bias">bias</span>), so <span class="term" data-term="bagging">Random Forests</span> start with deep, low-bias/high-variance trees and average away the variance; <span class="term" data-term="boosting">Gradient Boosting</span> adds trees sequentially to fix prior mistakes, which slashes <span class="term" data-term="bias"><strong>bias</strong></span>, so it must start with shallow, high-bias/low-variance trees ($d = 3\text{--}6$) to avoid blowing up variance.
-      </div>
-    </div>
+    <p>
+      Notice how this decomposition immediately explains a classic ensemble mystery: why <span class="term" data-term="bagging">Random Forests (Bagging)</span> are built out of deep, unpruned trees, whereas <span class="term" data-term="boosting">Gradient Boosting (XGBoost)</span> is built out of shallow depth-4 stumps. Averaging $B$ independent models divides their <strong>variance</strong> by up to $B$ without changing their mean (<span class="term" data-term="bias">bias</span>)—so Random Forests start with deep, low-bias/high-variance trees and average away the wobble. By contrast, Boosting chains trees sequentially to fix earlier mistakes, which attacks <strong>bias</strong>—so it starts with shallow, high-bias/low-variance trees to keep variance from exploding.
+    </p>
 
-    <!-- SECTION 4: CONTRASTIVE MATRIX -->
     <h2 id="s4">4. Action Cheat Sheet: How Every Lever Moves Bias &amp; Variance</h2>
 
     <div class="table-wrap">

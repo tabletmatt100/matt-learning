@@ -13,91 +13,37 @@
 </head>
 <body>
   <main>
-    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
     <h1>DeepConf: Filtering &amp; Early-Stopping Reasoning Traces by Local Confidence</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>The flaw in <span class="term" data-term="self-consistency">Majority Voting ($\text{cons@}N$)</span>:</strong> Sampling $N = 512$ <span class="term" data-term="parallel-thinking">parallel reasoning traces</span> gives a rambling trace that guessed at the end the exact same $1$ vote as a clean derivation, and wastes millions of tokens generating broken paths to completion.</li>
-        <li><strong>Local worst-window score:</strong> DeepConf measures <span class="term" data-term="token-conf">token confidence $C_i$</span> from the <span class="term" data-term="top-k">top-$k$</span> <span class="term" data-term="logprob">log-probabilities</span>, averages $C_i$ over a sliding window of <span class="term" data-term="sym-n">$n$</span> tokens (<span class="term" data-term="group-conf">group confidence $C_{G_i}$</span>), and scores the trace by its <strong>worst window</strong> <span class="term" data-term="lowest-conf">$C_{\min} = \min_i C_{G_i}$</span> so a brief reasoning collapse cannot hide inside a long trace average.</li>
-        <li><strong>Offline filter + Online early stop:</strong> Offline keeps the top <span class="term" data-term="sym-eta">$\eta\%$</span> traces by $C_{\min}$ for a confidence-weighted vote. Online sets a cutoff <span class="term" data-term="threshold-s">$s$</span> from <span class="term" data-term="sym-Ninit">$N_{\text{init}} = 16$</span> warmup traces, kills any new trace the instant a window drops below $s$, and stops sampling once leading vote share <span class="term" data-term="consensus-beta">$\beta \ge \tau$</span> (cutting up to $84.7\%$ of tokens).</li>
-        <li><strong>Where it breaks:</strong> Confidence measures internal certainty, not truth. If a model makes a <em>fluent, high-confidence error</em>, DeepConf keeps it and throws out hesitant-but-correct traces.</li>
-      </ul>
-    </div>
+    <p>
+      When you want a reasoning language model to solve a hard math or coding problem, the standard way to spend extra test-time compute is <span class="term" data-term="self-consistency">Self-Consistency</span> ($\text{cons@}N$): sample $N = 64$ or $512$ independent chain-of-thought reasoning traces in parallel (<span class="term" data-term="parallel-thinking">parallel thinking</span>), extract the final boxed answer from each trace, and hold a majority vote.
+    </p>
+    <p>
+      That simple vote has two glaring blind spots. First, it gives every completed trace the exact same $1$ vote—even if one trace derived its answer with rock-solid certainty from start to finish while another trace got lost halfway through, guessed randomly across a three-way fork, and stumbled onto a popular wrong number. Second, it runs all $512$ traces to the very end, burning millions of tokens on dead-end chains of thought that already went off the rails at token $400$.
+    </p>
+    <p>
+      Why not just weight each trace by its average token probability across the whole generation? Because a $10{,}000$-token trace is mostly routine algebra and formatting boilerplate; a fatal $200$-token stretch of confusion gets washed out when you average across the entire trace. <strong>DeepConf</strong> fixes this by sliding a local window across the trace and scoring the entire chain of thought by its <strong>single weakest window</strong> (<span class="term" data-term="lowest-conf">$C_{\min}$</span>)—letting you filter out shaky traces offline or kill them mid-stream the instant a local window dips below a warmup cutoff.
+    </p>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Symbol</th><th>Plain-English Meaning</th><th>Typical Value / Range</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="term" data-term="token-conf">$C_i$</span></td>
-            <td><span class="term" data-term="token-conf">Token confidence</span> at step $i$: average negative log-prob of the <span class="term" data-term="top-k">top-$k$</span> candidates</td>
-            <td class="num">$-\frac{1}{k}\sum_{j=1}^k \log P_i(j)$ (higher $=$ surer)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="group-conf">$C_{G_i}$</span>, <span class="term" data-term="lowest-conf">$C_{\min}$</span></td>
-            <td>Sliding window mean over <span class="term" data-term="sym-n">$n$</span> tokens, and the trace's worst window $\min_i C_{G_i}$</td>
-            <td class="num">Window $n = 2048$ tokens</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="sym-eta">$\eta$</span>, <span class="term" data-term="threshold-s">$s$</span></td>
-            <td>Keep fraction of traces ($\eta\%$) and the $(100-\eta)$-th <span class="term" data-term="percentile">percentile</span> warmup cutoff</td>
-            <td class="num">$\eta = 10\%$ (Low) or $90\%$ (High)</td>
-          </tr>
-          <tr>
-            <td><span class="term" data-term="consensus-beta">$\beta$</span>, <span class="term" data-term="sym-tau">$\tau$</span></td>
-            <td>Leading answer's share of weighted votes $V(\hat{a}) / \sum_a V(a)$ and early-stop target</td>
-            <td class="num">Stop sampling when $\beta \ge \tau = 0.95$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already know top-$k$ token confidence and sliding-window early stopping? Solve this 1-line mental check (using base-2 logs) to collapse Section 1 and jump to the trace mechanics.</p>
-      <div class="control-row">
-        <label for="ff-input">With <span class="term" data-term="top-k">$k = 2$</span> in base-2 bits, if the top-2 token probabilities at position $i$ are $P = [\frac{1}{2}, \frac{1}{8}]$ (so $-\log_2 P = [1, 3]$), what is <span class="term" data-term="token-conf">$C_i$</span>?</label>
-        <input type="text" id="ff-input" placeholder="Enter integer for C_i" style="flex:1; min-width:140px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#s1">1. Contrasting Cases: Whole-Trace Mean vs. Worst Local Window</a></li>
-        <li><a href="#s2">2. Token Confidence ($C_i$) in Mental-Math Bits &amp; Equation Anatomy</a></li>
-        <li><a href="#s3">3. Offline Filtering vs. Online Early Stopping</a></li>
-        <li><a href="#s4">4. Backward-Faded Practice &amp; Boundary Counterexamples</a></li>
-        <li><a href="#s5">5. Contrastive Matrix, Diagnostic Checks &amp; Spaced Cards</a></li>
-      </ol>
-    </nav>
-
-    <!-- === STAGE 1 & 2: CONTRASTING 2-CASE PREDICTION HOOK & REFUTATION === -->
     <div id="scaffolding-section">
-      <h2 id="s1">1. Contrasting cases: why whole-trace average confidence hides collapses</h2>
+      <h2 id="s1">1. Why Whole-Trace Average Confidence Hides Local Collapses</h2>
       <p>
-        Suppose a reasoning model generates two 6-token traces (each scored by per-token confidence <span class="term" data-term="token-conf">$C_i$</span>, where $4$ is rock-solid and $1$ is a confused guess):
+        To see why averaging confidence across an entire chain of thought fails, compare two 6-token reasoning traces where each step $i$ has a per-token confidence score <span class="term" data-term="token-conf">$C_i$</span> ($4$ means the model is rock-solid; $1$ means it is guessing wildly):
       </p>
       <ul>
-        <li><strong>Trace A (Steady derivation):</strong> $C = [3,\; 3,\; 3,\; 3,\; 3,\; 3]$ &rarr; lands on correct answer <code>24</code>.</li>
-        <li><strong>Trace B (Routine algebra, then 2-token collapse):</strong> $C = [4,\; 4,\; 1,\; 1,\; 4,\; 4]$ &rarr; loses the sign at steps 3&ndash;4, hallucinates <code>18</code>, then formats the final box confidently.</li>
+        <li><strong>Trace A (Steady derivation):</strong> $C = [3,\; 3,\; 3,\; 3,\; 3,\; 3]$ &rarr; finishes cleanly at the right answer <code>24</code>.</li>
+        <li><strong>Trace B (Easy boilerplate, then a 2-token collapse):</strong> $C = [4,\; 4,\; 1,\; 1,\; 4,\; 4]$ &rarr; breezes through the setup, guesses the wrong sign at steps 3&ndash;4, and confidently formats the wrong answer <code>18</code> at the end.</li>
       </ul>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Predict-Observe-Explain (Contrasting Cases First)</div>
-        <h3>Prediction: Compare the whole-trace mean <span class="term" data-term="self-certainty">$C_{\text{avg}}$</span> vs. the worst 2-token window <span class="term" data-term="lowest-conf">$C_{\min}$</span> ($n = 2$) for Trace A and Trace B:</h3>
-        <p>Compute both mentally before revealing why whole-trace averaging fails on long chains of thought:</p>
+        <div class="widget-label">Quick Prediction</div>
+        <h3>Whole-Trace Mean (<span class="term" data-term="self-certainty">$C_{\text{avg}}$</span>) vs. Worst 2-Token Window (<span class="term" data-term="lowest-conf">$C_{\min}$</span>)</h3>
+        <p>Compare the whole-trace average against the minimum 2-token sliding window ($n = 2$) for Trace A and Trace B:</p>
         <div class="control-row">
-          <button class="btn btn-small" onclick="runPOE('A')">A) Trace A beats Trace B on both $C_{\text{avg}}$ and $C_{\min}$</button>
-          <button class="btn btn-small" onclick="runPOE('B')">B) They tie on whole-trace mean ($C_{\text{avg}} = 3.0$), but Trace B plunges to $C_{\min} = 1.0$ vs. $3.0$</button>
-          <button class="btn btn-small" onclick="runPOE('C')">C) Trace B wins on $C_{\text{avg}}$ because four of its tokens scored $4$</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="runPOE('A')">A) Trace A beats Trace B on both whole-trace mean and worst window</button>
+          <button class="btn btn-small" onclick="runPOE('B')">B) They tie at 3.0 on whole-trace mean, but Trace B's worst window plunges to 1.0 vs. 3.0</button>
+          <button class="btn btn-small" onclick="runPOE('C')">C) Trace B wins on whole-trace mean because four of its tokens scored 4</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
         </div>
         <div id="poe-reveal" style="display:none;">
           <div class="figure-box">
@@ -108,31 +54,33 @@
       </div>
     </div>
 
-    <!-- === STAGE 3A: TOKEN CONFIDENCE IN BASE-2 BITS + INLINE FADING + EQUATION ANATOMY === -->
-    <h2 id="s2">2. Token confidence ($C_i$) &amp; sliding-window group confidence ($C_{G_i}$)</h2>
+    <h2 id="s2">2. Measuring Token Confidence From Top-$k$ Runners-Up</h2>
     <p>
-      Why not measure confidence using the probability of the single winning token? Because inference servers (<span class="term" data-term="vllm">vLLM</span>) already return the <span class="term" data-term="top-k">top-$k$</span> <span class="term" data-term="logprob">log-probabilities</span> at every step $i$, and looking at the top-$k$ candidates tells you how strongly the model <strong>ruled out the runners-up</strong>.
+      How should we measure the model's certainty at a single token step $i$? If you only look at the top-1 winning token's probability $P_i(1)$, its logarithm $-\log P_i(1)$ barely moves whenever $P_i(1)$ is above $0.80$, hiding whether the runner-up token is sitting at $0.19$ (a tense two-way fork) or $0.0001$ (total certainty). On the other hand, computing full Shannon <span class="term" data-term="entropy">entropy</span> requires summing over all $100{,}000+$ tokens in the vocabulary, which inference servers like <span class="term" data-term="vllm">vLLM</span> don't return over the wire.
     </p>
     <p>
-      Before writing the general formula, trace two contrasting token distributions in <strong>base-2 bits</strong> ($-\log_2 P_i(j)$) with <span class="term" data-term="top-k">$k = 3$</span> candidates so every logarithm is an exact integer ($\frac{1}{2} \to 1\text{ bit}$, $\frac{1}{4} \to 2\text{ bits}$, $\frac{1}{8} \to 3\text{ bits}$, $\frac{1}{16} \to 4\text{ bits}$, $\frac{1}{64} \to 6\text{ bits}$):
+      DeepConf uses the <span class="term" data-term="top-k">top-$k$</span> <span class="term" data-term="logprob">log-probabilities</span> ($k = 5$ or $20$) that vLLM already returns for free. It defines <span class="term" data-term="token-conf">token confidence $C_i$</span> as the average negative log-probability across the top-$k$ candidate tokens at position $i$.
+    </p>
+    <p>
+      Wait—why does a <em>larger</em> average of $-\log P_i(j)$ mean <em>higher</em> confidence? Because the sum is dominated by the runner-up tokens ($j = 2 \dots k$). When the model is certain of its choice, it crushes the runner-up probabilities down near zero (like $2^{-6} = \frac{1}{64}$), and the negative logarithm of a tiny fraction is a large positive number ($-\log_2(\frac{1}{64}) = +6\text{ bits}$). When the model is torn between several candidates, the runners-up keep large probabilities (like $\frac{1}{4}$), so their $-\log_2 P$ values stay small ($+2\text{ bits}$).
     </p>
 
     <div class="worked">
-      <p><strong>Concrete mental-math trace ($k = 3$ candidates, using base-2 bits $-\log_2 P$):</strong></p>
+      <p><strong>Tracing token confidence in base-2 bits ($k = 3$ candidates, using $-\log_2 P$):</strong></p>
       <p>
-        &bull; <strong>Position A (Certain model):</strong> Top-3 probabilities are $P_A = [\frac{1}{2},\; \frac{1}{16},\; \frac{1}{64}]$.<br>
-        Their negative base-2 logs are $-\log_2 P_A = [1,\; 4,\; 6]$.<br>
-        Average across $k = 3$ candidates: $C_A = \frac{1 + 4 + 6}{3} = \frac{11}{3} \approx \mathbf{3.67\text{ bits}}$ (runners-up are tiny, so $-\log_2 P$ is huge!).
+        &bull; <strong>Position A (Certain model):</strong> Top-3 candidate probabilities are $P_A = [\frac{1}{2},\; \frac{1}{16},\; \frac{1}{64}]$.<br>
+        Taking $-\log_2 P_A$ turns those fractions into exact integer bits: $[1,\; 4,\; 6]$.<br>
+        Averaging across the $k = 3$ candidates gives $C_A = \frac{1 + 4 + 6}{3} = \frac{11}{3} \approx \mathbf{3.67\text{ bits}}$.
       </p>
       <p>
-        &bull; <strong>Position B (Torn / hedging model):</strong> Top-3 probabilities are $P_B = [\frac{1}{4},\; \frac{1}{4},\; \frac{1}{8}]$.<br>
+        &bull; <strong>Position B (Torn / hedging model):</strong> Top-3 candidate probabilities are $P_B = [\frac{1}{4},\; \frac{1}{4},\; \frac{1}{8}]$.<br>
         Their negative base-2 logs are $-\log_2 P_B = [2,\; 2,\; 3]$.<br>
-        <strong>Your turn &mdash; finish the sum $\sum_{j=1}^3 (-\log_2 P_B(j))$ and notice how $C_B < C_A$:</strong>
+        <strong>Your turn &mdash; sum those three bit values $\sum_{j=1}^3 (-\log_2 P_B(j))$ to see how $C_B = \text{sum}/3$ drops below $C_A$:</strong>
       </p>
       <div class="control-row">
         <label for="wk1-input">Sum of $-\log_2 P_B = 2 + 2 + 3 =$</label>
         <input type="number" id="wk1-input" step="1" placeholder="Integer" style="width:6.5rem;">
-        <span>$\implies C_B = \text{sum} / 3$</span>
+        <span>$\implies C_B = 7 / 3 \approx 2.33\text{ bits}$</span>
         <button class="btn btn-small" onclick="checkWorked1()">Check</button>
       </div>
       <div id="wk1-feedback" class="readout" style="display:none;"></div>
@@ -140,53 +88,27 @@
 
     <div class="math-block">
       $$C_i = -\frac{1}{k}\sum_{j=1}^{k} \log P_i(j), \qquad C_{G_i} = \frac{1}{n}\sum_{t = i - n + 1}^{i} C_t, \qquad C_{\min}(t) = \min_{i} C_{G_i}$$
-      <div class="math-hint">Counter-intuitive sign check: Low <span class="term" data-term="entropy">entropy</span> $=$ confident, but <strong>high <span class="term" data-term="token-conf">$C_i$</span> $=$ confident</strong>, because tiny runner-up probabilities $P_i(2\dots k) \ll 1$ have huge positive $-\log P_i(j)$.</div>
+      <div class="math-hint">Averaging $C_t$ over a sliding window of $n = 2048$ tokens (<span class="term" data-term="group-conf">group confidence $C_{G_i}$</span>) prevents a single legitimate transition word like <code>"Alternatively,"</code> from looking like a collapse, while taking the minimum window <span class="term" data-term="lowest-conf">$C_{\min} = \min_i C_{G_i}$</span> catches any sustained stretch of guessing.</div>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Sub-Expression</th>
-            <th>Functional Subgoal (Job)</th>
-            <th>What Breaks If Deleted or Replaced?</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>$-\frac{1}{k}\sum_{j=1}^k \log P_i(j)$</strong></td>
-            <td>Measures how aggressively runner-up tokens ($j=2\dots k$) are suppressed</td>
-            <td>If you only used the top-1 token ($k=1$), $-\log P_i(1)$ sits near $0$ whenever $P_i(1) \ge 0.8$, losing sensitivity to whether rank-2 is $0.19$ (two-way fork) or $0.001$.</td>
-          </tr>
-          <tr>
-            <td><strong>Window mean $C_{G_i} = \frac{1}{n}\sum C_t$</strong></td>
-            <td>Smooths single-token spikes over $n = 2048$ tokens</td>
-            <td>If $n = 1$ (no window), a single valid branching word ("Alternatively") kills the entire trace. If $n = L$ (whole trace), a 300-token collapse is diluted by $10{,}000$ easy tokens.</td>
-          </tr>
-          <tr>
-            <td><strong>Trace minimum $\min_i C_{G_i}$</strong></td>
-            <td>Flags the single weakest reasoning link; decreases monotonically as tokens stream</td>
-            <td>If replaced by average $C_{\text{avg}}$ or tail confidence, you <strong>cannot early-stop online</strong> because future tokens could raise the average back above threshold $s$.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- === STAGE 3B: OFFLINE FILTERING VS ONLINE EARLY STOPPING === -->
-    <h2 id="s3">3. Offline filtering vs. online early stopping</h2>
+    <h2 id="s3">3. Why You Must Filter Before Weighting &amp; How Online Early Stopping Works</h2>
     <p>
-      Once every trace has a worst-window score <span class="term" data-term="lowest-conf">$C_{\min}$</span>, DeepConf uses it in two modes:
+      Once every reasoning trace has a worst-window score <span class="term" data-term="lowest-conf">$C_{\min}$</span>, why not simply give all $N$ traces a vote weighted by $C_{\min}$? Because on any given prompt, the numerical values of $C_{\min}$ across traces tend to cluster in a fairly narrow positive band—say, between $5$ and $10$. Under an unfiltered weighted vote, a rock-solid trace scoring $10$ only gets twice the vote of a confused trace scoring $5$, so three rambling traces that guessed the same wrong distraction ($5 + 6 + 7 = 18$) will still outvote one clean derivation ($10$).
     </p>
-    <ol>
-      <li><strong>Offline (Filter top <span class="term" data-term="sym-eta">$\eta\%$</span>, then weight):</strong> Sort completed traces by $C_{\min}$, keep only the top $\eta\%$ (<span class="term" data-term="deepconf-low">DeepConf-low</span> keeps $\eta = 10\%$; <span class="term" data-term="deepconf-high">DeepConf-high</span> keeps $\eta = 90\%$), and give each surviving trace a vote weight equal to its confidence score:
-        $$V(a) = \sum_{t \in \text{Top }\eta\%} C_{\min}(t)\,\mathbb{1}[a_t = a], \qquad \hat{a} = \arg\max_a V(a)$$
-        Why filter instead of just weighting all $N$ traces? Because confidence scores on a question cluster in a narrow band (e.g. $10$ to $14$). Pure weighting gives a $14$-score trace only $1.4\times$ the vote of a $10$-score trace, so four confused traces still outvote three clean ones. Filtering sets the bottom traces' weight to <strong>zero</strong>.
-      </li>
-      <li><strong>Online (Warmup threshold <span class="term" data-term="threshold-s">$s$</span> + instant kill + consensus <span class="term" data-term="consensus-beta">$\beta$</span>):</strong> Generate <span class="term" data-term="sym-Ninit">$N_{\text{init}} = 16$</span> full warmup traces and set cutoff $s$ to the $(100-\eta)$-th <span class="term" data-term="percentile">percentile</span> of their $C_{\min}$ scores. For every subsequent trace, the instant any sliding window $C_{G_i} < s$, <strong>terminate generation immediately</strong> (since $\min_i C_{G_i}$ can never climb back above $s$). Stop launching new traces early once the leading answer holds weighted vote share <span class="term" data-term="consensus-beta">$\beta = V(\hat{a}) / \sum_a V(a) \ge \tau$</span> ($\tau = 0.95$).</li>
-    </ol>
+    <p>
+      DeepConf solves this in <strong>offline mode</strong> by sorting all completed traces by $C_{\min}$, keeping only the top <span class="term" data-term="sym-eta">$\eta\%$</span> (<span class="term" data-term="deepconf-low">DeepConf-low</span> keeps the top $\eta = 10\%$; <span class="term" data-term="deepconf-high">DeepConf-high</span> keeps the top $\eta = 90\%$), and setting the vote weight of every trace below that cutoff to <strong>zero</strong>:
+    </p>
+
+    <div class="math-block">
+      $$V(a) = \sum_{t \in \text{Top }\eta\%} C_{\min}(t)\,\mathbb{1}[a_t = a], \qquad \hat{a} = \arg\max_a V(a)$$
+    </div>
+
+    <p>
+      Even better, scoring traces by a <em>minimum</em> over windows ($\min_i C_{G_i}$) unlocks an exact <strong>online early-stopping rule</strong>. Notice a simple mathematical property of a running minimum: as a trace streams out new tokens, its running worst window $\min_{i \le t} C_{G_i}$ can only stay flat or go down—it can <strong>never climb back up</strong>. So DeepConf first runs <span class="term" data-term="sym-Ninit">$N_{\text{init}} = 16$</span> full warmup traces to set a threshold <span class="term" data-term="threshold-s">$s$</span> at the $(100-\eta)$-th <span class="term" data-term="percentile">percentile</span> of their $C_{\min}$ scores. From trace $17$ onward, the very instant any sliding window $C_{G_i}$ dips below $s$, vLLM kills that trace mid-sentence. And once the leading answer holds a confidence-weighted vote share <span class="term" data-term="consensus-beta">$\beta = V(\hat{a}) / \sum_a V(a) \ge \tau$</span> ($\tau = 0.95$), it stops launching new traces altogether—cutting up to $84.7\%$ of generated tokens.
+    </p>
 
     <div class="worked">
-      <p><strong>Worked 4-trace voting trace (distinct integer scores, true answer $= 24$):</strong></p>
+      <p><strong>Tracing a 4-trace vote by hand (true answer $= 24$):</strong></p>
       <p>
         Suppose $N = 4$ sampled traces finish with answers and worst-window scores <span class="term" data-term="lowest-conf">$C_{\min}$</span>:<br>
         &bull; <strong>Trace 1:</strong> answer $= \mathbf{18}$, score $C_{\min} = \mathbf{5}$<br>
@@ -196,9 +118,9 @@
       </p>
       <p>
         1. <strong>Plain majority (<span class="term" data-term="self-consistency">$\text{cons@}4$</span>):</strong> Answer <code>18</code> wins $3$ votes to $1$ (wrong).<br>
-        2. <strong>Unfiltered weighted vote:</strong> $V(18) = 5 + 6 + 7 = \mathbf{18}$ vs. $V(24) = \mathbf{10}$. Answer <code>18</code> still wins because three mediocre scores sum to more than one high score!<br>
+        2. <strong>Unfiltered weighted vote:</strong> $V(18) = 5 + 6 + 7 = \mathbf{18}$ vs. $V(24) = \mathbf{10}$. Answer <code>18</code> still wins because three shaky traces add up to more than one high score.<br>
         3. <strong>Filtered top $\eta = 50\%$ (keep top 2 traces: Trace 4 with $10$ and Trace 3 with $7$):</strong><br>
-        Traces 1 and 2 are zeroed out. <strong>Your turn &mdash; what is $V(18)$ after keeping only the top 2 traces, so that $V(24) = 10$ wins?</strong>
+        Traces 1 and 2 are zeroed out. <strong>Your turn &mdash; what is $V(18)$ after keeping only the top 2 traces, allowing $V(24) = 10$ to win?</strong>
       </p>
       <div class="control-row">
         <label for="wk2-input">Surviving $V(18) =$</label>
@@ -209,29 +131,28 @@
       <div id="wk2-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <!-- === DISCRETE STEPPER + SMALL MULTIPLES + GATED SIMULATOR === -->
     <div class="interactive-card" id="stepper-widget">
-      <div class="widget-label">Discrete Stepper + Persistent Small Multiples</div>
-      <h3>Compare Majority vs. Unfiltered Weighted vs. Filtered DeepConf</h3>
+      <div class="widget-label">Side-by-Side Voting Comparison</div>
+      <h3>Plain Majority vs. Unfiltered Weights vs. Filtered DeepConf</h3>
       <div class="control-row">
-        <button class="btn btn-small active" id="step-btn-0" onclick="setVoteStep(0)">Step 1: Plain Majority (18 wins 3:1)</button>
-        <button class="btn btn-small" id="step-btn-1" onclick="setVoteStep(1)">Step 2: Unfiltered Weight (18 wins 18:10)</button>
-        <button class="btn btn-small" id="step-btn-2" onclick="setVoteStep(2)">Step 3: Filter Top 50% (24 wins 10:7)</button>
+        <button class="btn btn-small active" id="step-btn-0" onclick="setVoteStep(0)">Plain Majority (18 wins 3:1)</button>
+        <button class="btn btn-small" id="step-btn-1" onclick="setVoteStep(1)">Unfiltered Weight (18 wins 18:10)</button>
+        <button class="btn btn-small" id="step-btn-2" onclick="setVoteStep(2)">Filter Top 50% (24 wins 10:7)</button>
       </div>
 
       <div class="small-multiples" id="vote-sm-grid"></div>
       <div class="readout" id="vote-step-explain"></div>
 
       <div id="sim-gate-box" style="margin-top:0.9rem; border-top:1px solid #000; padding-top:0.75rem;">
-        <div class="widget-label">Micro-Prediction Gate (Unlock Online Early-Stop Simulator)</div>
+        <div class="widget-label">Quick Check Before Unlocking Explorer</div>
         <p style="margin:0.25rem 0 0.5rem 0; font-size:0.9rem;">
-          Suppose 5 warmup traces have sorted worst-window scores $C_{\min} = [6,\; 8,\; 10,\; 12,\; 14]$. If we set online cutoff <span class="term" data-term="threshold-s">$s = 11$</span>, how many of those 5 traces have $C_{\min} \ge 11$ and survive without being killed early?
+          Suppose 5 streaming traces have worst-window scores $C_{\min} = [6,\; 8,\; 10,\; 12,\; 14]$. If the online warmup cutoff is set to <span class="term" data-term="threshold-s">$s = 11$</span>, how many of those 5 traces keep $C_{\min} \ge 11$ and survive to cast a vote?
         </p>
         <div class="control-row">
           <label for="gate-input">Surviving traces (out of 5):</label>
           <input type="number" id="gate-input" step="1" placeholder="0..5" style="width:5.5rem;">
           <button class="btn btn-small" onclick="checkSimGate(false)">Verify &amp; Unlock</button>
-          <button class="btn btn-small" onclick="checkSimGate(true)">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="checkSimGate(true)">Show me</button>
         </div>
         <div id="gate-feedback" class="readout" style="display:none;"></div>
       </div>
@@ -262,20 +183,19 @@
       </div>
     </div>
 
-    <!-- === STAGE 4: BACKWARD-FADED PRACTICE & PALMA-FRIENDLY BOUNDARY CARDS === -->
-    <h2 id="s4">4. Backward-faded practice &amp; boundary checks</h2>
+    <h2 id="s4">4. Where DeepConf Breaks &amp; Hands-On Practice</h2>
     <p>
-      Complete the final step of the consensus stopping trace mentally, then test the two boundary conditions below.
+      DeepConf has one fundamental limitation: log-probabilities measure <em>internal model certainty</em>, not objective truth. If a model suffers from a fluent, high-confidence misconception on a trick question—while the few traces that catch the trap hesitate and second-guess themselves—aggressive filtering (<span class="term" data-term="deepconf-low">DeepConf-low</span>, keeping only the top $10\%$) will throw out the hesitant correct traces and lock onto the confident mistake. That is why <span class="term" data-term="deepconf-high">DeepConf-high</span> (keeping the top $90\%$ and only trimming the bottom $10\%$ of clear collapses) is the safer default when you haven't calibrated on a validation set.
     </p>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Backward-Faded Worked Example (Online Consensus Share $\beta$)</div>
+      <div class="widget-label">Try It By Hand</div>
       <h3>Compute Leading Vote Share $\beta$ After Early-Stopping</h3>
       <p>
         <strong>Step 1 (Warmup Threshold):</strong> Warmup sets the early-stop cutoff to <span class="term" data-term="threshold-s">$s = 10$</span>.<br>
-        <strong>Step 2 (Filter / Early-Stop Stream):</strong> Four traces are launched:<br>
+        <strong>Step 2 (Stream 4 Traces):</strong><br>
         &bull; Trace A (answer <code>42</code>) has worst window $C_{\min} = 12 \ge 10$ (survives, adds $+12$ to $V(42)$).<br>
-        &bull; Trace B (answer <code>99</code>) dips to window confidence $7 < 10$ at token 300 (killed early, $0$ votes).<br>
+        &bull; Trace B (answer <code>99</code>) dips to window confidence $7 &lt; 10$ at token 300 (killed early, $0$ votes).<br>
         &bull; Trace C (answer <code>42</code>) has worst window $C_{\min} = 18 \ge 10$ (survives, adds $+18$ to $V(42)$).<br>
         &bull; Trace D (answer <code>99</code>) has worst window $C_{\min} = 10 \ge 10$ (survives, adds $+10$ to $V(99)$).<br>
         <strong>Step 3 (Tallies):</strong> Total weighted vote for <code>42</code> is $V(42) = 12 + 18 = \mathbf{30}$. Total weighted vote across all surviving traces is $V(42) + V(99) = 30 + 10 = \mathbf{40}$.<br>
@@ -285,27 +205,27 @@
         <label for="fade-input">$\beta =$</label>
         <input type="number" id="fade-input" step="1" placeholder="%" style="width:6.5rem;">
         <span>$\%$</span>
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 4</button>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
     <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Closed-Book Boundary &amp; Counterexample Checks</div>
-      <h3>Generate the Two Critical Boundary Conditions</h3>
+      <div class="widget-label">Quick Boundary Checks</div>
+      <h3>Test the Two Early-Stopping Rules</h3>
 
       <p style="margin-bottom:0.35rem;">
-        <strong>Card 1 (Early-Stop Threshold Boundary):</strong> While generating a trace online with threshold <span class="term" data-term="threshold-s">$s = 9$</span>, its first three windows score $[14,\; 12,\; x]$. Enter <em>any</em> integer score $x$ for window 3 that forces DeepConf to terminate the trace immediately:
+        <strong>1. Early-Stop Trigger:</strong> While generating a trace online with threshold <span class="term" data-term="threshold-s">$s = 9$</span>, its first three windows score $[14,\; 12,\; x]$. Enter any integer score $x$ for window 3 that causes DeepConf to terminate the trace immediately:
       </p>
       <div class="control-row">
         <label for="bc-x">Window 3 score $x =$</label>
         <input type="number" id="bc-x" step="1" placeholder="Integer" style="width:6.5rem;">
-        <button class="btn btn-small" onclick="checkBoundary1()">Check Kill Condition</button>
+        <button class="btn btn-small" onclick="checkBoundary1()">Check</button>
       </div>
       <div id="bc1-feedback" class="readout" style="display:none;"></div>
 
       <p style="margin:0.85rem 0 0.35rem 0;">
-        <strong>Card 2 (Monotonicity Invariant &mdash; Why Minimum Is Required):</strong> Suppose a trace's first window scores $C_{G_1} = 8$ (below threshold $s = 10$), and its next nine windows all score a perfect $20$. Why can't those nine $20$s rescue the trace's final score <span class="term" data-term="lowest-conf">$C_{\min} = \min_i C_{G_i}$</span>?
+        <strong>2. Why Running Minimum Cannot Recover:</strong> Suppose a trace's first window scores $C_{G_1} = 8$ (below threshold $s = 10$), and its next nine windows all score a perfect $20$. Why can't those nine $20$s rescue the trace's final score <span class="term" data-term="lowest-conf">$C_{\min} = \min_i C_{G_i}$</span>?
       </p>
       <div class="control-row">
         <button class="btn btn-small" onclick="checkBoundary2('A')">A) Because $\min(8, 20, \dots, 20)$ is still $8 &lt; 10$ (a running minimum can never increase)</button>
@@ -314,8 +234,7 @@
       <div id="bc2-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <!-- === STAGE 5: CONTRASTIVE MATRIX, DIAGNOSTIC MCQS & SPACED EXPORT === -->
-    <h2 id="s5">5. Contrastive matrix, diagnostic checks &amp; spaced recall</h2>
+    <h2 id="s5">5. When to Use Which Voting Method &amp; Diagnostic Checks</h2>
 
     <div class="table-wrap">
       <table>

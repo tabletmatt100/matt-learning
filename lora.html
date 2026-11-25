@@ -13,45 +13,20 @@
 </head>
 <body>
   <main>
-    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
     <h1>LoRA &amp; QLoRA From Scratch: Low-Rank Adaptation Without Full Fine-Tuning</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Why full fine-tuning blows up VRAM:</strong> Updating a pretrained matrix <span class="term" data-term="sym-W0">$W_0 \in \mathbb{R}^{d \times k}$</span> with <span class="term" data-term="adamw">AdamW</span> requires storing the gradient plus two <span class="term" data-term="fp32">FP32</span> optimizer states ($m, v$) for every weight—turning a $14\text{ GB}$ 7B-parameter model into $56\text{–}84\text{ GB}$ of training state.</li>
-        <li><strong>Core mechanism:</strong> <span class="term" data-term="lora">LoRA</span> freezes <span class="term" data-term="sym-W0">$W_0$</span> completely and represents the weight update <span class="term" data-term="sym-dW">$\Delta W$</span> as the product of two skinny <span class="term" data-term="low-rank">low-rank</span> matrices <span class="term" data-term="sym-B">$B \in \mathbb{R}^{d \times r}$</span> and <span class="term" data-term="sym-A">$A \in \mathbb{R}^{r \times k}$</span> with <span class="term" data-term="sym-r">$r \ll \min(d, k)$</span>: $h = W_0 x + \frac{\alpha}{r} B A x$.</li>
-        <li><strong>Zero inference latency &amp; safe startup:</strong> Initializing $A \sim \mathcal{N}(0, \sigma^2)$ and $B = 0$ makes $\Delta W = BA = 0$ at step $0$ (preserving the pretrained model), while keeping gradients nonzero. After training, folding $W_{\text{merged}} = W_0 + \frac{\alpha}{r}BA$ into the base matrix adds <strong>zero extra FLOPs or latency</strong> at inference.</li>
-        <li><strong>Where it breaks:</strong> Because $\text{rank}(BA) \le r$, LoRA can only move weights inside an $r$-dimensional <span class="term" data-term="intrinsic-rank">subspace</span>. It excels at task/style alignment and instruction tuning, but underperforms full fine-tuning on heavy continual pretraining (learning a brand-new language or domain knowledge from scratch).</li>
-      </ul>
-    </div>
+    <p>
+      Suppose you want to fine-tune a 7-billion-parameter language model on your own dataset. Loading the model's 16-bit weights for inference only takes $14\text{ GB}$ of GPU memory. The moment you run standard <span class="term" data-term="adamw">AdamW</span> fine-tuning across all 7 billion parameters, however, your VRAM bill explodes past $60\text{ to }80\text{ GB}$—because for every trainable weight, AdamW has to store a gradient plus two 32-bit running averages (momentum and variance) alongside a 32-bit master weight copy.
+    </p>
+    <p>
+      Do we really need to update all $16.7\text{ million}$ numbers inside a $4096 \times 4096$ weight matrix just to teach an already-fluent model a new domain or output format? In 2021, Hu et al. showed that while pretraining from scratch requires full high-rank matrices, adapting a pretrained model happens inside a tiny, <span class="term" data-term="intrinsic-rank">low-dimensional subspace</span>.
+    </p>
+    <p>
+      <strong><span class="term" data-term="lora">LoRA (Low-Rank Adaptation)</span></strong> exploits that discovery directly: it freezes the huge pretrained matrix <span class="term" data-term="sym-W0">$W_0$</span> completely (eliminating $100\%$ of its optimizer state) and routes a parallel update <span class="term" data-term="sym-dW">$\Delta W = B A$</span> through two skinny matrices of rank <span class="term" data-term="sym-r">$r \ll d$</span> (say, $r = 8$ or $16$). During training, you update less than $1\%$ of the parameters; after training, because $W_0 x + B A x = (W_0 + B A)x$ is purely linear, you simply add $B A$ directly into $W_0$ once and deploy the model with <strong>zero extra inference latency</strong>.
+    </p>
 
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Stage 0: Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already know low-rank matrix factorization and adapter merging? Solve this mental-math check to collapse Stages 1&ndash;2 and jump straight to the worked $3 \times 3$ matrix trace and rank explorer.</p>
-      <div class="control-row">
-        <label for="ff-input">A frozen weight matrix $W_0$ has shape $1000 \times 1000$ ($1{,}000{,}000$ weights). How many trainable parameters are in a rank $r = 5$ LoRA adapter ($B \in \mathbb{R}^{1000 \times 5}, A \in \mathbb{R}^{5 \times 1000}$)?</label>
-        <input type="text" id="ff-input" placeholder="Enter integer count" style="flex:1; min-width:160px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#s1">1. Stage 1 &amp; 2: The Initialization Trap (Predict First)</a></li>
-        <li><a href="#s2">2. Stage 3A: Concrete $3 \times 3$ Matrix Trace &amp; Zero-Latency Merging</a></li>
-        <li><a href="#s3">3. Stage 3B: Parameter &amp; VRAM Compression Across Ranks</a></li>
-        <li><a href="#s4">4. Stage 3C: Why $\alpha / r$ Exists, Which Layers to Target &amp; QLoRA</a></li>
-        <li><a href="#s5">5. Stage 4: Backward-Faded Practice &amp; Closed-Book Retrieval</a></li>
-        <li><a href="#s6">6. Stage 5: Contrastive Matrix, Interleaved Checks &amp; Spaced Cards</a></li>
-      </ol>
-    </nav>
-
-    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
     <div id="scaffolding-section">
-      <h2 id="s1">1. Predict first: how do you initialize $A$ and $B$ so step 0 changes nothing?</h2>
+      <h2 id="s1">1. The Initialization Puzzle: How Do You Start at $\Delta W = 0$ Without Locking Gradients?</h2>
       <p>
         In <span class="term" data-term="lora">LoRA</span>, we attach a parallel low-rank bypass <span class="term" data-term="sym-dW">$\Delta W = B A$</span> beside a frozen pretrained layer <span class="term" data-term="sym-W0">$W_0$</span>:
       </p>
@@ -59,18 +34,18 @@
         $$h = W_0 x + \Delta W x = W_0 x + \frac{\alpha}{r} B(Ax)$$
       </div>
       <p>
-        At training step $0$, we want $\Delta W = B A = 0$ so the network starts with the exact outputs of the pretrained base model (no initial shock). Why not just initialize <strong>both</strong> <span class="term" data-term="sym-A">$A = 0$</span> and <span class="term" data-term="sym-B">$B = 0$</span>?
+        At training step $0$, we need $\Delta W = B A = 0$ so the network starts out producing the exact same outputs as the pretrained base model without any initial random shock. Why not just initialize <strong>both</strong> <span class="term" data-term="sym-A">$A = 0$</span> and <span class="term" data-term="sym-B">$B = 0$</span>?
       </p>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Stage 1: Predict-Observe-Explain (Guess First)</div>
-        <h3>Prediction: What happens on Step 1 of backpropagation if you initialize both $A = 0$ and $B = 0$?</h3>
-        <p>Think back to the multiply-gate partner-swap rule from backpropagation and commit to a prediction:</p>
+        <div class="widget-label">Quick Prediction</div>
+        <h3>What Happens on Step 1 of Backprop If You Set Both $A = 0$ and $B = 0$?</h3>
+        <p>Think back to the multiply-gate partner-swap rule from backpropagation and pick what happens:</p>
         <div class="control-row">
           <button class="btn btn-small" onclick="runPOE('A')">A) Both $A$ and $B$ update normally because upstream gradient $\bar{h} \ne 0$</button>
           <button class="btn btn-small" onclick="runPOE('B')">B) Deadlock: $\bar{B} = 0$ and $\bar{A} = 0$ forever, so the adapter never learns</button>
           <button class="btn btn-small" onclick="runPOE('C')">C) Only $B$ updates on step 1, while $A$ stays frozen forever</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
         </div>
         <div id="poe-reveal" style="display:none;">
           <div class="figure-box">
@@ -80,8 +55,7 @@
         </div>
       </div>
 
-      <!-- === STAGE 3A: WORKED 3x3 TRACE & ZERO-LATENCY MERGING === -->
-      <h2 id="s2">2. Worked $3 \times 3$ numerical trace &amp; zero-latency weight merging</h2>
+      <h2 id="s2">2. Tracing a $3 \times 3$ Low-Rank Update &amp; Zero-Latency Merging</h2>
       <p>
         A dense matrix <span class="term" data-term="sym-W0">$W_0 \in \mathbb{R}^{d \times k}$</span> has $d \cdot k$ entries. A rank-$r$ <span class="term" data-term="lora">LoRA</span> update factors <span class="term" data-term="sym-dW">$\Delta W = B A$</span> into a tall matrix <span class="term" data-term="sym-B">$B \in \mathbb{R}^{d \times r}$</span> and a wide matrix <span class="term" data-term="sym-A">$A \in \mathbb{R}^{r \times k}$</span>, storing only $r(d + k)$ numbers.
       </p>
@@ -130,19 +104,19 @@
     </p>
 
     <div class="interactive-card" id="rank-widget">
-      <div class="widget-label">Stage 3B: Discrete Stepper + Persistent Small Multiples</div>
+      <div class="widget-label">Side-by-Side Comparison</div>
       <h3>Single $4096 \times 4096$ Layer ($16.78\text{M}$ Base Weights): Full FT vs. LoRA vs. QLoRA</h3>
       <div class="control-row">
-        <button class="btn btn-small active" id="rstep-0" onclick="setRankStep(0)">Step 1: Full Fine-Tune</button>
-        <button class="btn btn-small" id="rstep-1" onclick="setRankStep(1)">Step 2: LoRA (r = 16, BF16)</button>
-        <button class="btn btn-small" id="rstep-2" onclick="setRankStep(2)">Step 3: QLoRA (r = 16, NF4)</button>
+        <button class="btn btn-small active" id="rstep-0" onclick="setRankStep(0)">Full Fine-Tune</button>
+        <button class="btn btn-small" id="rstep-1" onclick="setRankStep(1)">LoRA (r = 16, BF16)</button>
+        <button class="btn btn-small" id="rstep-2" onclick="setRankStep(2)">QLoRA (r = 16, NF4)</button>
       </div>
 
       <div class="small-multiples" id="rank-sm-grid"></div>
       <div class="readout" id="rank-step-explain"></div>
 
       <div id="rank-slider-gate" class="locked-note">
-        Complete the Stage 1 prediction above (or step through all 3 presets) to unlock the interactive Rank &amp; 7B-Model VRAM calculator.
+        Try the prediction in Section 1 (or tap through the 3 presets) to unlock the interactive Rank &amp; 7B-Model VRAM calculator.
       </div>
       <div id="rank-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
         <div class="control-row">
@@ -164,16 +138,16 @@
       </div>
     </div>
 
-    <!-- === STAGE 3C: SCALING ALPHA/R, TARGET MODULES & QLORA === -->
-    <h2 id="s4">4. Why $\alpha / r$ exists, which matrices to adapt, and how QLoRA works</h2>
+    <h2 id="s4">4. Why $\alpha / r$ Exists, Which Matrices to Adapt, and How QLoRA Works</h2>
     <p>
-      Three practical questions come up every time you configure a LoRA run:
+      Why does the LoRA formula multiply $B A x$ by the constant <span class="term" data-term="sym-scale">$\frac{\alpha}{r}$</span>? Suppose you train a model at rank $r = 8$ and then decide to try $r = 16$. Because the inner product $B A x = \sum_{i=1}^{r} b_{\cdot i}(a_{i\cdot} x)$ adds together $r$ rank-1 columns, doubling $r$ doubles the magnitude of the sum and its gradients. Dividing explicitly by $r$ normalizes that growth so you can sweep across $r = 8, 16, 64$ <strong>without having to retune your learning rate $\eta$ or <span class="term" data-term="sym-alpha">$\alpha$</span></strong>.
     </p>
-    <ul>
-      <li><strong>Why multiply by <span class="term" data-term="sym-scale">$\frac{\alpha}{r}$</span>?</strong> When you double the rank $r$ from $8$ to $16$, the inner dot product $B A x = \sum_{i=1}^{r} b_{\cdot i}(a_{i\cdot} x)$ sums twice as many rank-1 terms, doubling the magnitude of the outputs and gradients. Dividing by $r$ normalizes that sum so you can test $r = 8, 16, 64$ <strong>without retuning your learning rate $\eta$ or <span class="term" data-term="sym-alpha">$\alpha$</span></strong>.</li>
-      <li><strong>Which modules should you target?</strong> The original LoRA paper adapted only the attention query/value projections ($W_q, W_v$). Subsequent benchmarks (QLoRA, Dettmers et al., 2023) proved that adapting <strong>all linear layers</strong>—attention ($W_q, W_k, W_v, W_o$) plus MLP gates ($W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$)—at a modest rank ($r = 16$) reliably beats adapting only $W_q, W_v$ at a huge rank ($r = 64$).</li>
-      <li><strong>How does <span class="term" data-term="qlora">QLoRA</span> fit a 7B model on a single 6–8 GB GPU?</strong> <span class="term" data-term="qlora">QLoRA</span> stores the frozen base matrix $W_0$ in 4-bit <span class="term" data-term="nf4">NormalFloat4 (NF4)</span> with <span class="term" data-term="double-quant">double quantization</span> ($\approx 0.55\text{ bytes/weight}$, shrinking 7B base weights from $14\text{ GB}$ to $\sim 3.9\text{ GB}$). During the forward and backward passes, each block of $W_0$ is temporarily dequantized to 16-bit <span class="term" data-term="bf16">BF16</span> in registers to compute $W_0 x$ and $\bar{x} = W_0^\top \bar{h}$, while gradients update only the 16-bit LoRA adapters $A$ and $B$.</li>
-    </ul>
+    <p>
+      Which weight matrices inside a Transformer should actually get LoRA adapters? While the original 2021 paper only attached adapters to the attention query and value projections ($W_q, W_v$), Dettmers et al. (2023) showed that adapting <strong>every linear layer in the block</strong>—all four attention projections ($W_q, W_k, W_v, W_o$) plus all three feed-forward projections ($W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}$)—at a modest rank like $r = 16$ consistently outperforms adapting only $W_q, W_v$ even at a huge rank like $r = 64$.
+    </p>
+    <p>
+      To squeeze that entire training run onto a single consumer GPU, <strong><span class="term" data-term="qlora">QLoRA</span></strong> compresses the frozen base weights $W_0$ from 16-bit down to 4-bit <span class="term" data-term="nf4">NormalFloat4 (NF4)</span> with <span class="term" data-term="double-quant">double quantization</span> ($\approx 0.55\text{ bytes/weight}$, shrinking a 7B model's base weights from $14\text{ GB}$ to $\sim 3.9\text{ GB}$). During each forward and backward step, QLoRA dequantizes blocks of $W_0$ on the fly into 16-bit <span class="term" data-term="bf16">BF16</span> registers to compute the matrix products, while accumulating gradients exclusively into the 16-bit LoRA adapters $A$ and $B$.
+    </p>
 
     <details>
       <summary>Why LoRA still needs activation memory (and why gradient checkpointing still matters)</summary>
@@ -187,12 +161,11 @@
       </div>
     </details>
 
-    <!-- === STAGE 4: BACKWARD-FADED PRACTICE + CLOSED-BOOK RETRIEVAL === -->
-    <h2 id="s5">5. Backward-faded practice &amp; closed-book retrieval</h2>
+    <h2 id="s5">5. Hands-On Practice</h2>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Stage 4A: Backward-Faded Worked Example (Compression Ratio &amp; Scaling)</div>
-      <h3>Compute the Parameter Compression Ratio in Your Head</h3>
+      <div class="widget-label">Try It By Hand</div>
+      <h3>Compute the Parameter Compression Ratio</h3>
       <p>
         Suppose a rectangular MLP projection matrix $W_0$ has shape $d \times k = 600 \times 300$, and you attach a rank $r = 10$ LoRA adapter ($B \in \mathbb{R}^{600 \times 10}$, $A \in \mathbb{R}^{10 \times 300}$).<br>
         <strong>Step 1 (Full matrix parameter count):</strong> $d \cdot k = 600 \times 300 = 180{,}000$ parameters.<br>
@@ -202,28 +175,12 @@
       <div class="control-row">
         <label for="fade-input">Compression ratio ($\times$ fewer) =</label>
         <input type="number" id="fade-input" step="1" placeholder="Integer" style="width:8rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Stage 4B: Closed-Book Retrieval (Blank-Sheet Test)</div>
-      <h3>Reconstruct the Two-Part Trick: Asymmetric Init &amp; Zero-Latency Merge</h3>
-      <p>
-        Without scrolling up, write down: (1) how $A$ and $B$ are initialized at step 0 and why both cannot be zero, and (2) the algebraic formula used after training so inference adds zero latency.
-      </p>
-      <textarea id="recall-input" placeholder="Type both parts from memory..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-feedback" class="readout" style="display:none;">
-        <strong>Canonical answer:</strong> (1) <strong>Asymmetric initialization:</strong> $A$ is initialized with random Gaussian/Kaiming weights and $B$ is initialized to $0$. Because $\Delta W = BA = 0$, the model starts identical to the pretrained base model; and because $\bar{B} = \frac{\alpha}{r}\bar{h}(Ax)^\top$ uses the nonzero $A$, $B$ receives a nonzero gradient on step 1 (whereas $A=0, B=0$ would lock both gradients at zero). (2) <strong>Zero-latency merge:</strong> By linearity, $W_0 x + \frac{\alpha}{r}BAx = (W_0 + \frac{\alpha}{r}BA)x$, so we permanently add $W_{\text{merged}} = W_0 + \frac{\alpha}{r}BA$ once offline and run a single standard matrix multiply at inference.
-      </div>
-    </div>
-
-    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
-    <h2 id="s6">6. Contrastive matrix, interleaved checks &amp; spaced recall</h2>
+    <h2 id="s6">6. When to Use Which Fine-Tuning Method &amp; Diagnostic Checks</h2>
 
     <div class="table-wrap">
       <table>

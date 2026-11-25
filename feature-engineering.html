@@ -15,16 +15,16 @@
   <main>
     <h1>Feature Engineering: Turning Raw Columns Into Signals Models Can Actually Split On</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Match the feature to the model's blind spot:</strong> <span class="term" data-term="linear-model">Linear models</span> and <span class="term" data-term="knn">distance-based models</span> need <span class="term" data-term="z-score">scaling</span>, <span class="term" data-term="log-transform">log transforms</span> for heavy skew, and explicit <span class="term" data-term="cyclical-encoding">$\sin/\cos$ cyclical features</span>. <span class="term" data-term="decision-tree">Decision trees</span> (<span class="term" data-term="gbdt">XGBoost / LightGBM</span>) are immune to <span class="term" data-term="monotonic">monotonic scaling</span>, so feeding them $2x$ or $\ln(x)$ changes nothing—what trees crave are <strong><span class="term" data-term="interaction-feature">ratios and differences</span></strong> ($x_1 / x_2$, $x_1 - x_2$) that avoid clumsy staircase splits.</li>
-        <li><strong>Encode categories without inventing fake order or leaking the target:</strong> <span class="term" data-term="one-hot">One-hot encoding</span> works for low-cardinality categories ($K \le 15$), while <span class="term" data-term="target-encoding">target encoding</span> compresses high-cardinality IDs (like 5,000 zip codes) into a single smoothed prior—provided you compute it <strong><span class="term" data-term="out-of-fold">out-of-fold</span></strong> and never include a row's own label <span class="term" data-term="target-y">$y_i$</span>.</li>
-        <li><strong>Every stateful transform must be fit on training folds only:</strong> Computing a mean <span class="term" data-term="mu">$\mu$</span>, standard deviation <span class="term" data-term="sigma">$\sigma$</span>, or <span class="term" data-term="target-encoding">target encoding</span> map across the full dataset before splitting causes <span class="term" data-term="leakage">data leakage</span>.</li>
-      </ul>
-    </div>
+    <p>
+      Raw database columns are optimized for storage, not for machine learning geometry. When you hand a model raw columns like <code>annual_debt</code>, <code>annual_income</code>, <code>zip_code</code>, and <code>application_hour</code> ($0$ to $23$), the signal is technically in the table, yet different model families will trip over their own geometric blind spots trying to read it.
+    </p>
+    <p>
+      Consider the difference between a <span class="term" data-term="decision-tree">decision tree</span> (<span class="term" data-term="gbdt">XGBoost / LightGBM</span>) and a <span class="term" data-term="linear-model">linear model</span> or <span class="term" data-term="neural-net">neural network</span>. A decision tree only cares about the sorted rank order of a column, so rescaling dollars into thousands or taking a logarithm $\ln(x)$ changes literally nothing for a tree—yet that same tree can only make horizontal or vertical cuts ($x_1 &gt; c$), forcing it to carve a clumsy 10-step staircase just to approximate a simple ratio like Debt-to-Income ($x_1 / x_2$). Conversely, a linear model or <span class="term" data-term="knn">k-NN</span> classifier gets completely hijacked by unscaled dollar columns or skewed millionaire outliers, and thinks 11:00 PM ($h = 23$) and Midnight ($h = 0$) are $23$ hours apart unless you wrap time around a circle with $\sin$ and $\cos$.
+    </p>
+    <p>
+      Good feature engineering means matching each transformation to the model's exact blind spot—while guarding against the silent killer of tabular ML: <span class="term" data-term="leakage">target leakage</span> when encoding high-cardinality categories like zip codes.
+    </p>
 
-    <!-- SECTION 1 -->
     <h2 id="s1">1. Why Trees Need Ratios While Linear Models Need Scaling</h2>
 
     <div class="story-box">
@@ -82,28 +82,28 @@
     <!-- SECTION 2 -->
     <h2 id="s2">2. Numerical &amp; Cyclical Transforms</h2>
     <p>
-      While trees ignore <span class="term" data-term="monotonic">monotonic rescaling</span>, <span class="term" data-term="linear-model">linear models</span> ($\hat{y} = w_1 x_1 + w_2 x_2 + b$), <span class="term" data-term="neural-net">neural networks</span>, and <span class="term" data-term="knn">k-NN</span> depend directly on feature distances and slopes:
+      While decision trees ignore <span class="term" data-term="monotonic">monotonic rescaling</span> of a single column, <span class="term" data-term="linear-model">linear models</span> ($\hat{y} = w_1 x_1 + w_2 x_2 + b$), <span class="term" data-term="neural-net">neural networks</span>, and <span class="term" data-term="knn">k-NN</span> depend directly on numerical distances and slopes. If Income is measured in raw dollars ($40{,}000$) and Age in years ($40$), an unscaled <span class="term" data-term="l2-reg">L2 penalty</span> or <span class="term" data-term="gradient">gradient descent</span> step treats a $1$-unit change in Income and Age identically. Applying <span class="term" data-term="z-score">Z-score standardization</span> ($z = \frac{x - \mu_{\text{train}}}{\sigma_{\text{train}}}$) subtracts the training mean <span class="term" data-term="mu">$\mu_{\text{train}}$</span> and divides by the training standard deviation <span class="term" data-term="sigma">$\sigma_{\text{train}}$</span>, putting every continuous feature into common standard-deviation units (mean $0$, variance $1$).
     </p>
-    <ul>
-      <li><strong><span class="term" data-term="z-score">Z-Score Standardization</span> ($z = \frac{x - \mu}{\sigma}$):</strong> If Income is measured in dollars ($40{,}000$) and Age in years ($40$), unscaled <span class="term" data-term="l2-reg">L2 regularization</span> and <span class="term" data-term="gradient">gradient descent</span> treat a $1$-unit change in Income and Age equally. Subtracting the training mean <span class="term" data-term="mu">$\mu_{\text{train}}$</span> and dividing by <span class="term" data-term="sigma">$\sigma_{\text{train}}$</span> puts every feature in standard-deviation units (mean $0$, variance $1$).</li>
-      <li><strong><span class="term" data-term="log-transform">Log Transform</span> ($\tilde{x} = \ln(1 + x)$):</strong> Income and transaction counts have heavy right tails ($10\text{k}$, $100\text{k}$, $10\text{M}$). Taking $\log_{10}(x)$ turns multiplicative $10\times$ jumps into equal $+1$ additive steps ($4, 5, 7$) so a single millionaire row does not hijack a linear regression line.</li>
-      <li><strong><span class="term" data-term="cyclical-encoding">Cyclical Encoding</span> ($\sin / \cos$):</strong> If you feed raw Hour $h \in \{0, 1, \dots, 23\}$ into a model, 11:00 PM ($h = 23$) and Midnight ($h = 0$) look $23$ hours apart—the maximum possible distance! Mapping $h$ onto a unit circle fixes the seam:</li>
-    </ul>
+    <p>
+      Standardizing mean and variance is still not enough when a column has a heavy right tail, like household income or transaction counts ($10\text{k}$, $100\text{k}$, $10\text{M}$). Applying a <span class="term" data-term="log-transform">log transform</span> ($\tilde{x} = \ln(1 + x)$, or base-10 $\log_{10}$) turns multiplicative $10\times$ jumps into equal $+1$ additive steps ($4, 5, 7$) so a single millionaire outlier cannot hijack the regression slope.
+    </p>
+    <p>
+      Periodic time columns like hour-of-day $h \in \{0, 1, \dots, 23\}$ or day-of-week create a different geometric trap: in raw integers, 11:00 PM ($h = 23$) and Midnight ($h = 0$) look $23$ hours apart—the maximum possible distance on the clock! Wrapping $h$ around a 2D unit circle with <span class="term" data-term="cyclical-encoding">cyclical $\sin/\cos$ encoding</span> stitches midnight seamlessly back onto 11:00 PM:
+    </p>
 
     <div class="math-block">
       $$h_{\sin} = \sin\!\left(\frac{2\pi h}{24}\right), \qquad h_{\cos} = \cos\!\left(\frac{2\pi h}{24}\right)$$
-      <div class="math-hint">You always need <strong>both</strong> $\sin$ and $\cos$: $\sin$ alone gives the same value for 6:00 AM ($+1$) and... wait, $\sin$ gives $0$ at both 0:00 and 12:00 Noon! Adding $\cos$ ($+1$ at 0:00, $-1$ at 12:00) makes every hour unique.</div>
+      <div class="math-hint">Why do you always need <strong>both</strong> $\sin$ and $\cos$? Because $\sin$ alone hits the exact same value twice every cycle (for instance, $\sin = 0$ at both Midnight $0:00$ and Noon $12:00$). Pairing it with $\cos$ ($+1$ at Midnight, $-1$ at Noon) gives every hour a unique $(x, y)$ coordinate on the circle.</div>
     </div>
 
     <!-- SECTION 3 -->
     <h2 id="s3">3. Categorical Encoding &amp; The Target Leakage Trap</h2>
     <p>
-      How do you turn a string column like <code>zip_code</code> into numbers?
+      How do you turn a string category column into numbers without inventing a fake mathematical ordering? When a column only has a handful of unique levels ($K \le 15$, such as <code>payment_type</code>), <span class="term" data-term="one-hot">one-hot encoding</span> works cleanly by creating $K$ binary $0/1$ indicator columns—avoiding the classic mistake of feeding arbitrary integer IDs ($1, 2, 3$) into a linear model that would treat Category 3 as "three times" Category 1.
     </p>
-    <ul>
-      <li><strong>Low cardinality ($K \le 15$, e.g., <code>payment_type</code>):</strong> Use <span class="term" data-term="one-hot">One-Hot Encoding</span> ($K$ binary $0/1$ columns). Avoid arbitrary integer IDs ($1, 2, 3$) in linear models because that claims Category 3 is "three times" Category 1.</li>
-      <li><strong>High cardinality ($K = 5{,}000$, e.g., <code>zip_code</code> or <code>merchant_id</code>):</strong> One-hot encoding explodes into $5{,}000$ sparse columns. Instead, use <strong><span class="term" data-term="target-encoding">Smoothed Target Encoding</span></strong>: replace each category $c$ with a blend of its training target rate $\bar{y}_c$ and the global <span class="term" data-term="base-rate">prior $\bar{y}_{\text{global}}$</span>:</li>
-    </ul>
+    <p>
+      When a column has thousands of unique levels ($K = 5{,}000$, like <code>zip_code</code> or <code>merchant_id</code>), one-hot encoding explodes into $5{,}000$ sparse columns that shatter decision tree depth and starve rare categories of data. Instead, <span class="term" data-term="target-encoding">Smoothed Target Encoding</span> compresses the entire column into a single number by replacing each category $c$ with a weighted blend of its historical target rate $\bar{y}_c$ and the overall dataset <span class="term" data-term="base-rate">base rate $\bar{y}_{\text{global}}$</span>:
+    </p>
 
     <div class="math-block">
       $$\hat{y}_c = \frac{n_c \bar{y}_c + m \bar{y}_{\text{global}}}{n_c + m} = \frac{\text{positives}_c + m \bar{y}_{\text{global}}}{n_c + m}$$

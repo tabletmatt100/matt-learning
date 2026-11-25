@@ -13,60 +13,36 @@
 </head>
 <body>
   <main>
-    <!-- === STAGE 0: PRE-TRAINING HEADER === -->
     <h1>The Vanishing Gradient Problem: Why Early Layers and Old Tokens Stop Learning</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>The core failure:</strong> <span class="term" data-term="backprop">Backpropagation</span> multiplies <span class="term" data-term="local-grad">local derivatives</span> step by step from the <span class="term" data-term="loss">loss</span> <span class="term" data-term="sym-L">$L$</span> back to early layers or early time steps. When each step's multiplier is smaller than $1$, a chain of $K$ steps shrinks the gradient exponentially like $c^K \to 0$, freezing early weights while late weights keep moving.</li>
-        <li><strong>In regular <span class="term" data-term="dnn">DNNs</span> (depth <span class="term" data-term="sym-ell">$\ell = 1 \dots L$</span>):</strong> Each layer $\ell$ has its own distinct weight <span class="term" data-term="sym-well">$w_\ell$</span>, and the gradient into layer $1$ multiplies $\prod_{\ell=2}^L (w_\ell \cdot f'(z_\ell))$. Because <span class="term" data-term="sigmoid">sigmoid</span>'s slope $\sigma'(z)$ never exceeds $\frac{1}{4}$, stacking even $4$ sigmoid layers divides the gradient by at least $4^4 = 256$.</li>
-        <li><strong>In <span class="term" data-term="rnn">RNNs</span> (time <span class="term" data-term="sym-t">$t = 1 \dots T$</span>):</strong> Unrolling across $T$ tokens creates a virtual $T$-layer network that reuses the <em>exact same</em> recurrent weight <span class="term" data-term="sym-wh">$w_h$</span> at every step (<span class="term" data-term="bptt">BPTT</span>). The total gradient is a sum over time steps, but the credit from step $T$ back to token $1$ scales as $(w_h)^T$—either vanishing to $0$ ($|w_h| &lt; 1$) or exploding to $\infty$ ($|w_h| &gt; 1$).</li>
-        <li><strong>The two architectural fixes:</strong> Replace saturating activations with <span class="term" data-term="relu">ReLU</span> (slope $= 1$ for $z &gt; 0$) plus <span class="term" data-term="he-init">variance-preserving initialization</span>, and wire an <strong>additive $+1$ highway</strong> across layers (<span class="term" data-term="residual">ResNet</span> $h_\ell = h_{\ell-1} + F(h_{\ell-1})$) or across time (<span class="term" data-term="lstm">LSTM</span> cell state $c_t = f_t \cdot c_{t-1} + i_t \cdot \tilde{c}_t$).</li>
-      </ul>
-    </div>
+    <p>
+      Suppose you build a 10-layer neural network or unroll a recurrent network across 50 words of a sentence, initialize the weights cleanly, and hit train. After an hour, the final output layers are updating briskly, yet the weights in Layer 1 sit frozen almost exactly where random initialization left them—and your recurrent network completely ignores the opening words of every sentence.
+    </p>
+    <p>
+      Why does the learning signal die on its way back to the start of the network? Because <span class="term" data-term="backprop">backpropagation</span> is a chain of multiplications. To tell an early weight how to move, the <span class="term" data-term="chain-rule">Chain Rule</span> multiplies the output error by the <span class="term" data-term="local-grad">local derivative</span> of every single layer or time step in between. Whenever each step's multiplier is smaller than $1$—for instance, the classic <span class="term" data-term="sigmoid">sigmoid</span> activation has a maximum possible slope of just $\frac{1}{4}$—multiplying $K$ of them in a row shrinks the gradient exponentially like $(\frac{1}{4})^K \to 0$.
+    </p>
+    <p>
+      Even worse, vanishing gradients wear two different disguises depending on the architecture. In a deep feedforward network (<span class="term" data-term="dnn">DNN</span>), every layer has its own separate weight matrix, so you can see Layer 1's gradient drop to zero directly. In a <span class="term" data-term="rnn">Recurrent Neural Network (RNN)</span>, the <em>same</em> weight matrix is shared across every time step, so large short-term gradients from the last few words mask the fact that long-range signals from early words have vanished completely. Taming both requires trading pure multiplication chains for <strong>additive $+1$ gradient highways</strong>—using <span class="term" data-term="residual">residual skip connections</span> across depth and gated cell states (<span class="term" data-term="lstm">LSTMs</span>) or direct <span class="term" data-term="attention-shortcut">self-attention</span> across time.
+    </p>
 
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Expert Fast-Forward Check</div>
-      <p style="margin-top:0.3rem;">Already know how <span class="term" data-term="chain-rule">Chain Rule</span> products behave across depth and time? Answer this mental-math check to collapse the introductory prediction hook and jump straight to the DNN &amp; RNN traces.</p>
-      <div class="control-row">
-        <label for="ff-input">In a 4-step chain where each step has local derivative $\frac{1}{2}$ and output gradient $\bar{h}_4 = 16$, what gradient $\bar{h}_0$ reaches the start?</label>
-        <input type="text" id="ff-input" placeholder="Enter integer for h_0 grad" style="flex:1; min-width:150px;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#s1">1. Predict First: Why Layer 1 Freezes While Layer 4 Learns</a></li>
-        <li><a href="#s2">2. Regular DNNs: Distinct Weights Across Depth &amp; The Sigmoid Ceiling</a></li>
-        <li><a href="#s3">3. RNNs Across Time: Shared Weights &amp; The Memory Horizon</a></li>
-        <li><a href="#s4">4. Backward-Faded Practice &amp; Closed-Book Retrieval</a></li>
-        <li><a href="#s5">5. Contrastive Matrix, Interleaved Checks &amp; Spaced Cards</a></li>
-      </ol>
-    </nav>
-
-    <!-- === STAGE 1 & 2: PREDICT-OBSERVE-EXPLAIN + REFUTATION === -->
     <div id="scaffolding-section">
-      <h2 id="s1">1. Predict first: why does Layer 1 freeze when all weights equal 1?</h2>
+      <h2 id="s1">1. Why Layer 1 Freezes Even When Every Weight Equals 1</h2>
       <p>
         Imagine a 4-layer <span class="term" data-term="dnn">deep neural network</span> where every weight is initialized cleanly to <span class="term" data-term="sym-well">$w_1 = w_2 = w_3 = w_4 = 1$</span>, and every pre-activation sits right at <span class="term" data-term="sym-hell">$z_\ell = 0$</span>—the steepest point of the <span class="term" data-term="sigmoid">sigmoid</span> curve <span class="term" data-term="sym-sigprime">$\sigma(z)$</span>.
       </p>
       <p>
-        Suppose an error signal of <span class="term" data-term="sym-gbar">$\bar{z}_4 = 64$</span> arrives at the top layer's pre-activation $z_4$. Because <span class="term" data-term="sym-sigprime">$\sigma'(0) = \frac{1}{4}$</span>, each sigmoid gate between $z_4$ and $z_1$ multiplies the backward gradient by $w_\ell \cdot \sigma'(0) = 1 \times \frac{1}{4} = \frac{1}{4}$ (there are $3$ sigmoid hops from $z_4$ back to $z_1$).
+        Suppose an error signal of <span class="term" data-term="sym-gbar">$\bar{z}_4 = 64$</span> arrives at the top layer's pre-activation $z_4$. Because <span class="term" data-term="sym-sigprime">$\sigma'(0) = \frac{1}{4}$</span>, each sigmoid gate between $z_4$ and $z_1$ multiplies the backward gradient by $w_\ell \cdot \sigma'(0) = 1 \times \frac{1}{4} = \frac{1}{4}$ across the $3$ hops from $z_4$ back to $z_1$.
       </p>
 
       <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Predict-Observe-Explain (Guess First)</div>
-        <h3>Prediction: If top layer $z_4$ receives gradient $\bar{z}_4 = 64$, what gradient $\bar{z}_1$ reaches Layer 1 after 3 sigmoid hops?</h3>
-        <p>Commit to a number mentally before revealing the layer-by-layer gradient bars:</p>
+        <div class="widget-label">Quick Prediction</div>
+        <h3>If Top Layer $z_4$ Receives Gradient $\bar{z}_4 = 64$, What Gradient $\bar{z}_1$ Reaches Layer 1?</h3>
+        <p>Trace the 3 sigmoid hops mentally before revealing the layer-by-layer gradient bars:</p>
         <div class="control-row">
           <button class="btn btn-small" onclick="runPOE('A')">A) $\bar{z}_1 = 64$ (weights are $1$, so signal stays $64$)</button>
           <button class="btn btn-small" onclick="runPOE('B')">B) $\bar{z}_1 = 16$ (divides by $4$ once overall)</button>
           <button class="btn btn-small" onclick="runPOE('C')">C) $\bar{z}_1 = 1$ (shrinks $64 \to 16 \to 4 \to 1$)</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I have no idea &mdash; show me</button>
+          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
         </div>
         <div id="poe-reveal" style="display:none;">
           <div class="figure-box">
@@ -120,27 +96,25 @@
     </p>
 
     <div class="interactive-card" id="dnn-stepper-widget">
-      <div class="widget-label">Discrete Stepper + Persistent Small Multiples (DNN Depth)</div>
+      <div class="widget-label">Side-by-Side Comparison (DNN Depth)</div>
       <h3>Backward Gradient $\bar{z}_\ell$ Across 4 Layers (Starting from $\bar{z}_4 = 64$, Weights $w_\ell = 1$)</h3>
       <div class="control-row">
-        <button class="btn btn-small active" id="dnn-btn-0" onclick="setDnnStep(0)">Step 1: Sigmoid ($\sigma'=1/4$)</button>
-        <button class="btn btn-small" id="dnn-btn-1" onclick="setDnnStep(1)">Step 2: Active ReLU ($f'=1$)</button>
-        <button class="btn btn-small" id="dnn-btn-2" onclick="setDnnStep(2)">Step 3: ResNet Skip ($1+F'$)</button>
+        <button class="btn btn-small active" id="dnn-btn-0" onclick="setDnnStep(0)">Sigmoid ($\sigma'=1/4$)</button>
+        <button class="btn btn-small" id="dnn-btn-1" onclick="setDnnStep(1)">Active ReLU ($f'=1$)</button>
+        <button class="btn btn-small" id="dnn-btn-2" onclick="setDnnStep(2)">ResNet Skip ($1+F'$)</button>
       </div>
 
       <div class="small-multiples" id="dnn-sm-grid"></div>
       <div class="readout" id="dnn-step-explain"></div>
     </div>
 
-    <!-- === STAGE 3B: RNN MECHANISM Across TIME + DISTINCT-NUMBER WORKED EXAMPLE === -->
-    <h2 id="s3">3. RNNs: vanishing gradients across time (and why old tokens are forgotten)</h2>
+    <h2 id="s3">3. RNNs: Vanishing Gradients Across Time (and Why Old Tokens Are Forgotten)</h2>
     <p>
-      A <span class="term" data-term="rnn">Recurrent Neural Network (RNN)</span> reads a sequence of tokens $x_1, x_2, \dots, x_T$ by updating a hidden state <span class="term" data-term="sym-ht">$h_t = f(w_h h_{t-1} + w_x x_t)$</span> at each step <span class="term" data-term="sym-t">$t$</span>. Notice two big differences from a regular <span class="term" data-term="dnn">DNN</span>:
+      A <span class="term" data-term="rnn">Recurrent Neural Network (RNN)</span> reads a sequence of tokens $x_1, x_2, \dots, x_T$ by updating a hidden state <span class="term" data-term="sym-ht">$h_t = f(w_h h_{t-1} + w_x x_t)$</span> at each step <span class="term" data-term="sym-t">$t$</span>. While an unrolled RNN looks just like a deep network on paper, it behaves differently in two important ways.
     </p>
-    <ul>
-      <li><strong>Weight sharing across time:</strong> A 50-layer DNN has 50 distinct weights $w_1, \dots, w_{50}$, whereas an RNN unrolled over 50 tokens reuses the <strong>exact same</strong> recurrent weight <span class="term" data-term="sym-wh">$w_h$</span> at every single time step.</li>
-      <li><strong>Sum-of-paths gradient (<span class="term" data-term="bptt">BPTT</span>):</strong> Because $w_h$ is used at every step $t = 1 \dots T$, its total gradient $\bar{w}_h$ is the <em>sum</em> of contributions from all time steps. However, the contribution that teaches the network to connect token $t = 1$ to a loss at token $t = T$ must travel through $T - 1$ copies of $w_h \cdot f'(z_k)$.</li>
-    </ul>
+    <p>
+      First, a 50-layer feedforward <span class="term" data-term="dnn">DNN</span> has 50 separate weight matrices $w_1, \dots, w_{50}$, whereas an RNN unrolled across 50 tokens reuses the <strong>exact same</strong> recurrent weight <span class="term" data-term="sym-wh">$w_h$</span> at every single time step. Second, because $w_h$ participates at every step $t = 1 \dots T$, its total gradient $\bar{w}_h$ during <span class="term" data-term="bptt">Backpropagation Through Time (BPTT)</span> is the <em>sum</em> of gradient paths from all time steps—and the path connecting an early word at $t = 1$ to a prediction at $t = T$ still has to survive $T - 1$ serial multiplications by $w_h \cdot f'(z_k)$.
+    </p>
 
     <div class="worked">
       <p><strong>Worked 3-step RNN trace with distinct inputs $x = [4, 2, 1]$ (mental math, zero calculator):</strong></p>
@@ -178,19 +152,19 @@
     </p>
 
     <div class="interactive-card" id="rnn-stepper-widget">
-      <div class="widget-label">Discrete Stepper + Persistent Small Multiples (RNN Memory Horizon)</div>
+      <div class="widget-label">Side-by-Side Comparison (RNN Memory Horizon)</div>
       <h3>Gradient Signal Reaching Token $t$ from a Loss at $T = 5$ ($\bar{h}_5 = 16$)</h3>
       <div class="control-row">
-        <button class="btn btn-small active" id="rnn-btn-0" onclick="setRnnStep(0)">Step 1: Vanishing ($w_h f' = 1/2$)</button>
-        <button class="btn btn-small" id="rnn-btn-1" onclick="setRnnStep(1)">Step 2: Exploding ($w_h f' = 2$)</button>
-        <button class="btn btn-small" id="rnn-btn-2" onclick="setRnnStep(2)">Step 3: LSTM Highway ($f_t = 1$)</button>
+        <button class="btn btn-small active" id="rnn-btn-0" onclick="setRnnStep(0)">Vanishing ($w_h f' = 1/2$)</button>
+        <button class="btn btn-small" id="rnn-btn-1" onclick="setRnnStep(1)">Exploding ($w_h f' = 2$)</button>
+        <button class="btn btn-small" id="rnn-btn-2" onclick="setRnnStep(2)">LSTM Highway ($f_t = 1$)</button>
       </div>
 
       <div class="small-multiples" id="rnn-sm-grid"></div>
       <div class="readout" id="rnn-step-explain"></div>
 
       <div id="rnn-slider-gate" class="locked-note">
-        Complete the Section 1 prediction (or step through all 3 RNN presets above) to unlock the interactive per-step multiplier explorer.
+        Try the Section 1 prediction (or tap through the 3 RNN presets above) to unlock the interactive per-step multiplier explorer.
       </div>
       <div id="rnn-slider-unlocked" style="display:none; margin-top:1rem; border-top:1px solid #000; padding-top:0.8rem;">
         <div class="control-row">
@@ -234,48 +208,29 @@
       </div>
     </details>
 
-    <!-- === STAGE 4: BACKWARD-FADED PRACTICE + CLOSED-BOOK RETRIEVAL === -->
-    <h2 id="s4">4. Backward-faded practice &amp; closed-book retrieval</h2>
+    <h2 id="s4">4. Hands-On Practice: Plain Stack vs. Residual Highway</h2>
     <p>
-      Complete the final step of the ResNet vs. plain-network trace below mentally (no calculator needed), then test your eyes-off-the-page recall.
+      Trace the final step of the ResNet vs. plain-network comparison below by hand, then test the key conceptual distinction between depth vanishing and temporal vanishing.
     </p>
 
     <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Backward-Faded Worked Example (Plain Block vs. Residual Block)</div>
+      <div class="widget-label">Try It By Hand</div>
       <h3>Compute $\bar{h}_0$ Across Two Blocks When Each Branch Has Local Slope $F' = \frac{1}{2}$</h3>
       <p>
         Suppose top gradient $\bar{h}_2 = 16$ flows backward through <strong>two</strong> blocks ($h_0 \to h_1 \to h_2$) where each learned branch $F_\ell(h_{\ell-1})$ has local derivative $F' = \frac{1}{2}$:<br>
-        <strong>Step 1 (Plain network $h_\ell = F_\ell(h_{\ell-1})$):</strong> Each block multiplies by $\frac{1}{2}$, so $\bar{h}_1 = 16 \times \frac{1}{2} = 8$, and $\bar{h}_0 = 8 \times \frac{1}{2} = \mathbf{4}$ (lost $75\%$ of the signal in just 2 blocks).<br>
+        <strong>Step 1 (Plain network $h_\ell = F_\ell(h_{\ell-1})$):</strong> Each block multiplies by $\frac{1}{2}$, so $\bar{h}_1 = 16 \times \frac{1}{2} = 8$, and $\bar{h}_0 = 8 \times \frac{1}{2} = \mathbf{4}$ (losing $75\%$ of the signal in just 2 blocks).<br>
         <strong>Step 2 (ResNet block 2: $h_2 = h_1 + F_2(h_1)$):</strong> Because of the $+ h_1$ skip wire, the local derivative is $1 + F' = 1 + \frac{1}{2} = \frac{3}{2}$. Thus $\bar{h}_1 = \bar{h}_2 \times \frac{3}{2} = 16 \times \frac{3}{2} = \mathbf{24}$.<br>
         <strong>Step 3 (Your turn &mdash; ResNet block 1: $h_1 = h_0 + F_1(h_0)$):</strong> Given $\bar{h}_1 = 24$ and local derivative $1 + F' = \frac{3}{2}$, what is $\bar{h}_0$?
       </p>
       <div class="control-row">
         <label for="fade-input">$\bar{h}_0 =$</label>
         <input type="number" id="fade-input" step="1" placeholder="Integer" style="width:8rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check Step 3</button>
+        <button class="btn btn-small" onclick="checkFaded()">Check</button>
       </div>
       <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Closed-Book Retrieval (Blank-Sheet Test)</div>
-      <h3>DNN Depth Vanishing vs. RNN Temporal Vanishing</h3>
-      <p>
-        Without scrolling up, answer two questions in your own words: (1) In a regular 10-layer DNN, why is it easy to see in the gradient vector that layer 1 has a vanishing gradient, whereas in a 10-step RNN the recurrent weight gradient $\bar{w}_h$ can still be large even when long-term gradients have vanished? (2) Why can you fix exploding gradients with gradient clipping, but cannot fix vanishing gradients by simply multiplying the gradient by $10^6$?
-      </p>
-      <textarea id="recall-input" placeholder="Type your 2-part explanation from memory..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-feedback" class="readout" style="display:none;">
-        <strong>Canonical answer:</strong><br>
-        1. <strong>Distinct weights vs. shared weights:</strong> In a 10-layer DNN, layer 1 has its own separate parameter $w_1$, so $\bar{w}_1 \approx 0$ directly shows that early layers are frozen while $\bar{w}_{10}$ is large. In an RNN, the <em>same</em> weight $w_h$ is shared across all 10 time steps, so $\bar{w}_h = \sum_{t=1}^{10} \bar{w}_{h}^{(t)}$ sums recent and old paths together; the short-term gradient from $t=10, 9$ keeps total $\bar{w}_h$ large and hides the fact that the long-term signal from $t=1$ has decayed to zero.<br>
-        2. <strong>Why rescaling fails on vanishing gradients:</strong> In an RNN, multiplying $\bar{w}_h$ by $10^6$ blows up the dominant short-term terms from $t=10$ instead of recovering the vanished $t=1$ term; in a deep DNN, once products underflow <span class="term" data-term="float32">float32</span> precision or mix with numerical noise, rescaling amplifies noise and ill-conditioning rather than restoring the true causal direction (you need an architectural $+1$ skip path like ResNet or LSTM).
-      </div>
-    </div>
-
-    <!-- === STAGE 5: CONTRASTIVE MATRIX, INTERLEAVED CHECKS & SPACED EXPORT === -->
-    <h2 id="s5">5. Contrastive matrix, interleaved checks &amp; spaced recall</h2>
+    <h2 id="s5">5. Diagnosis &amp; Fix Cheat Sheet</h2>
 
     <div class="table-wrap">
       <table>

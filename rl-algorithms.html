@@ -12,49 +12,20 @@
   <script src="common.js"></script>
 </head>
 <body>
-  <header id="top">
-    <div class="header-inner">
-      <div class="nav-links">
-        <a href="index.html">&larr; All Articles</a>
-        <a href="reinforcement-learning.html">&larr; Part 1: RL From Scratch</a>
-      </div>
-      <div class="font-controls">
-        <button id="font-dec" aria-label="Decrease font size">A-</button>
-        <span class="font-size-label" id="font-size-label">18px</span>
-        <button id="font-inc" aria-label="Increase font size">A+</button>
-      </div>
-    </div>
-  </header>
-
   <main>
     <h1>Modern RL Algorithms: The Story From Q* and PPO to GRPO in LLMs</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>The overarching story:</strong> Every famous RL algorithm was invented to fix a concrete bottleneck in the previous one—moving from small grid games (<span class="term" data-term="q-star">$Q^*$</span> and <span class="term" data-term="q-learning">Q-Learning</span>) to huge continuous spaces (<span class="term" data-term="policy-gradient">Policy Gradients</span> and <span class="term" data-term="ppo">PPO</span>) to memory-efficient LLM reasoning (<span class="term" data-term="grpo">GRPO</span>).</li>
-        <li><strong><span class="term" data-term="q-star">$Q^*(s, a)$</span> ("Q-star"):</strong> The ultimate action cheat sheet—the expected return of taking move <span class="term" data-term="action">$a$</span> in state <span class="term" data-term="state">$s$</span> assuming you play <em>perfectly</em> on every step after. Great when you can check all possible actions, or score candidate reasoning steps in a search tree.</li>
-        <li><strong><span class="term" data-term="ppo">PPO</span> vs. <span class="term" data-term="grpo">GRPO</span> (for training LLMs):</strong> <span class="term" data-term="ppo">PPO</span> keeps a separate, giant <span class="term" data-term="critic">Critic</span> neural network to judge whether an answer beat expectations (<span class="term" data-term="advantage">Advantage $A_t$</span>) and clips updates so the model doesn't collapse. <span class="term" data-term="grpo">GRPO</span> (used in DeepSeek-R1) deletes the Critic network entirely: it generates a small group of <span class="term" data-term="group-size">$G$</span> answers to the same prompt and uses their own group average <span class="term" data-term="group-mean">$\mu$</span> as the baseline.</li>
-      </ul>
-    </div>
-
     <p>
-      <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="advantage">$A_t$</span>, <span class="term" data-term="prob-ratio">$r_t$</span>, <span class="term" data-term="clip-eps">$\epsilon$</span>, or <span class="term" data-term="group-mean">$\mu$</span>) to open an explanation popover. All examples and checks use simple mental math—no calculator required.</em>
+      Every major reinforcement learning algorithm was invented to fix a concrete scaling bottleneck in the one that came before it. When state spaces were small enough to fit in a spreadsheet—like our 3-tile warehouse hallway from <a href="reinforcement-learning.html">Part 1</a>—you could learn an exact lookup table <span class="term" data-term="q-star">$Q^*(s, a)$</span> ("Q-star") giving the optimal long-term payoff of every move in every situation (<span class="term" data-term="q-learning">Q-Learning</span>).
+    </p>
+    <p>
+      The moment you move from small grids to robotic joints or language generation—where a 500-token response has more possible action sequences than atoms in the universe—you can no longer loop over every possible outcome to take a $\max$. You have to train a neural network <span class="term" data-term="policy">policy $\pi_\theta(a \mid s)$</span> directly with <span class="term" data-term="policy-gradient">Policy Gradients</span>, nudging up the probability of actions that beat expectations (<span class="term" data-term="advantage">Advantage $A_t &gt; 0$</span>) while putting a speed limit on each update so a single lucky rollout doesn't destroy the network (<span class="term" data-term="ppo">PPO</span>).
+    </p>
+    <p>
+      And when you scale PPO up to 70-billion-parameter reasoning LLMs, keeping a second 70-billion-parameter <span class="term" data-term="critic">Critic</span> network in GPU memory just to estimate the baseline expectation becomes painfully expensive. That bottleneck is what led DeepSeek-R1 to <span class="term" data-term="grpo">GRPO (Group Relative Policy Optimization)</span>: delete the Critic network completely, sample a small group of $G$ answers to the same prompt, and score each answer against the group's own average <span class="term" data-term="group-mean">$\mu$</span>.
     </p>
 
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">The 5-Chapter Narrative</div>
-      <ol>
-        <li><a href="#ch-1">1. Chapter 1: $Q^*$ ("Q-Star"), Q-Learning, and Why Lookup Tables Break</a></li>
-        <li><a href="#ch-2">2. Chapter 2: Policy Gradients &amp; Actor-Critic (Why "Advantage" Beats Raw Reward)</a></li>
-        <li><a href="#ch-3">3. Chapter 3: PPO — Putting a Speed Limit on Policy Updates</a></li>
-        <li><a href="#ch-4">4. Chapter 4: GRPO — How DeepSeek Eliminated the Critic Network</a></li>
-        <li><a href="#ch-5">5. Chapter 5: The Algorithm Map (Q*, PPO, DPO, GRPO) &amp; Checks</a></li>
-      </ol>
-    </nav>
-
-    <!-- === CHAPTER 1: Q* AND Q-LEARNING === -->
-    <h2 id="ch-1">1. Chapter 1: <span class="term" data-term="q-star">$Q^*$</span> ("Q-Star"), Q-Learning, and Why Lookup Tables Break</h2>
+    <h2 id="ch-1">1. <span class="term" data-term="q-star">$Q^*$</span> ("Q-Star"), Q-Learning, and Why Lookup Tables Break</h2>
     <p>
       In <a href="reinforcement-learning.html">Part 1</a>, our warehouse robot learned a scorecard <span class="term" data-term="q-function">$Q(s, a)$</span> that estimates how many total points it will get if it takes move <span class="term" data-term="action">$a$</span> in state <span class="term" data-term="state">$s$</span> and follows its <em>current</em> habit afterward.
     </p>
@@ -323,21 +294,7 @@
       <div id="grpo-fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
-    <div class="interactive-card" id="recall-grpo-widget">
-      <div class="widget-label">Self-Explanation Check</div>
-      <h3>How Does GRPO Save Half the Training Memory of PPO?</h3>
-      <p>In one sentence, what neural network does <span class="term" data-term="grpo">GRPO</span> remove compared to <span class="term" data-term="ppo">PPO</span>, and what replaces it?</p>
-      <textarea id="recall-grpo-input" placeholder="Jot down your answer in plain words..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealGRPORecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-grpo-feedback" class="readout" style="display:none;">
-        <strong>Key idea:</strong> <span class="term" data-term="grpo">GRPO</span> deletes the giant <span class="term" data-term="critic">Critic</span> value network <span class="term" data-term="value-function">$V_\phi(s)$</span> and replaces its baseline prediction with the empirical average score <span class="term" data-term="group-mean">$\mu$</span> of a small group of <span class="term" data-term="group-size">$G$</span> responses sampled for the same prompt.
-      </div>
-    </div>
-
-    <!-- === CHAPTER 5: THE LANDSCAPE MAP & DIAGNOSTIC CHECKS === -->
-    <h2 id="ch-5">5. Chapter 5: The Algorithm Map (<span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="dpo">DPO</span>, <span class="term" data-term="grpo">GRPO</span>) &amp; Checks</h2>
+    <h2 id="ch-5">5. The Algorithm Map (<span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="dpo">DPO</span>, <span class="term" data-term="grpo">GRPO</span>) &amp; Checks</h2>
     <p>
       You will often see one more acronym alongside <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span> in LLM papers: <span class="term" data-term="dpo">DPO (Direct Preference Optimization)</span>.
     </p>

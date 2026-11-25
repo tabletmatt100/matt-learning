@@ -12,60 +12,18 @@
   <script src="common.js"></script>
 </head>
 <body>
-  <header id="top">
-    <div class="header-inner">
-      <div class="nav-links">
-        <a href="index.html">&larr; All Articles</a>
-      </div>
-      <div class="font-controls">
-        <button id="font-dec" aria-label="Decrease font size">A-</button>
-        <span class="font-size-label" id="font-size-label">18px</span>
-        <button id="font-inc" aria-label="Increase font size">A+</button>
-      </div>
-    </div>
-  </header>
-
   <main>
     <h1>Training Hyperparameters: Why Runs Explode, Stall, or Overfit</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>The core coupling:</strong> Training hyperparameters are not independent dials. <span class="term" data-term="learning-rate">Learning rate ($\eta$)</span> sets step length, <span class="term" data-term="batch-size">batch size ($B$)</span> sets gradient signal-to-noise, and <span class="term" data-term="gradient-accumulation">gradient accumulation ($K$)</span> lets small GPUs simulate large <span class="term" data-term="effective-batch-size">effective batches ($B_{\text{eff}} = B_{\text{micro}} \times K$)</span>.</li>
-        <li><strong>Why runs explode at step 1:</strong> Above the stability ceiling $\eta > 2/\text{curvature}$, gradient descent bounces higher on every step. And in <span class="term" data-term="adamw">AdamW</span>, the early variance estimate <span class="term" data-term="second-moment">$v_t$</span> has tiny sample size on steps $1\text{--}100$, so you need <span class="term" data-term="warmup">linear warmup</span> before decaying $\eta$ with a <span class="term" data-term="cosine-schedule">cosine schedule</span> and <span class="term" data-term="gradient-clipping">gradient clipping</span>.</li>
-        <li><strong>Why <span class="term" data-term="adamw">AdamW</span> replaced <span class="term" data-term="l2-regularization">L2 regularization</span>:</strong> Adding $\lambda w^2$ to the loss mixes weight decay into the adaptive denominator $\sqrt{v_t}$, shrinking heavily updated weights <em>less</em> than idle weights. <span class="term" data-term="adamw">AdamW</span> decouples <span class="term" data-term="weight-decay">weight decay ($\lambda$)</span> so every weight shrinks by the exact fraction $\eta \lambda$ per step.</li>
-      </ul>
-    </div>
-
     <p>
-      <em>Tip: Tap any underlined concept or mathematical symbol (like <span class="term" data-term="learning-rate">$\eta$</span>, <span class="term" data-term="gradient">$g_t$</span>, <span class="term" data-term="effective-batch-size">$B_{\text{eff}}$</span>, <span class="term" data-term="first-moment">$m_t$</span>, <span class="term" data-term="second-moment">$v_t$</span>, or <span class="term" data-term="weight-decay">$\lambda$</span>) to open an anchored explanation popover. Every question and worked example uses mental-math numbers—no calculator needed.</em>
+      Every deep learning practitioner has lived through the same three training headaches: you launch a run and watch the loss explode into <code>NaN</code> within fifty steps; you lower the step size and watch the loss plateau for hours without making progress; or you finally get training loss down near zero only to watch validation loss climb steadily upward.
+    </p>
+    <p>
+      Those failures happen because training hyperparameters are not independent dials you can tune one at a time. The <span class="term" data-term="learning-rate">learning rate ($\eta$)</span> sets how far you jump along the downhill slope, the <span class="term" data-term="batch-size">batch size ($B$)</span> controls how noisy that slope estimate is (with <span class="term" data-term="gradient-accumulation">gradient accumulation $K$</span> letting a small GPU simulate a large <span class="term" data-term="effective-batch-size">effective batch $B_{\text{eff}} = B_{\text{micro}} \times K$</span>), and <span class="term" data-term="warmup">warmup</span> + <span class="term" data-term="gradient-clipping">gradient clipping</span> keep early <span class="term" data-term="adamw">AdamW</span> steps from flying off steep loss walls before the optimizer's variance estimate <span class="term" data-term="second-moment">$v_t$</span> has stabilized.
     </p>
 
-    <div class="interactive-card" id="fast-forward-box">
-      <div class="widget-label">Fast-Forward Diagnostic</div>
-      <p style="margin-top:0.3rem;">Already comfortable with basic gradient descent and batch scaling? Answer this quick mental check to collapse Chapters 1&ndash;2 and jump straight to schedules and AdamW.</p>
-      <div class="control-row">
-        <label for="ff-input">On $\mathcal{L}(w) = w^2$ at $w_0 = 4$ (so $g_0 = 8$), what $\eta$ lands at $w_1 = -4$?</label>
-        <input type="number" id="ff-input" step="0.1" placeholder="e.g. 1.0" style="width:9rem;">
-        <button class="btn btn-small" onclick="checkFastForward()">Verify &amp; Skip</button>
-      </div>
-      <div id="ff-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">The 5-Chapter Narrative</div>
-      <ol>
-        <li><a href="#ch-1">1. Chapter 1: The Step-Size Cliff — Learning Rate ($\eta$) and Curvature</a></li>
-        <li><a href="#ch-2">2. Chapter 2: Batch Size ($B$), Gradient Noise, and Accumulation ($K$)</a></li>
-        <li><a href="#ch-3">3. Chapter 3: Warmup, Cosine Decay, and Gradient Clipping ($c$)</a></li>
-        <li><a href="#ch-4">4. Chapter 4: Inside AdamW — Momentum ($m_t$), Variance ($v_t$), and Decoupled Decay ($\lambda$)</a></li>
-        <li><a href="#ch-5">5. Chapter 5: The Hyperparameter Debugging Matrix, Interleaved Checks &amp; Recall Cards</a></li>
-      </ol>
-    </nav>
-
     <div id="basic-scaffolding">
-      <!-- === CHAPTER 1: LEARNING RATE & CURVATURE === -->
-      <h2 id="ch-1">1. Chapter 1: The Step-Size Cliff — <span class="term" data-term="learning-rate">Learning Rate ($\eta$)</span> and <span class="term" data-term="curvature">Curvature</span></h2>
+      <h2 id="ch-1">1. The Step-Size Cliff: <span class="term" data-term="learning-rate">Learning Rate ($\eta$)</span> and <span class="term" data-term="curvature">Curvature</span></h2>
       <p>
         Every training story starts with the same disaster: you kick off a fine-tuning job at <span class="term" data-term="learning-rate">$\eta = 0.1$</span>, walk away for coffee, and return five minutes later to find <code>Loss: NaN</code>.
       </p>
@@ -125,7 +83,7 @@
       </div>
 
       <div class="interactive-card" id="lr-stepper-widget">
-        <div class="widget-label">Discrete Stepper + Persistent Small Multiples</div>
+        <div class="widget-label">Side-by-Side Comparison</div>
         <h3>Compare Three <span class="term" data-term="learning-rate">Learning Rate</span> Regimes Side-by-Side ($w_0 = 4$ on $\mathcal{L}(w) = w^2$)</h3>
         <div class="control-row">
           <button class="btn btn-small active" id="lr-step-0" onclick="setLRRegime(0)">Regime 1: Steady ($\eta = 0.25$)</button>
@@ -330,21 +288,7 @@
       <div class="readout" id="sched-explain"></div>
     </div>
 
-    <div class="interactive-card" id="recall-sched-widget">
-      <div class="widget-label">Closed-Book Retrieval (Blank-Sheet Check)</div>
-      <h3>Why Both Warmup AND Clipping?</h3>
-      <p>Without looking above, state in one sentence what <span class="term" data-term="warmup">warmup</span> protects against at the start of training versus what <span class="term" data-term="gradient-clipping">gradient clipping</span> protects against mid-training.</p>
-      <textarea id="recall-sched-input" placeholder="Write your explanation in plain words..."></textarea>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="revealSchedRecall()">Reveal &amp; Compare</button>
-      </div>
-      <div id="recall-sched-feedback" class="readout" style="display:none;">
-        <strong>Key distinction:</strong> <span class="term" data-term="warmup">Warmup</span> prevents early instability during steps $1\text{--}W$ while random weights and AdamW's variance estimate <span class="term" data-term="second-moment">$v_t$</span> are still uncalibrated; <span class="term" data-term="gradient-clipping">gradient clipping</span> acts as a circuit breaker at <em>any</em> step $t$ by scaling down rare, extreme gradient spikes (where <span class="term" data-term="grad-norm">$\lVert g \rVert_2 > c$</span>) without changing their direction.
-      </div>
-    </div>
-
-    <!-- === CHAPTER 4: INSIDE ADAMW === -->
-    <h2 id="ch-4">4. Chapter 4: Inside <span class="term" data-term="adamw">AdamW</span> — Momentum (<span class="term" data-term="first-moment">$m_t$</span>), Variance (<span class="term" data-term="second-moment">$v_t$</span>), and Decoupled Decay (<span class="term" data-term="weight-decay">$\lambda$</span>)</h2>
+    <h2 id="ch-4">4. Inside <span class="term" data-term="adamw">AdamW</span>: Momentum (<span class="term" data-term="first-moment">$m_t$</span>), Variance (<span class="term" data-term="second-moment">$v_t$</span>), and Decoupled Decay (<span class="term" data-term="weight-decay">$\lambda$</span>)</h2>
     <p>
       Why did <span class="term" data-term="adamw">AdamW</span> become the universal default optimizer for Transformers over plain <span class="term" data-term="sgd">SGD</span>?
     </p>

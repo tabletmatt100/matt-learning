@@ -14,29 +14,17 @@
   <main>
     <h1>Probability Calibration: When 80% Actually Means 80%</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li>A classifier is <span class="term" data-term="calibration">calibrated</span> if its predicted probabilities match empirical frequencies: out of all samples given score $0.80$, about $80\%$ actually belong to the positive class.</li>
-        <li>Ranking metrics like <span class="term" data-term="roc-auc">ROC-AUC</span> and <span class="term" data-term="pr-auc">PR-AUC</span> only care about order. A model can have a $0.95$ ROC-AUC while its probabilities are wildly wrong.</li>
-        <li>Different model families fail in opposite directions: deep neural networks tend to be <span class="term" data-term="overconfidence">overconfident</span> (pushing scores toward $0$ and $1$), whereas <span class="term" data-term="random-forest">random forests</span> and shallow <span class="term" data-term="gradient-boosting">boosted trees</span> often push scores away from the extremes (<span class="term" data-term="underconfidence">underconfident</span>).</li>
-        <li>Measure calibration visually with a <span class="term" data-term="reliability-diagram">reliability diagram</span> and numerically with <span class="term" data-term="ece">Expected Calibration Error (ECE)</span>, <span class="term" data-term="brier">Brier score</span>, and <span class="term" data-term="log-loss">log loss</span>.</li>
-        <li>Fix miscalibration on a held-out validation set (never the training set) using <span class="term" data-term="platt">Platt scaling</span>, <span class="term" data-term="temperature-scaling">temperature scaling</span>, or <span class="term" data-term="isotonic">isotonic regression</span>.</li>
-      </ul>
-    </div>
+    <p>
+      When a binary classifier outputs a score of $0.80$, we naturally want to read that number as an $80\%$ chance that the label is positive. Surprisingly often, that number is a lie. A deep neural network or a boosted tree ensemble can achieve a stellar $0.95$ <span class="term" data-term="roc-auc">ROC-AUC</span>—ranking almost every positive case above every negative case—while pushing its raw scores into distorted extremes where a predicted "$0.95$" only comes true $60\%$ of the time.
+    </p>
+    <p>
+      Why do models drift out of calibration even when their accuracy looks great? Because different training objectives warp probability scores in opposite directions. Over-parameterized neural networks trained with cross-entropy keep pushing logits further apart long after training accuracy hits $100\%$, making them systematically <span class="term" data-term="overconfidence">overconfident</span> (scores huddled near $0$ and $1$). By contrast, <span class="term" data-term="random-forest">random forests</span> average the votes of many noisy trees, which makes it hard for all trees to agree on $0\%$ or $100\%$ and leaves their scores <span class="term" data-term="underconfidence">underconfident</span> (pushed toward the middle).
+    </p>
+    <p>
+      Whenever a downstream decision multiplies your model's output by a dollar cost, chains two models together, or displays a risk percentage to a doctor or customer, ranking is no longer enough. We need to diagnose miscalibration with a <span class="term" data-term="reliability-diagram">reliability diagram</span> and <span class="term" data-term="ece">Expected Calibration Error (ECE)</span>, and fix the probabilities on a held-out validation set using <span class="term" data-term="platt">Platt scaling</span>, <span class="term" data-term="temperature-scaling">temperature scaling</span>, or <span class="term" data-term="isotonic">isotonic regression</span>.
+    </p>
 
-    <nav class="toc" aria-label="Table of contents">
-      <div class="toc-title">Contents</div>
-      <ol>
-        <li><a href="#s1">Ranking is not probability</a></li>
-        <li><a href="#s2">Reliability diagrams, ECE, and Brier score</a></li>
-        <li><a href="#s3">Why models go out of calibration</a></li>
-        <li><a href="#s4">Three fixes: Platt, temperature, and isotonic</a></li>
-      </ol>
-    </nav>
-
-    <!-- === SECTION 1 === -->
-    <h2 id="s1">1. Ranking is not probability</h2>
+    <h2 id="s1">1. Ranking Is Not Probability</h2>
     <p>
       Suppose a weather app predicts a $70\%$ chance of rain on $100$ different days, and it rains on $71$ of them. That forecast is <span class="term" data-term="calibration">calibrated</span>. Formally, a binary classifier outputting score $\hat{p} \in [0, 1]$ for true label $Y \in \{0, 1\}$ is calibrated if:
     </p>
