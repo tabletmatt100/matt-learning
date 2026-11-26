@@ -37,6 +37,156 @@
       $$g_m = \text{LayerNorm}\!\left(\sum_{j=1}^{k} x_{(m-1)k + j}\right), \qquad \text{Keys}(x_i) = \underbrace{\{x_j : |i - j| \le r\}}_{\text{Local window } (\le 2r+1)} \;\cup\; \underbrace{\{g_1, g_2, \dots, g_{\ell/k}\}}_{\text{Transient globals } (\ell/k)}$$
     </div>
 
+    <div class="figure-box">
+      <svg viewBox="0 0 600 415" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram comparing Local Sliding-Window Attention and Transient Global Attention">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#000"/>
+          </marker>
+        </defs>
+
+        <!-- PANEL A: LOCAL SLIDING-WINDOW ATTENTION -->
+        <text x="16" y="22" font-family="sans-serif" font-size="13.5" font-weight="bold" fill="#000">A. Local Sliding-Window Attention (radius r = 1): Blind Beyond Immediate Neighbors</text>
+
+        <!-- Tokens x1..x8 in Panel A -->
+        <!-- x positions: 24, 92, 160, 228, 296, 364, 432, 500 (width 52, gap 16) -->
+        <g font-family="monospace" font-size="13" text-anchor="middle">
+          <!-- Distant tokens x1..x5 (white, dashed/grayed) -->
+          <rect x="24" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.5" stroke-dasharray="3,2"/>
+          <text x="50" y="62">x₁</text>
+          <text x="50" y="36" font-family="sans-serif" font-size="10" font-weight="bold">Clue</text>
+
+          <rect x="92" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2"/>
+          <text x="118" y="62">x₂</text>
+
+          <rect x="160" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2"/>
+          <text x="186" y="62">x₃</text>
+
+          <rect x="228" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2"/>
+          <text x="254" y="62">x₄</text>
+
+          <rect x="296" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2"/>
+          <text x="322" y="62">x₅</text>
+
+          <!-- Local window highlight box around x6, x7, x8 -->
+          <rect x="358" y="34" width="200" height="46" fill="#e8e8e8" stroke="#000" stroke-width="1.5" rx="3"/>
+          <text x="458" y="28" font-family="sans-serif" font-size="10.5" font-weight="bold">Local Window for Query x₇ (2r+1 = 3)</text>
+
+          <rect x="364" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="2"/>
+          <text x="390" y="62" font-weight="bold">x₆</text>
+
+          <rect x="432" y="42" width="52" height="30" fill="#000" stroke="#000" stroke-width="2"/>
+          <text x="458" y="62" fill="#fff" font-weight="bold">x₇ (Q)</text>
+
+          <rect x="500" y="42" width="52" height="30" fill="#fff" stroke="#000" stroke-width="2"/>
+          <text x="526" y="62" font-weight="bold">x₈</text>
+        </g>
+
+        <!-- Local attention arcs from x7 to x6, x7, x8 -->
+        <path d="M 448 72 Q 419 102 390 74" fill="none" stroke="#000" stroke-width="1.8" marker-end="url(#arr)"/>
+        <path d="M 458 72 C 446 98, 470 98, 458 74" fill="none" stroke="#000" stroke-width="1.8" marker-end="url(#arr)"/>
+        <path d="M 468 72 Q 497 102 526 74" fill="none" stroke="#000" stroke-width="1.8" marker-end="url(#arr)"/>
+
+        <!-- Blocked long-range path from x1 to x7 -->
+        <path d="M 50 74 Q 240 124 436 76" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <text x="235" y="103" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000">✕ No 1-layer path (needs 6 stacked layers for x₇ to hear x₁)</text>
+
+        <!-- Divider line -->
+        <line x1="12" y1="126" x2="588" y2="126" stroke="#000" stroke-width="1.5"/>
+
+        <!-- PANEL B: TRANSIENT GLOBAL ATTENTION (TGLOBAL) -->
+        <text x="16" y="148" font-family="sans-serif" font-size="13.5" font-weight="bold" fill="#000">B. Transient Global Attention (TGlobal, block size k = 2, radius r = 1)</text>
+
+        <!-- Block brackets & Step 1: Sum + LayerNorm -->
+        <g font-family="monospace" font-size="13" text-anchor="middle">
+          <!-- Block 1: x1, x2 -->
+          <rect x="20" y="160" width="128" height="44" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2" rx="3"/>
+          <rect x="24" y="167" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="50" y="187">x₁</text>
+          <rect x="92" y="167" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="118" y="187">x₂</text>
+
+          <!-- Block 2: x3, x4 -->
+          <rect x="156" y="160" width="128" height="44" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2" rx="3"/>
+          <rect x="160" y="167" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="186" y="187">x₃</text>
+          <rect x="228" y="167" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="254" y="187">x₄</text>
+
+          <!-- Block 3: x5, x6 -->
+          <rect x="292" y="160" width="128" height="44" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2" rx="3"/>
+          <rect x="296" y="167" width="52" height="30" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="322" y="187">x₅</text>
+          <rect x="364" y="167" width="52" height="30" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="390" y="187" font-weight="bold">x₆</text>
+
+          <!-- Block 4: x7, x8 -->
+          <rect x="428" y="160" width="128" height="44" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="3,2" rx="3"/>
+          <rect x="432" y="167" width="52" height="30" fill="#000" stroke="#000" stroke-width="2"/>
+          <text x="458" y="187" fill="#fff" font-weight="bold">x₇ (Q)</text>
+          <rect x="500" y="167" width="52" height="30" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="526" y="187" font-weight="bold">x₈</text>
+        </g>
+
+        <!-- Local attention arcs for x7 (attends to x6, x7, x8) -->
+        <path d="M 448 167 Q 419 144 390 165" fill="none" stroke="#000" stroke-width="1.8" marker-end="url(#arr)"/>
+        <path d="M 468 167 Q 497 144 526 165" fill="none" stroke="#000" stroke-width="1.8" marker-end="url(#arr)"/>
+        <text x="462" y="148" font-family="sans-serif" font-size="10.5" font-weight="bold" text-anchor="middle">① Local Window Keys (x₆, x₇, x₈)</text>
+
+        <!-- Arrows pooling blocks into g1..g4 -->
+        <g stroke="#000" stroke-width="1.5" fill="none">
+          <path d="M 50 197 L 76 238" marker-end="url(#arr)"/>
+          <path d="M 118 197 L 92 238" marker-end="url(#arr)"/>
+
+          <path d="M 186 197 L 212 238" marker-end="url(#arr)"/>
+          <path d="M 254 197 L 228 238" marker-end="url(#arr)"/>
+
+          <path d="M 322 197 L 348 238" marker-end="url(#arr)"/>
+          <path d="M 390 197 L 364 238" marker-end="url(#arr)"/>
+
+          <path d="M 458 197 L 484 238" marker-end="url(#arr)"/>
+          <path d="M 526 197 L 500 238" marker-end="url(#arr)"/>
+        </g>
+
+        <text x="300" y="225" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000">② Pool every k = 2 tokens: Sum + T5 LayerNorm → Transient Global Tokens</text>
+
+        <!-- Transient Global Tokens g1..g4 -->
+        <g font-family="monospace" font-size="12.5" text-anchor="middle">
+          <rect x="40" y="242" width="88" height="34" rx="4" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="84" y="258" font-weight="bold">g₁ = LN(x₁+x₂)</text>
+          <text x="84" y="271" font-family="sans-serif" font-size="9.5">Block 1 Summary</text>
+
+          <rect x="176" y="242" width="88" height="34" rx="4" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="220" y="258" font-weight="bold">g₂ = LN(x₃+x₄)</text>
+          <text x="220" y="271" font-family="sans-serif" font-size="9.5">Block 2 Summary</text>
+
+          <rect x="312" y="242" width="88" height="34" rx="4" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="356" y="258" font-weight="bold">g₃ = LN(x₅+x₆)</text>
+          <text x="356" y="271" font-family="sans-serif" font-size="9.5">Block 3 Summary</text>
+
+          <rect x="448" y="242" width="88" height="34" rx="4" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="492" y="258" font-weight="bold">g₄ = LN(x₇+x₈)</text>
+          <text x="492" y="271" font-family="sans-serif" font-size="9.5">Block 4 Summary</text>
+        </g>
+
+        <!-- Long-range attention lines from Query x7 to all g1, g2, g3, g4 -->
+        <g stroke="#000" stroke-width="1.8" fill="none">
+          <path d="M 458 197 C 458 328, 84 328, 84 278" marker-end="url(#arr)"/>
+          <path d="M 458 197 C 458 318, 220 318, 220 278" marker-end="url(#arr)"/>
+          <path d="M 458 197 C 458 306, 356 306, 356 278" marker-end="url(#arr)"/>
+          <path d="M 464 197 C 472 296, 492 296, 492 278" marker-end="url(#arr)"/>
+        </g>
+
+        <text x="275" y="332" font-family="sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#000">③ Query x₇ attends to all M = ℓ/k = 4 transient global keys in 1 hop (hears x₁ via g₁!)</text>
+
+        <!-- Step 4: Discard box at bottom -->
+        <rect x="36" y="348" width="528" height="54" fill="#fff" stroke="#000" stroke-width="1.5" stroke-dasharray="5,3" rx="4"/>
+        <text x="300" y="369" font-family="sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#000">④ Layer Exit: Discard g₁, g₂, g₃, g₄ Immediately ("Transient")</text>
+        <text x="300" y="389" font-family="sans-serif" font-size="11" text-anchor="middle" fill="#000">Only updated token vectors x'₁ … x'₈ pass to the Feed-Forward Network (no persistent global side-inputs).</text>
+      </svg>
+      <div class="figure-caption"><strong>Figure 1:</strong> In pure local attention (top), query $x_7$ only sees its $2r+1=3$ neighbors ($x_6, x_7, x_8$) and is cut off from $x_1$. In TGlobal (bottom), every $k$ tokens are summed and normalized into temporary block hubs $g_1 \dots g_{\ell/k}$; query $x_7$ attends to its local window <em>plus</em> every $g_m$ in a single layer, then $g_1 \dots g_{\ell/k}$ are thrown away.</div>
+    </div>
+
     <p>
       Why is that <span class="term" data-term="rms-layernorm">LayerNorm</span> step mandatory right after summing? If you sum $k = 16$ token vectors without normalizing, the resulting global vector has a magnitude roughly $\sqrt{16}$ to $16$ times larger than any individual local token vector. Feeding an unnormalized sum into dot-product attention would produce giant logits that hijack the softmax and drown out every local neighbor. Normalizing <span class="term" data-term="sym-gm">$g_m$</span> puts it back on the exact same scale and in the exact same embedding space $\mathbb{R}^{d_{\text{model}}}$ as the regular tokens $x_i$—which means TGlobal can project $g_m$ into keys and values using the layer's existing $W_K$ and $W_V$ matrices with zero extra projection weights.
     </p>
@@ -58,6 +208,120 @@
 
     <div class="math-block">
       $$\text{Pairs}_{\text{Full}} = \ell^2, \qquad \text{Pairs}_{\text{Local}} = \ell \cdot W \;\sim\; O(\ell r), \qquad \text{Pairs}_{\text{TGlobal}} = \ell\!\left(W + \frac{\ell}{k}\right) \;\sim\; O\!\left(\ell\!\left(r + \frac{\ell}{k}\right)\right)$$
+    </div>
+
+    <div class="figure-box">
+      <svg viewBox="0 0 600 245" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="2D Query-by-Key Attention Matrix Sparsity Patterns for Full, Local Sliding-Window, and TGlobal Attention">
+        <!-- Title / Legend -->
+        <text x="300" y="18" font-family="sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#000">2D Query × Key Attention Matrices (ℓ = 8 tokens, radius r = 1, block size k = 2)</text>
+
+        <!-- (a) FULL ATTENTION (8x8 = 64 pairs) -->
+        <!-- Grid origin: x=26, y=52, cell=17x17 (total 136x136) -->
+        <text x="94" y="38" font-family="sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle">(a) Full Self-Attention</text>
+        <text x="14" y="120" font-family="sans-serif" font-size="10" text-anchor="middle" transform="rotate(-90 14 120)">Queries (x₁…x₈)</text>
+        <text x="94" y="49" font-family="sans-serif" font-size="9.5" text-anchor="middle">Keys (x₁…x₈)</text>
+        <rect x="26" y="54" width="136" height="136" fill="#000" stroke="#000" stroke-width="1.5"/>
+        <!-- White grid lines for 8x8 full attention -->
+        <g stroke="#fff" stroke-width="1">
+          <line x1="43" y1="54" x2="43" y2="190"/><line x1="60" y1="54" x2="60" y2="190"/>
+          <line x1="77" y1="54" x2="77" y2="190"/><line x1="94" y1="54" x2="94" y2="190"/>
+          <line x1="111" y1="54" x2="111" y2="190"/><line x1="128" y1="54" x2="128" y2="190"/>
+          <line x1="145" y1="54" x2="145" y2="190"/>
+          <line x1="26" y1="71" x2="162" y2="71"/><line x1="26" y1="88" x2="162" y2="88"/>
+          <line x1="26" y1="105" x2="162" y2="105"/><line x1="26" y1="122" x2="162" y2="122"/>
+          <line x1="26" y1="139" x2="162" y2="139"/><line x1="26" y1="156" x2="162" y2="156"/>
+          <line x1="26" y1="173" x2="162" y2="173"/>
+        </g>
+        <text x="94" y="208" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">O(ℓ²) = 8×8 = 64 pairs</text>
+        <text x="94" y="222" font-family="sans-serif" font-size="10" text-anchor="middle">Dense quadratic memory</text>
+
+        <!-- (b) LOCAL SLIDING WINDOW (r=1, banded diagonal = 22 pairs) -->
+        <!-- Grid origin: x=196, y=54, cell=17x17 (total 136x136) -->
+        <text x="264" y="38" font-family="sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle">(b) Local Sliding Window</text>
+        <text x="264" y="49" font-family="sans-serif" font-size="9.5" text-anchor="middle">Local Keys (|i − j| ≤ 1)</text>
+        <rect x="196" y="54" width="136" height="136" fill="#fff" stroke="#000" stroke-width="1.5"/>
+        <!-- Banded diagonal active cells (|i-j| <= 1) -->
+        <g fill="#000">
+          <!-- Row 0: cols 0,1 -->
+          <rect x="196" y="54" width="34" height="17"/>
+          <!-- Row 1: cols 0,1,2 -->
+          <rect x="196" y="71" width="51" height="17"/>
+          <!-- Row 2: cols 1,2,3 -->
+          <rect x="213" y="88" width="51" height="17"/>
+          <!-- Row 3: cols 2,3,4 -->
+          <rect x="230" y="105" width="51" height="17"/>
+          <!-- Row 4: cols 3,4,5 -->
+          <rect x="247" y="122" width="51" height="17"/>
+          <!-- Row 5: cols 4,5,6 -->
+          <rect x="264" y="139" width="51" height="17"/>
+          <!-- Row 6: cols 5,6,7 -->
+          <rect x="281" y="156" width="51" height="17"/>
+          <!-- Row 7: cols 6,7 -->
+          <rect x="298" y="173" width="34" height="17"/>
+        </g>
+        <!-- Grid lines for Local -->
+        <g stroke="#888" stroke-width="0.8">
+          <line x1="213" y1="54" x2="213" y2="190"/><line x1="230" y1="54" x2="230" y2="190"/>
+          <line x1="247" y1="54" x2="247" y2="190"/><line x1="264" y1="54" x2="264" y2="190"/>
+          <line x1="281" y1="54" x2="281" y2="190"/><line x1="298" y1="54" x2="298" y2="190"/>
+          <line x1="315" y1="54" x2="315" y2="190"/>
+          <line x1="196" y1="71" x2="332" y2="71"/><line x1="196" y1="88" x2="332" y2="88"/>
+          <line x1="196" y1="105" x2="332" y2="105"/><line x1="196" y1="122" x2="332" y2="122"/>
+          <line x1="196" y1="139" x2="332" y2="139"/><line x1="196" y1="156" x2="332" y2="156"/>
+          <line x1="196" y1="173" x2="332" y2="173"/>
+        </g>
+        <rect x="196" y="54" width="136" height="136" fill="none" stroke="#000" stroke-width="1.5"/>
+        <text x="264" y="208" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">O(ℓr) ≈ ℓ·W pairs</text>
+        <text x="264" y="222" font-family="sans-serif" font-size="10" text-anchor="middle">Fast, but off-diagonals are blind</text>
+
+        <!-- (c) TGLOBAL ATTENTION (Local 8x8 band + Transient Global 8x4 side rectangle) -->
+        <!-- Local Grid origin: x=366, y=54, width=136; Global Grid origin: x=512, y=54, width=68 (4 cols of 17) -->
+        <text x="473" y="38" font-family="sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle">(c) Transient Global (TGlobal)</text>
+        <text x="434" y="49" font-family="sans-serif" font-size="9.5" text-anchor="middle">Local Keys (x₁…x₈)</text>
+        <text x="546" y="49" font-family="sans-serif" font-size="9.5" font-weight="bold" text-anchor="middle">Globals (g₁…g₄)</text>
+
+        <!-- Local 8x8 part -->
+        <rect x="366" y="54" width="136" height="136" fill="#fff" stroke="#000" stroke-width="1.5"/>
+        <g fill="#000">
+          <rect x="366" y="54" width="34" height="17"/>
+          <rect x="366" y="71" width="51" height="17"/>
+          <rect x="383" y="88" width="51" height="17"/>
+          <rect x="400" y="105" width="51" height="17"/>
+          <rect x="417" y="122" width="51" height="17"/>
+          <rect x="434" y="139" width="51" height="17"/>
+          <rect x="451" y="156" width="51" height="17"/>
+          <rect x="468" y="173" width="34" height="17"/>
+        </g>
+        <g stroke="#888" stroke-width="0.8">
+          <line x1="383" y1="54" x2="383" y2="190"/><line x1="400" y1="54" x2="400" y2="190"/>
+          <line x1="417" y1="54" x2="417" y2="190"/><line x1="434" y1="54" x2="434" y2="190"/>
+          <line x1="451" y1="54" x2="451" y2="190"/><line x1="468" y1="54" x2="468" y2="190"/>
+          <line x1="485" y1="54" x2="485" y2="190"/>
+          <line x1="366" y1="71" x2="502" y2="71"/><line x1="366" y1="88" x2="502" y2="88"/>
+          <line x1="366" y1="105" x2="502" y2="105"/><line x1="366" y1="122" x2="502" y2="122"/>
+          <line x1="366" y1="139" x2="502" y2="139"/><line x1="366" y1="156" x2="502" y2="156"/>
+          <line x1="366" y1="173" x2="502" y2="173"/>
+        </g>
+        <rect x="366" y="54" width="136" height="136" fill="none" stroke="#000" stroke-width="1.5"/>
+
+        <!-- Plus sign between Local and Global matrices -->
+        <text x="507" y="126" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">+</text>
+
+        <!-- Transient Global 8x4 side matrix (shaded dark gray with black grid & dots to distinguish from local) -->
+        <rect x="514" y="54" width="68" height="136" fill="#d0d0d0" stroke="#000" stroke-width="2"/>
+        <g stroke="#000" stroke-width="1">
+          <line x1="531" y1="54" x2="531" y2="190"/>
+          <line x1="548" y1="54" x2="548" y2="190"/>
+          <line x1="565" y1="54" x2="565" y2="190"/>
+          <line x1="514" y1="71" x2="582" y2="71"/><line x1="514" y1="88" x2="582" y2="88"/>
+          <line x1="514" y1="105" x2="582" y2="105"/><line x1="514" y1="122" x2="582" y2="122"/>
+          <line x1="514" y1="139" x2="582" y2="139"/><line x1="514" y1="156" x2="582" y2="156"/>
+          <line x1="514" y1="173" x2="582" y2="173"/>
+        </g>
+        <text x="473" y="208" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">O(ℓ(r + ℓ/k)) = Local + ℓ×(ℓ/k)</text>
+        <text x="473" y="222" font-family="sans-serif" font-size="10" text-anchor="middle">Local band + skinny global side-matrix</text>
+      </svg>
+      <div class="figure-caption"><strong>Figure 2:</strong> Comparing the query-by-key attention matrices (adapted from LongT5 Figure 2). Full attention (a) computes the entire $\ell \times \ell$ square. Local attention (b) keeps only the diagonal band of radius $r$. TGlobal (c) keeps the local diagonal band and appends an $\ell \times (\ell/k)$ side rectangle (shaded) so every query token also attends to all $\ell/k$ transient block summaries.</div>
     </div>
 
     <p>
