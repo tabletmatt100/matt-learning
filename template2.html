@@ -126,6 +126,51 @@
       <label class="mcq-option" data-explain="Even when sequence length is divisible by 2, averaging [CLS] with token 1 still corrupts sequence classification.">Only to keep the sequence length an even number.</label>
     </details>
 
+    <h2>4. Comparing Encoder Schedules</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Architecture</th>
+            <th>Length Schedule</th>
+            <th>Relative Compute</th>
+            <th>Tradeoff / Failure Mode</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Flat Encoder (BERT L12)</strong></td>
+            <td>$T \to T \to T$ (12 layers)</td>
+            <td class="num">$1.00\times$ ($12.0$ units)</td>
+            <td>Burns full $O(T^2 d + T d^2)$ compute on redundant phrase vectors in deep layers</td>
+            <td>Tasks needing full token resolution at every layer without a decoder</td>
+          </tr>
+          <tr>
+            <td><strong>Funnel Matched-Depth (B4-4-4)</strong></td>
+            <td>$T \to T/2 \to T/4$ (4 layers/block)</td>
+            <td class="num">$\sim 0.58\times$ ($7.0$ units)</td>
+            <td>Slight accuracy dip on fine token tasks if saved FLOPs aren't reinvested</td>
+            <td>Fast sequence classification or reranking at $\sim 42\%$ lower compute</td>
+          </tr>
+          <tr>
+            <td><strong>Funnel <span class="term" data-term="flop-reinvestment">FLOP-Reinvested</span> (B6-6-6)</strong></td>
+            <td>$T \to T/2 \to T/4$ (6 layers/block)</td>
+            <td class="num">$\sim 0.88\times$ ($10.5$ units)</td>
+            <td>$1.5\times$ more weights in memory (18 layers vs. 12)</td>
+            <td>Best accuracy-per-FLOP on classification and reading comprehension</td>
+          </tr>
+          <tr>
+            <td><strong>Funnel + 2L <span class="term" data-term="bridge-upsample">Bridge Decoder</span></strong></td>
+            <td>$T \to T/4$, then $+ h^{(1)} \to T$</td>
+            <td class="num">$\sim 0.75\times$ ($9.0$ units)</td>
+            <td>Collapses on token tasks if the $h^{(1)}$ skip connection is omitted; incompatible with causal GPT masks</td>
+            <td><span class="term" data-term="mlm">MLM</span> / ELECTRA pre-training or token-level tagging (drop decoder for classification)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="score-bar"></div>
 
     <div class="interactive-card" id="spaced-widget"></div>

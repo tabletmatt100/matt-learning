@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Generalized Knowledge Distillation (GKD): Solving Exposure Bias in LLMs</title>
+  <title>Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</title>
 
-  <!-- KaTeX for crisp offline/online LaTeX math rendering (Boox Go 10.3 optimized) -->
   <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
   <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
   <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
@@ -13,472 +12,197 @@
   <script src="common.js"></script>
 </head>
 <body>
-
-  <header>
-    <div class="header-inner">
-      <div class="nav-links">
-        <a href="index.html">← All Guides</a>
-        <a href="attention.html">← Attention Guide</a>
-      </div>
-      <div class="font-controls">
-        <button id="font-dec" title="Decrease font size">A-</button>
-        <button id="font-inc" title="Increase font size">A+</button>
-      </div>
-    </div>
-  </header>
-
   <main>
     <h1>Generalized Knowledge Distillation (GKD): Taming Exposure Bias in LLMs</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>The <span class="term" data-term="exposure-bias">exposure bias</span> trap:</strong> Classical <span class="term" data-term="kd">knowledge distillation</span> uses <span class="term" data-term="teacher-forcing">teacher forcing</span> (<span class="term" data-term="off-policy">off-policy</span> prefixes $y_{<t}$), so the student never learns how to recover once it makes its own mistake at inference time.</li>
-        <li><strong>Two GKD levers (Agarwal et al., 2023):</strong> Sample a fraction $\lambda \in [0, 1]$ of sequences <span class="term" data-term="on-policy">on-policy</span> from the student itself ($\hat{y} \sim P_{\text{student}}$) and have the teacher score those exact prefixes using a generalized divergence $\mathbb{D}(P_T \,\|\, P_S)$.</li>
-        <li><strong>Why <span class="term" data-term="reverse-kl">Reverse KL</span> beats <span class="term" data-term="mode-covering">Forward KL</span>:</strong> Forward KL forces the small student to cover every tail token of the teacher (producing blurry hallucinations), whereas Reverse KL is <span class="term" data-term="mode-seeking">mode-seeking</span> and severely penalizes any token where the teacher assigns near-zero probability.</li>
-      </ul>
-    </div>
-
-    <!-- SECTION 1 -->
-    <h2>1. Why Supervised Distillation Breaks: Exposure Bias</h2>
     <p>
-      In classical <span class="term" data-term="kd">knowledge distillation</span> (Hinton et al., 2015), a small student model $\theta$ matches a large teacher's token distributions on a fixed <span class="term" data-term="off-policy">off-policy</span> dataset $\mathcal{D}$:
+      Suppose you have a massive 70-billion-parameter teacher LLM and you want to compress its skill into a fast 1-billion-parameter student model. In classic <span class="term" data-term="kd">Knowledge Distillation</span> (Hinton et al., 2015), you feed a static dataset of gold responses into both models and train the student to match the teacher's next-token probability distribution at every step.
     </p>
+    <p>
+      That works great for image classification, where a model only makes a single prediction. For autoregressive language generation, it hits a wall called <strong><span class="term" data-term="exposure-bias">exposure bias</span></strong>. During training, the student is always handed the perfect gold prefix $y_{&lt;t}$ from the dataset (<span class="term" data-term="teacher-forcing">teacher forcing</span>). At test time, however, the student has to condition on <em>its own generated words</em> $\hat{y}_{&lt;t}$. The moment the small student picks one slightly unusual word at token 5, it wanders into a prefix it never saw during training, and its errors snowball into hallucinations.
+    </p>
+    <p>
+      <strong>Generalized Knowledge Distillation (GKD)</strong> (Agarwal et al., 2023) fixes both parts of that problem: it trains the student <span class="term" data-term="on-policy">on-policy</span> on its <em>own</em> generated prefixes ($\hat{y} \sim P_S$) while asking the teacher to grade every step, and it swaps out mode-covering <span class="term" data-term="forward-kl">Forward KL</span> for mode-seeking <span class="term" data-term="reverse-kl">Reverse KL</span> (or <span class="term" data-term="jsd">JSD</span>) so the small student locks onto the teacher's best answers instead of smearing probability mass across noisy alternatives.
+    </p>
+
+    <h2>1. Exposure Bias &amp; On-Policy Student Rollouts ($\lambda$)</h2>
+    <p>
+      Think of learning to drive a car. <span class="term" data-term="teacher-forcing">Teacher forcing</span> (<span class="term" data-term="off-policy">off-policy</span> distillation) is like sitting in the passenger seat watching an expert drive down the dead center of the lane and guessing which way they turn the wheel: you never see what the expert does when the car drifts onto the rumble strips, because the expert never drifts onto the rumble strips!
+    </p>
+    <p>
+      GKD hands the steering wheel to the student on a fraction <span class="term" data-term="sym-lambda">$\lambda \in [0, 1]$</span> of training batches. The student generates its own token sequence $\hat{y} \sim P_S(\cdot \mid x)$, and at every token position $t$ along the student's actual prefix $\hat{y}_{&lt;t}$, the teacher computes its full target vocabulary distribution $P_T(\cdot \mid x, \hat{y}_{&lt;t})$:
+    </p>
+
     <div class="math-block">
-      $$\mathcal{L}_{\text{KD}}(\theta) = \mathbb{E}_{(x, y) \sim \mathcal{D}} \left[ \sum_{t=1}^T \mathbb{D}_{\text{KL}}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]$$
+      $$\mu(y \mid x) = (1 - \lambda)\,P_{\text{data}}(y \mid x) + \lambda\,P_S(y \mid x), \qquad \mathcal{L}_{\text{GKD}}(\theta) = \mathbb{E}_{y \sim \mu}\!\left[\sum_{t=1}^{|y|} \mathbb{D}\Bigl(P_T(\cdot \mid x, y_{&lt;t}) \;\Big\|\; P_S^\theta(\cdot \mid x, y_{&lt;t})\Bigr)\right]$$
     </div>
 
     <p>
-      During training, the prefix $y_{<t}$ always comes from the clean dataset (<span class="term" data-term="teacher-forcing">teacher forcing</span>). At test time, the student must condition on its <em>own</em> sampled tokens $\hat{y}_{<t} \sim P_{\text{student}}$. One slightly off token at step $4$ pushes the prefix into a region the student never saw during training, causing errors to snowball (<span class="term" data-term="exposure-bias">exposure bias</span>).
+      Notice why <span class="term" data-term="on-policy">on-policy</span> GKD ($\lambda = 1$) is so much simpler than standard RLHF (PPO or GRPO): in standard RL, a reward model only gives a single scalar score at the very end of a 500-token response. In On-Policy GKD, the teacher model acts as a <strong>dense token-by-token critic</strong> on the student's rollouts without needing a separate reward model or value network at all! (Note: because the student's weights $\theta$ only receive gradients through the divergence $\mathbb{D}$ at each token step rather than differentiating through the discrete sampling $y \sim P_S$, GKD avoids high-variance REINFORCE gradients too.)
     </p>
 
-    <!-- DIAGRAM -->
-    <svg class="diagram-svg" viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg">
-      <text x="300" y="25" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Train vs Inference Trajectory Divergence</text>
-      
-      <!-- Training Trajectory (Straight) -->
-      <path d="M 50 80 L 550 80" stroke="#000" stroke-width="2" stroke-dasharray="none"/>
-      <circle cx="50" cy="80" r="5" fill="#000"/>
-      <circle cx="200" cy="80" r="5" fill="#000"/>
-      <circle cx="350" cy="80" r="5" fill="#000"/>
-      <circle cx="500" cy="80" r="5" fill="#000"/>
-      <text x="50" y="105" font-size="12" font-family="monospace">x (Prompt)</text>
-      <text x="200" y="105" font-size="12" font-family="monospace">y_1 (Gold)</text>
-      <text x="350" y="105" font-size="12" font-family="monospace">y_2 (Gold)</text>
-      <text x="500" y="105" font-size="12" font-family="monospace">y_3 (Gold)</text>
-      <text x="555" y="85" font-size="11" font-weight="bold">Teacher Trajectory</text>
-
-      <!-- Inference Trajectory (Drifting) -->
-      <path d="M 50 160 L 200 160 Q 280 180 350 200 L 500 210" stroke="#444" stroke-width="2" stroke-dasharray="4,4"/>
-      <circle cx="50" cy="160" r="5" fill="#000"/>
-      <circle cx="200" cy="160" r="5" fill="#000"/>
-      <circle cx="350" cy="200" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
-      <circle cx="500" cy="210" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
-      <text x="200" y="150" font-size="12" font-family="monospace">y_1 (Match)</text>
-      <text x="350" y="185" font-size="12" font-family="monospace">y_2 (Slight Error!)</text>
-      <text x="500" y="195" font-size="12" font-family="monospace">y_3 (Hallucination!)</text>
-      <text x="555" y="210" font-size="11" font-weight="bold">Student In Wild</text>
-
-      <!-- Warning bracket -->
-      <line x1="350" y1="90" x2="350" y2="185" stroke="#999" stroke-width="1" stroke-dasharray="2,2"/>
-      <text x="360" y="140" font-size="11" fill="#444">Exposure Bias Gap</text>
-    </svg>
-
-    <!-- CHECKPOINT 1 -->
-    <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="The Root of Exposure Bias">
-      <p>Why does standard supervised distillation struggle on long autoregressive generations?</p>
-      <label class="mcq-option" data-explain="Teacher forward passes use the same memory whether prefixes come from data or the student.">The teacher model runs out of GPU memory during token generation.</label>
-      <label class="mcq-option" data-explain="Correct. Under teacher forcing, the student is only conditioned on gold prefixes $y_{<t}$, so it never learns how to recover from its own imperfect prefixes $\hat{y}_{<t}$ during free generation.">The student only trains on gold teacher prefixes $y_{<t}$, so it never sees or corrects its own imperfect prefixes $\hat{y}_{<t}$.</label>
-      <label class="mcq-option" data-explain="Softmax runs over large vocabularies in both standard KD and GKD.">Softmax cannot be calculated over large vocabularies.</label>
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Why On-Policy GKD Fixes Exposure Bias">
+      <p>How does setting the GKD student-rollout fraction to <span class="term" data-term="sym-lambda">$\lambda = 0.5$ or $1.0$</span> fix <span class="term" data-term="exposure-bias">exposure bias</span> compared to standard supervised distillation ($\lambda = 0$)?</p>
+      <label class="mcq-option" data-explain="On-policy rollouts require generating tokens from the student during training, which is slightly more compute per step, not faster.">It eliminates autoregressive generation so training runs $10\times$ faster.</label>
+      <label class="mcq-option" data-explain="Correct. Sampling prefixes y_<t from the student itself exposes the student's own test-time mistakes during training, and the teacher provides the exact target distribution P_T(. | x, y_<t) showing how to recover from those states.">The student generates its own prefixes $\hat{y}_{&lt;t} \sim P_S$, and the teacher scores those exact student-visited states so the student learns what to output on the prefixes it actually produces at test time.</label>
+      <label class="mcq-option" data-explain="GKD still distills full vocabulary distributions at every token position.">It replaces token-level probability distributions with a single binary $0/1$ reward at the end of the sentence.</label>
     </details>
 
-    <!-- SECTION 2 -->
-    <h2>2. The GKD Framework: Two Levers of Generalization</h2>
+    <h2>2. Forward KL vs. Reverse KL: Mode-Covering vs. Mode-Seeking</h2>
     <p>
-      GKD generalizes distillation along two axes:
+      The second half of GKD is choosing the divergence $\mathbb{D}(P_T \parallel P_S)$ used to compare the teacher's token distribution $P_T$ against the student's distribution $P_S$ at each position:
     </p>
+
     <div class="math-block">
-      $$\mathcal{L}_{\text{GKD}}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, \, y \sim \mu(\cdot \mid x)} \left[ \sum_{t=1}^{|y|} \mathbb{D}\Big( P_{\text{teacher}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{student}}(\cdot \mid x, y_{<t}; \theta) \Big) \right]$$
+      $$\underbrace{D_{\text{KL}}(P_T \parallel P_S) = \sum_{v} P_T(v) \log_2 \frac{P_T(v)}{P_S(v)}}_{\text{Forward KL (Mode-Covering)}}, \qquad \underbrace{D_{\text{KL}}(P_S \parallel P_T) = \sum_{v} P_S(v) \log_2 \frac{P_S(v)}{P_T(v)}}_{\text{Reverse KL (Mode-Seeking)}}$$
     </div>
 
-    <ol>
-      <li><strong>Sequence Distribution $\mu(\cdot \mid x)$:</strong>
-        Mixes static <span class="term" data-term="off-policy">off-policy</span> data with <span class="term" data-term="on-policy">on-policy</span> student rollouts using fraction $\lambda \in [0, 1]$:
-        <div class="math-block">
-          $$\mu(y \mid x) = \lambda P_{\text{student}}(y \mid x) + (1 - \lambda) P_{\text{data}}(y \mid x)$$
-        </div>
-        When $\lambda > 0$, the student generates its own trajectory $\hat{y}$, and the teacher gives token-level distribution feedback on the exact states the student visited.
-      </li>
-      <li><strong>Divergence $\mathbb{D}(P_T \,\|\, P_S)$:</strong>
-        Replaces fixed forward KL with <span class="term" data-term="reverse-kl">Reverse KL</span> or <span class="term" data-term="jsd">Jensen-Shannon Divergence (JSD)</span> so a smaller student is not forced to spread probability mass over every noisy tail token.
-      </li>
-    </ol>
-
-    <!-- SECTION 3 -->
-    <h2>3. Forward KL vs. Reverse KL: Mode-Covering vs. Mode-Seeking</h2>
     <p>
-      The choice of divergence metric fundamentally changes the student's personality:
+      Why does flipping the order of $P_T$ and $P_S$ completely change the student's behavior when the teacher is multimodal and the small student only has enough capacity to fit one peak?
+    </p>
+    <p>
+      Look at the denominator inside the logarithm. In <strong><span class="term" data-term="forward-kl">Forward KL</span></strong> ($P_T \log \frac{P_T}{P_S}$), whenever the teacher assigns nonzero probability $P_T(v) &gt; 0$ to a token, the student is heavily penalized if $P_S(v) \to 0$. That forces the small student to spread its mass out to cover <em>every</em> plausible phrasing the teacher likes (<span class="term" data-term="mode-covering">mode-covering</span>)—often smearing probability into the low-quality valley between two valid phrasings.
+    </p>
+    <p>
+      In <strong><span class="term" data-term="reverse-kl">Reverse KL</span></strong> ($P_S \log \frac{P_S}{P_T}$), the teacher $P_T(v)$ sits in the denominator. If the teacher says a token is garbage ($P_T(v) \approx 0$), any student mass $P_S(v) &gt; 0$ blows up $\log \frac{P_S(v)}{P_T(v)} \to \infty$. Conversely, if the student ignores one of the teacher's secondary modes ($P_S(v) = 0$ where $P_T(v) = 0.50$), the term $0 \log(0) = 0$ pays <strong>zero penalty</strong>! So Reverse KL is <span class="term" data-term="mode-seeking">mode-seeking</span>: the small student locks cleanly onto one high-confidence teacher mode and never hallucinates low-probability tokens.
     </p>
 
-    <div class="table-wrap"><table class="data-table">
-      <thead>
-        <tr>
-          <th>Divergence</th>
-          <th>Formula</th>
-          <th>Behavioral Tendency</th>
-          <th>Consequence in Text Generation</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Forward KL</strong><br>$\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$</td>
-          <td>$\sum_k P_T(k) \ln \frac{P_T(k)}{P_S(k)}$</td>
-          <td><span class="term" data-term="mode-covering">Mode-Covering (Zero-Avoiding)</span></td>
-          <td>Forces student to assign $P_S > 0$ anywhere $P_T > 0$. Yields blurry, high-entropy distributions; student hallucinates unlikely tokens.</td>
-        </tr>
-        <tr>
-          <td><strong>Reverse KL</strong><br>$\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$</td>
-          <td>$\sum_k P_S(k) \ln \frac{P_S(k)}{P_T(k)}$</td>
-          <td><span class="term" data-term="mode-seeking">Mode-Seeking (Zero-Forcing)</span></td>
-          <td>Heavily punishes student if $P_S > 0$ when $P_T \approx 0$. Forces student to focus exclusively on high-probability modes of the teacher.</td>
-        </tr>
-      </tbody>
-    </table></div>
-
-    <!-- INTERACTIVE SECTION 1: KL DIVERGENCE CALCULATOR -->
-    <div class="interactive-card">
-      <h3>Interactive Divergence Visualizer: Mode-Covering vs Mode-Seeking</h3>
-      <p>Adjust student probability allocations across 3 vocabulary tokens to see how Forward KL and Reverse KL react differently:</p>
-
-      <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 1rem;">
-        <div style="flex: 1; min-width: 250px;">
-          <strong>Student Probabilities:</strong>
-          <div style="margin: 8px 0;">
-            Token 1 ("sunny"): <span id="s-p1-label">0.40</span>
-            <input type="range" id="s-p1" min="0.05" max="0.90" step="0.05" value="0.40" oninput="updateDistSimulator()">
-          </div>
-          <div style="margin: 8px 0;">
-            Token 2 ("cloudy"): <span id="s-p2-label">0.30</span>
-            <input type="range" id="s-p2" min="0.05" max="0.90" step="0.05" value="0.30" oninput="updateDistSimulator()">
-          </div>
-          <div style="margin: 8px 0;">
-            Token 3 ("rainy"): <span id="s-p3-label">0.30</span> (auto-normalized)
-          </div>
-        </div>
-
-        <div style="flex: 1; min-width: 250px; background: #fafafa; border: 1px solid #444; padding: 12px;">
-          <strong>Fixed Teacher Target $P_T$:</strong>
-          <div>"sunny": <strong>0.70</strong> (dominant mode)</div>
-          <div>"cloudy": <strong>0.25</strong> (secondary mode)</div>
-          <div>"rainy": <strong>0.05</strong> (improbable outlier)</div>
-        </div>
-      </div>
-
-      <div class="bar-chart-container" id="bar-chart-vis"></div>
-
-      <div style="background: #eee; border: 2px solid #000; padding: 12px; margin-top: 15px; font-family: monospace;">
-        <div><strong>Forward KL $\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$:</strong> <span id="val-fwd-kl">--</span></div>
-        <div><strong>Reverse KL $\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$:</strong> <span id="val-rev-kl">--</span></div>
-        <div id="kl-analysis" style="margin-top: 8px; font-size: 14px; font-family: var(--font-main);"></div>
-      </div>
+    <div class="worked">
+      <p><strong>Worked Example (Tracing Forward vs. Reverse KL in base-2 bits on a 2-token vocabulary):</strong></p>
+      <p>
+        Suppose at a phrasing fork, the teacher likes Token A and Token B equally: $P_T = [\frac{1}{2},\; \frac{1}{2}]$. A small student locks decisively onto Token A: $P_S = [\frac{7}{8},\; \frac{1}{8}]$ (or in the clean dyadic limit, $P_S$ puts $\frac{1}{4}$ vs. $\frac{1}{8}$ on a runner-up). Let's compare the penalty on a token $v$ where $P_T(v) = \frac{1}{2}$ vs. a forbidden token $u$ where $P_T(u) = \frac{1}{64}$ ($2^{-6}$):<br>
+        &bull; <strong>If student puts $P_S(u) = \frac{1}{4}$ ($2^{-2}$) on the forbidden token $u$ ($P_T(u) = 2^{-6}$):</strong><br>
+        Forward KL weights it by $P_T(u) = \frac{1}{64}$: $\frac{1}{64} \log_2(\frac{1/64}{1/4}) = \frac{-4}{64}$ (tiny weight!).<br>
+        Reverse KL weights it by $P_S(u) = \frac{1}{4}$: $\frac{1}{4} \log_2(\frac{1/4}{1/64}) = \frac{1}{4}(+4\text{ bits}) = \mathbf{+1.0\text{ full bit}}$ of penalty—crushing the hallucination immediately!
+      </p>
     </div>
 
-    <!-- SECTION 4 -->
-    <h2>4. Fully Worked-Out Numerical Example</h2>
-    <p>
-      Let's trace the exact mathematics of why Reverse KL brutally punishes hallucinations compared to Forward KL.
-    </p>
-    <p>
-      Consider the single token prediction given prompt: <em>"Today's forecast is..."</em><br>
-      Vocabulary: $V = \{\text{"sunny"}, \text{"cloudy"}, \text{"rainy"}\}$.
-    </p>
-
-    <h3>Given Probabilities</h3>
-    <ul>
-      <li>Teacher: $P_T = [0.70, 0.25, 0.05]$</li>
-      <li>Student (untrained): $P_S = [0.40, 0.30, 0.30]$</li>
-    </ul>
-
-    <h3>Calculation A: Forward KL $\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S)$</h3>
-    <div class="math-block">
-      $$\mathbb{D}_{\text{KL}}(P_T \,\|\, P_S) = \sum_{k} P_T(k) \ln\left(\frac{P_T(k)}{P_S(k)}\right)$$
-    </div>
-    <ol>
-      <li>For "sunny": $0.70 \times \ln(0.70 / 0.40) = 0.70 \times \ln(1.750) = 0.70 \times 0.5596 = \mathbf{+0.3917}$</li>
-      <li>For "cloudy": $0.25 \times \ln(0.25 / 0.30) = 0.25 \times \ln(0.8333) = 0.25 \times (-0.1823) = \mathbf{-0.0456}$</li>
-      <li>For "rainy": $0.05 \times \ln(0.05 / 0.30) = 0.05 \times \ln(0.1667) = 0.05 \times (-1.7918) = \mathbf{-0.0896}$</li>
-      <li><strong>Total Forward KL:</strong> $0.3917 - 0.0456 - 0.0896 = \mathbf{0.2565}$ nats.</li>
-    </ol>
-    <p>
-      Notice that the student allocated 30% probability to "rainy" (when the teacher only gives 5%), yet the penalty from "rainy" in Forward KL is tiny ($-0.0896$) because $P_T(\text{"rainy"})$ is small ($0.05$)! Forward KL barely cares that the student is hallucinating bad tokens.
-    </p>
-
-    <h3>Calculation B: Reverse KL $\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T)$</h3>
-    <div class="math-block">
-      $$\mathbb{D}_{\text{KL}}(P_S \,\|\, P_T) = \sum_{k} P_S(k) \ln\left(\frac{P_S(k)}{P_T(k)}\right)$$
-    </div>
-    <ol>
-      <li>For "sunny": $0.40 \times \ln(0.40 / 0.70) = 0.40 \times \ln(0.5714) = 0.40 \times (-0.5596) = \mathbf{-0.2238}$</li>
-      <li>For "cloudy": $0.30 \times \ln(0.30 / 0.25) = 0.30 \times \ln(1.200) = 0.30 \times 0.1823 = \mathbf{+0.0547}$</li>
-      <li>For "rainy": $0.30 \times \ln(0.30 / 0.05) = 0.30 \times \ln(6.000) = 0.30 \times 1.7918 = \mathbf{+0.5375}$</li>
-      <li><strong>Total Reverse KL:</strong> $-0.2238 + 0.0547 + 0.5375 = \mathbf{0.3684}$ nats.</li>
-    </ol>
-    <p>
-      <strong>Look at the difference:</strong> For "rainy", Reverse KL produces a massive positive loss penalty of <strong>$+0.5375$</strong>! Because the weighting term is $P_S(\text{"rainy"}) = 0.30$, any mass the student places where the teacher has low probability is punished aggressively. This forces the student to eliminate hallucinatory tail probabilities.
-    </p>
-
-    <!-- CHECKPOINT 2 -->
-    <details class="mcq-box" id="mcq-2" data-correct="B" data-topic="Forward vs. Reverse KL Asymmetry">
-      <p>If teacher probability $P_T(k) \to 0$ for an unlikely token, but the student assigns $P_S(k) = 0.20$, what happens to <span class="term" data-term="reverse-kl">Reverse KL</span> $\sum_k P_S(k)\ln\frac{P_S(k)}{P_T(k)}$?</p>
-      <label class="mcq-option" data-explain="That happens in Forward KL ($P_T \ln(P_T/P_S)$), where $P_T \to 0$ zeroes out the term.">It approaches $0$ because $P_T(k)$ multiplies the log term.</label>
-      <label class="mcq-option" data-explain="Correct. In Reverse KL, $P_T(k)$ sits in the denominator inside the log while the weight outside is $P_S(k) = 0.20$, driving the penalty to $+\infty$ until the student sets $P_S(k) \to 0$.">The term $0.20 \ln(0.20 / P_T(k))$ blows up toward $+\infty$, forcing $P_S(k) \to 0$.</label>
-      <label class="mcq-option" data-explain="KL divergence is always non-negative ($\mathbb{D}_{\text{KL}} \ge 0$).">It becomes negative and rewards the student.</label>
+    <details class="mcq-box" data-correct="A" data-topic="Check 2: Forward KL vs. Reverse KL on a Multimodal Teacher">
+      <p>A teacher model assigns $P_T(\text{A}) = 0.50$ and $P_T(\text{B}) = 0.50$ to two different valid ways of starting an answer, and $P_T(\text{C}) \approx 0$ to an invalid middle word. A small student lacks the capacity to represent both phrasing paths. Which divergence allows the student to commit $100\%$ to path A without penalty, and which forces it to spread mass across both A and B?</p>
+      <label class="mcq-option" data-explain="Correct. Reverse KL D_KL(P_S || P_T) has 0 * log(0 / 0.5) = 0 when P_S(B) = 0, so it is mode-seeking and lets the student lock onto mode A. Forward KL D_KL(P_T || P_S) has 0.5 * log(0.5 / P_S(B)) -> infinity if P_S(B) -> 0, forcing mode-covering.">Reverse KL ($D_{\text{KL}}(P_S \parallel P_T)$) is mode-seeking and lets the student lock onto A; Forward KL ($D_{\text{KL}}(P_T \parallel P_S)$) is mode-covering and forces the student to cover both A and B.</label>
+      <label class="mcq-option" data-explain="That swaps Forward and Reverse KL.">Forward KL is mode-seeking; Reverse KL is mode-covering.</label>
+      <label class="mcq-option" data-explain="KL divergence is asymmetric: D_KL(P_T || P_S) != D_KL(P_S || P_T).">Both divergences are symmetric and produce identical student distributions.</label>
     </details>
 
-    <!-- SECTION 5: ON-POLICY TRAINING -->
-    <h2>5. The GKD Training Algorithm: On-Policy Rollouts</h2>
-    <p>
-      How do we practically train with on-policy generation? The GKD training loop proceeds as follows:
-    </p>
-
-    <div class="algo-block">
-      <div class="algo-line"><span class="algo-num">1.</span> Sample prompt: $x \sim \mathcal{D}_{\text{prompt}}$</div>
-      <div class="algo-line"><span class="algo-num">2.</span> With probability $\lambda$: Sample student rollout $y \sim P_{\text{student}}(\cdot \mid x)$</div>
-      <div class="algo-line" style="padding-left: 1.5rem;">With probability $(1-\lambda)$: Take reference sequence $y \sim \mathcal{D}_{\text{data}}$</div>
-      <div class="algo-line"><span class="algo-num">3.</span> Run teacher forward pass on sequence $(x, y)$ to obtain $P_{\text{teacher}}(\cdot \mid x, y_{<t})$</div>
-      <div class="algo-line"><span class="algo-num">4.</span> Run student forward pass on sequence $(x, y)$ to obtain $P_{\text{student}}(\cdot \mid x, y_{<t})$</div>
-      <div class="algo-line"><span class="algo-num">5.</span> Compute divergence $\mathbb{D}(P_{\text{teacher}} \,\|\, P_{\text{student}})$ at each generated step $t$</div>
-      <div class="algo-line"><span class="algo-num">6.</span> Backpropagate gradients into student weights $\theta$</div>
-    </div>
-
-    <!-- INTERACTIVE SECTION 2: LAMBDA MIXING EXPLORER -->
-    <div class="interactive-card">
-      <h3>Interactive Policy Mixing Simulator ($\lambda$)</h3>
-      <p>Slide $\lambda$ to see how data generation shifts between off-policy supervision and on-policy self-correction:</p>
-
-      <div style="margin: 15px 0;">
-        <label>
-          <strong>Mix Ratio $\lambda$ (On-Policy Weight):</strong>
-          <input type="range" id="mix-lambda" min="0" max="1" step="0.1" value="0.5" oninput="updateLambdaMix()">
-          <span id="lambda-val" style="font-family: monospace; font-weight: bold;">0.5</span>
-        </label>
-      </div>
-
-      <div id="lambda-description" style="border: 1px solid #000; padding: 12px; background: #fafafa;"></div>
-    </div>
-
-    <!-- DETAILS: POLICY GRADIENT DERIVATION -->
-    <details>
-      <summary>Mathematical Derivation: Policy Gradient for Reverse KL (Click to expand)</summary>
-      <div style="padding-top: 0.8rem;">
-        <p>When sampling rollouts on-policy $y \sim P_{\text{student}}(\cdot \mid x)$, the gradient with respect to student parameters $\theta$ requires differentiating through the expectation over generated sequences:</p>
-        <div class="math-block">
-          $$\nabla_\theta \mathbb{E}_{y \sim P_\theta} [ R(y) ] = \mathbb{E}_{y \sim P_\theta} \left[ R(y) \nabla_\theta \log P_\theta(y) \right]$$
-        </div>
-        <p>In GKD, the token-level loss at step $t$ acts as an intrinsic reward/cost signal from the teacher:</p>
-        <div class="math-block">
-          $$r_t = -\mathbb{D}_{\text{KL}}\Big( P_{\text{student}}(\cdot \mid x, y_{<t}) \,\|\, P_{\text{teacher}}(\cdot \mid x, y_{<t}) \Big)$$
-        </div>
-        <p>Because the student samples its own trajectory, this gradient directly updates the policy to make transitions into high-teacher-probability trajectories more likely, solving exposure bias completely!</p>
-      </div>
+    <details class="mcq-box" data-correct="C" data-topic="Check 3: Temperature Scaling in Distillation">
+      <p>A teacher outputs raw logits $z = [4,\; 2,\; 0]$. If you raise distillation temperature from $T = 1$ to $T = 2$ before softmax ($z / T$), what are the new scaled logits, and why does this help in off-policy classification distillation?</p>
+      <label class="mcq-option" data-explain="Dividing [4, 2, 0] by T = 2 gives [2, 1, 0], not [8, 4, 0].">Scaled logits become $[8,\; 4,\; 0]$, making the distribution sharper.</label>
+      <label class="mcq-option" data-explain="Dividing by 2 changes the gaps between logits (from 2 to 1), which flattens the softmax output.">Scaled logits become $[2,\; 1,\; 0]$, which leaves softmax probabilities unchanged.</label>
+      <label class="mcq-option" data-explain="Correct. Dividing by T = 2 gives [2, 1, 0], softening the softmax peak and lifting the relative probability ratio between the runner-up token (1) and worst token (0) ('dark knowledge').">Scaled logits become $[2,\; 1,\; 0]$, flattening the peak so the student sees relative similarity rankings ("dark knowledge") among runner-up tokens.</label>
     </details>
 
-    <!-- SECTION 6: COMPARISON TABLE -->
-    <h2>6. Comparison: GKD vs. SFT vs. RLHF / PPO</h2>
-    <div class="table-wrap"><table class="data-table">
-      <thead>
-        <tr>
-          <th>Method</th>
-          <th>Data Distribution</th>
-          <th>Requires Reward Model?</th>
-          <th>Suffers from <span class="term" data-term="exposure-bias">Exposure Bias</span>?</th>
-          <th>Compute Cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong><span class="term" data-term="sft">Supervised Fine-Tuning (SFT)</span></strong></td>
-          <td><span class="term" data-term="off-policy">Off-policy</span> ($\mathcal{D}$)</td>
-          <td>No</td>
-          <td>Yes (severe)</td>
-          <td>Low</td>
-        </tr>
-        <tr>
-          <td><strong><span class="term" data-term="kd">Standard Distillation (KD)</span></strong></td>
-          <td><span class="term" data-term="off-policy">Off-policy</span> ($\mathcal{D}$)</td>
-          <td>No</td>
-          <td>Yes (severe)</td>
-          <td>Low / Medium</td>
-        </tr>
-        <tr>
-          <td><strong>RLHF (PPO)</strong></td>
-          <td><span class="term" data-term="on-policy">On-policy</span> rollouts</td>
-          <td>Yes (Scalar Reward Model)</td>
-          <td>No</td>
-          <td>High</td>
-        </tr>
-        <tr>
-          <td><strong>GKD</strong></td>
-          <td>Mixed On/Off-Policy ($\lambda$)</td>
-          <td>No (Teacher logits at every token)</td>
-          <td><strong>No</strong></td>
-          <td>Medium</td>
-        </tr>
-      </tbody>
-    </table></div>
-
-    <!-- CHECKPOINT 3 -->
-    <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="GKD vs. Scalar-Reward RLHF">
-      <p>Why does GKD converge with lower gradient variance than standard RLHF with a sequence-level Reward Model?</p>
-      <label class="mcq-option" data-explain="GKD still updates all trainable student weights $\theta$ via backpropagation.">GKD does not update any neural network weights.</label>
-      <label class="mcq-option" data-explain="Correct. Instead of a single scalar score at the very end of a 500-token response, the teacher provides a full probability distribution over the vocabulary at every token position $t$.">Instead of one scalar reward at the end of the sequence, the teacher gives dense, token-by-token distribution feedback across the vocabulary at every step $t$.</label>
-      <label class="mcq-option" data-explain="GKD specifically uses on-policy rollouts ($\lambda > 0$) and generalized divergences like Reverse KL or JSD.">GKD uses only forward KL divergence on static offline data.</label>
-    </details>
+    <h2>3. Comparing Distillation &amp; Alignment Objectives</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Prefix Source ($\mu$)</th>
+            <th>Divergence ($\mathbb{D}$)</th>
+            <th>Tradeoff / Personality</th>
+            <th>Best Use Case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Supervised KD (<span class="term" data-term="teacher-forcing">Teacher Forcing</span>)</strong></td>
+            <td>Fixed dataset ($\lambda = 0$)</td>
+            <td><span class="term" data-term="forward-kl">Forward KL</span> $D_{\text{KL}}(P_T \parallel P_S)$</td>
+            <td>Suffers from <span class="term" data-term="exposure-bias">exposure bias</span> &amp; mode-covering tail blur</td>
+            <td>Classification or single-token tasks where capacity matches teacher</td>
+          </tr>
+          <tr>
+            <td><strong>SeqKD (Hard Teacher Outputs)</strong></td>
+            <td>Teacher rollouts ($y \sim P_T$)</td>
+            <td>Hard token cross-entropy</td>
+            <td>Still off-policy relative to student's own mistakes; drops teacher's soft probabilities</td>
+            <td>Distilling from black-box API teachers that hide logprobs</td>
+          </tr>
+          <tr>
+            <td><strong>On-Policy GKD (<span class="term" data-term="reverse-kl">Reverse KL</span>)</strong></td>
+            <td>Student rollouts ($\lambda \in [0.5, 1]$)</td>
+            <td><span class="term" data-term="reverse-kl">Reverse KL</span> $D_{\text{KL}}(P_S \parallel P_T)$</td>
+            <td><span class="term" data-term="mode-seeking">Mode-seeking</span>: eliminates exposure bias and locks onto sharp high-precision teacher modes</td>
+            <td>Math, coding, summarization, and instruction-following student LLMs</td>
+          </tr>
+          <tr>
+            <td><strong>On-Policy GKD (<span class="term" data-term="jsd">Generalized JSD</span>)</strong></td>
+            <td>Mixed rollouts ($\lambda = 0.5$)</td>
+            <td>Bounded <span class="term" data-term="jsd">$\text{JSD}_\beta(P_T \parallel P_S)$</span></td>
+            <td>Smoothly interpolates between mode-covering ($\beta \to 0$) and mode-seeking ($\beta \to 1$) without $\infty$ spikes</td>
+            <td>Stable general-purpose student distillation when $P_T$ has zero-prob tails</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div class="score-bar"></div>
 
-    <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
-      <p style="font-weight: bold;">Return or Review:</p>
-      <a href="attention.html" class="btn" style="text-decoration: none; display: inline-block;">← Back to Attention Guide</a>
-      <a href="index.html" class="btn" style="text-decoration: none; display: inline-block; margin-left: 10px;">View Table of Contents</a>
-    </div>
+    <div class="interactive-card" id="spaced-widget"></div>
   </main>
 
   <script>
-    const glossary = {
-      "kd": {
-        title: "Knowledge Distillation (KD)",
-        body: "Training a smaller student model to match the full output probability distribution $P_{\\text{teacher}}(\\cdot \\mid x, y_{<t})$ of a larger teacher model rather than just hard one-hot labels."
+    var GLOSSARY = {
+      'kd': {
+        title: 'Knowledge Distillation (KD)',
+        body: 'Training a smaller student model $P_S$ to match the full soft token distributions $P_T$ of a larger teacher model rather than just hard $0/1$ labels.'
       },
-      "sft": {
-        title: "Supervised Fine-Tuning (SFT)",
-        body: "Training a model via cross-entropy on fixed ground-truth demonstration sequences $(x, y) \\sim \\mathcal{D}$ using <span class=\"term\" data-term=\"teacher-forcing\">teacher forcing</span>."
+      'exposure-bias': {
+        title: 'Exposure Bias',
+        body: 'Train-test mismatch where a student is trained only on gold prefixes $y_{<t}$ (<span class="term" data-term="teacher-forcing">teacher forcing</span>) but must condition on its own imperfect generated prefixes $\\hat{y}_{<t} \\sim P_S$ at inference time.'
       },
-      "teacher-forcing": {
-        title: "Teacher Forcing",
-        body: "Feeding the ground-truth prefix $y_{<t}$ into the model at every step during training, rather than the model's own previously predicted tokens $\\hat{y}_{<t}$."
+      'teacher-forcing': {
+        title: 'Teacher Forcing',
+        body: 'Feeding ground-truth dataset tokens $y_{<t}$ as the conditioning prefix at every training step instead of using the model\'s own previous predictions.'
       },
-      "exposure-bias": {
-        title: "Exposure Bias",
-        body: "Train-test mismatch where an autoregressive model is only trained on clean ground-truth prefixes (<span class=\"term\" data-term=\"teacher-forcing\">teacher forcing</span>), so at inference time its own errors push it into unfamiliar states and compound."
+      'off-policy': {
+        title: 'Off-Policy Distillation ($\\lambda = 0$)',
+        body: 'Evaluating the teacher-student divergence solely on static dataset trajectories $(x, y) \\sim \\mathcal{D}$ that the student did not generate.'
       },
-      "on-policy": {
-        title: "On-Policy Rollouts",
-        body: "Training sequences $\\hat{y} \\sim P_{\\text{student}}(\\cdot \\mid x)$ sampled directly from the student's current policy during training."
+      'on-policy': {
+        title: 'On-Policy Distillation ($\\lambda > 0$)',
+        body: 'Sampling sequences $\\hat{y} \\sim P_S(\\cdot \\mid x)$ directly from the student\'s current policy and having the teacher provide target token distributions $P_T(\\cdot \\mid x, \\hat{y}_{<t})$ at every visited prefix.'
       },
-      "off-policy": {
-        title: "Off-Policy Data",
-        body: "Static training sequences drawn from an external dataset $\\mathcal{D}$ or pre-generated by the teacher, independent of the student's current parameters."
+      'sym-lambda': {
+        title: 'On-Policy Student Rollout Fraction ($\\lambda \\in [0, 1]$)',
+        body: 'Probability of training on a student-generated sequence ($P_S$) vs. a static dataset sequence ($P_{\\text{data}}$). $\\lambda = 0$ is classical KD; $\\lambda = 1$ is pure on-policy GKD.'
       },
-      "jsd": {
-        title: "Generalized Jensen-Shannon Divergence (JSD)",
-        body: "A bounded, smooth interpolation between <span class=\"term\" data-term=\"mode-covering\">Forward KL</span> and <span class=\"term\" data-term=\"reverse-kl\">Reverse KL</span> against a mixture distribution $M = \\beta P_T + (1-\\beta) P_S$."
+      'forward-kl': {
+        title: 'Forward KL Divergence $D_{\\text{KL}}(P_T \\parallel P_S)$',
+        body: '$\\sum_v P_T(v) \\log \\frac{P_T(v)}{P_S(v)}$. Penalizes $P_S(v) \\approx 0$ wherever $P_T(v) > 0$, forcing the student to be <span class="term" data-term="mode-covering">mode-covering</span>.'
       },
-      "reverse-kl": {
-        title: "Reverse KL Divergence",
-        body: "$\\mathbb{D}_{\\text{KL}}(P_{\\text{student}} \\,\\|\\, P_{\\text{teacher}}) = \\sum_k P_S(k)\\ln\\frac{P_S(k)}{P_T(k)}$. Zero-forcing / <span class=\"term\" data-term=\"mode-seeking\">mode-seeking</span>: heavily penalizes the student whenever it puts probability on tokens where $P_T(k) \\approx 0$."
+      'reverse-kl': {
+        title: 'Reverse KL Divergence $D_{\\text{KL}}(P_S \\parallel P_T)$',
+        body: '$\\sum_v P_S(v) \\log \\frac{P_S(v)}{P_T(v)}$. Penalizes $P_S(v) > 0$ wherever $P_T(v) \\approx 0$, making the student <span class="term" data-term="mode-seeking">mode-seeking</span>.'
       },
-      "mode-covering": {
-        title: "Mode-Covering (Forward KL)",
-        body: "$\\mathbb{D}_{\\text{KL}}(P_{\\text{teacher}} \\,\\|\\, P_{\\text{student}}) = \\sum_k P_T(k)\\ln\\frac{P_T(k)}{P_S(k)}$. Forces $P_S(k) > 0$ everywhere $P_T(k) > 0$, causing small-capacity students to spread mass too thinly."
+      'mode-covering': {
+        title: 'Mode-Covering Behavior (Forward KL)',
+        body: 'Spreading probability mass wide enough to cover every mode of $P_T$, often placing mass in low-density valleys between modes when the student has limited capacity.'
       },
-      "mode-seeking": {
-        title: "Mode-Seeking (Reverse KL)",
-        body: "Behavior of <span class=\"term\" data-term=\"reverse-kl\">Reverse KL</span>: the student concentrates its probability mass on the teacher's high-confidence modes and zeroes out low-probability tails."
+      'mode-seeking': {
+        title: 'Mode-Seeking Behavior (Reverse KL)',
+        body: 'Concentrating student probability mass cleanly onto one or a few high-probability modes of $P_T$ while assigning zero mass to regions where $P_T \\approx 0$.'
+      },
+      'jsd': {
+        title: 'Generalized Jensen-Shannon Divergence ($\\text{JSD}_\\beta$)',
+        body: 'Bounded interpolation between Forward KL and Reverse KL using mixture $M_\\beta = \\beta P_T + (1-\\beta)P_S$: $\\beta D_{\\text{KL}}(P_T \\parallel M_\\beta) + (1-\\beta) D_{\\text{KL}}(P_S \\parallel M_\\beta)$.'
       }
     };
 
-    // INTERACTIVE KL SIMULATOR
-    const teacherP = [0.70, 0.25, 0.05];
-    const tokenNames = ["sunny", "cloudy", "rainy"];
-
-    function updateDistSimulator() {
-      let p1 = parseFloat(document.getElementById('s-p1').value);
-      let p2 = parseFloat(document.getElementById('s-p2').value);
-      if (p1 + p2 >= 0.95) {
-        p2 = 0.95 - p1;
-        document.getElementById('s-p2').value = p2.toFixed(2);
+    var SPACED_CARDS = [
+      {
+        q: 'What is exposure bias in standard supervised Knowledge Distillation, and how does GKD\'s on-policy rollout fraction $\\lambda$ fix it?',
+        a: 'Under teacher forcing ($\\lambda = 0$), the student only trains on gold dataset prefixes $y_{<t}$ and never learns to recover from its own test-time errors. With $\\lambda > 0$, the student generates its own rollouts $\\hat{y} \\sim P_S$ and the teacher scores every visited prefix $\\hat{y}_{<t}$.'
+      },
+      {
+        q: 'In GKD, why is Forward KL $D_{\\text{KL}}(P_T \\parallel P_S)$ mode-covering whereas Reverse KL $D_{\\text{KL}}(P_S \\parallel P_T)$ is mode-seeking?',
+        a: 'Forward KL weights $\\log(P_T / P_S)$ by $P_T$, blowing up if $P_S \\approx 0$ anywhere $P_T > 0$ (forcing the small student to smear mass across all teacher modes). Reverse KL weights $\\log(P_S / P_T)$ by $P_S$, blowing up if $P_S > 0$ where $P_T \\approx 0$ while paying zero penalty ($0\\log 0 = 0$) when the student drops secondary modes.'
+      },
+      {
+        q: 'Why doesn\'t On-Policy GKD ($\\lambda = 1$) need a separate reward model or Critic value network like PPO?',
+        a: 'Because the teacher LLM itself acts as a dense token-level critic: at every token prefix $\\hat{y}_{<t}$ the student visits, the teacher directly supplies the full target vocabulary distribution $P_T(\\cdot \\mid x, \\hat{y}_{<t})$.'
       }
-      let p3 = 1.0 - (p1 + p2);
-      p3 = Math.max(0.01, p3);
-
-      document.getElementById('s-p1-label').innerText = p1.toFixed(2);
-      document.getElementById('s-p2-label').innerText = p2.toFixed(2);
-      document.getElementById('s-p3-label').innerText = p3.toFixed(2);
-
-      const studentP = [p1, p2, p3];
-
-      // Compute Forward KL: sum P_T * ln(P_T / P_S)
-      let fwdKL = 0;
-      for (let i = 0; i < 3; i++) {
-        fwdKL += teacherP[i] * Math.log(teacherP[i] / studentP[i]);
-      }
-
-      // Compute Reverse KL: sum P_S * ln(P_S / P_T)
-      let revKL = 0;
-      for (let i = 0; i < 3; i++) {
-        revKL += studentP[i] * Math.log(studentP[i] / teacherP[i]);
-      }
-
-      document.getElementById('val-fwd-kl').innerText = fwdKL.toFixed(4) + ' nats';
-      document.getElementById('val-rev-kl').innerText = revKL.toFixed(4) + ' nats';
-
-      // Analysis insight
-      let analysis = "";
-      if (studentP[2] > 0.15) {
-        analysis = `<strong>Warning:</strong> High student probability (${(studentP[2]*100).toFixed(0)}%) on improbable token "rainy" causes Reverse KL to skyrocket (+${(studentP[2] * Math.log(studentP[2]/teacherP[2])).toFixed(3)} penalty from rainy alone)! This strongly forces student to suppress this hallucination.`;
-      } else {
-        analysis = `Student probabilities closely respect the low tail of the teacher. Reverse KL remains well-controlled (${revKL.toFixed(3)}).`;
-      }
-      document.getElementById('kl-analysis').innerHTML = analysis;
-
-      // Render chart
-      let chartHtml = '';
-      for (let i = 0; i < 3; i++) {
-        let tHeight = teacherP[i] * 140;
-        let sHeight = studentP[i] * 140;
-        chartHtml += `
-          <div class="bar-group">
-            <div style="font-size: 11px; margin-bottom: 4px; font-weight: bold;">${tokenNames[i]}</div>
-            <div style="display: flex; gap: 4px; align-items: flex-end; width: 100%; justify-content: center;">
-              <div style="text-align: center;">
-                <div style="font-size: 10px;">${(teacherP[i]*100).toFixed(0)}%</div>
-                <div class="bar" style="height: ${tHeight}px; background: #000;"></div>
-                <div style="font-size: 10px; font-weight: bold;">T</div>
-              </div>
-              <div style="text-align: center;">
-                <div style="font-size: 10px;">${(studentP[i]*100).toFixed(0)}%</div>
-                <div class="bar" style="height: ${sHeight}px; background: #bbb;"></div>
-                <div style="font-size: 10px; font-weight: bold;">S</div>
-              </div>
-            </div>
-          </div>
-        `;
-      }
-      document.getElementById('bar-chart-vis').innerHTML = chartHtml;
-    }
-
-    // LAMBDA MIX SIMULATOR
-    function updateLambdaMix() {
-      const lam = parseFloat(document.getElementById('mix-lambda').value);
-      document.getElementById('lambda-val').innerText = lam.toFixed(1);
-      const box = document.getElementById('lambda-description');
-      
-      let desc = "";
-      if (lam === 0.0) {
-        desc = "<strong>$\\lambda = 0.0$ (Standard Supervised KD):</strong> $100\\%$ of training sequences come from static offline data $\\mathcal{D}$. Fast, but suffers from exposure bias at inference time.";
-      } else if (lam === 1.0) {
-        desc = "<strong>$\\lambda = 1.0$ (Fully On-Policy GKD):</strong> $100\\%$ of sequences are sampled from the student $P_{\\text{student}}(\\cdot \\mid x)$, and the teacher scores every student prefix directly.";
-      } else {
-        desc = `<strong>$\\lambda = ${lam.toFixed(1)}$ (Mixed GKD):</strong> $${(lam * 100).toFixed(0)}\\%$ of rollouts are generated on-policy by the student, and $${((1-lam)*100).toFixed(0)}\\%$ come from reference data $\\mathcal{D}$.`;
-      }
-      box.innerHTML = desc;
-      renderMathIn(box);
-    }
-
-    // Initialize
-    updateDistSimulator();
-    updateLambdaMix();
+    ];
   </script>
 </body>
 </html>

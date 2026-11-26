@@ -15,403 +15,199 @@
   <main>
     <h1>Classification Metrics Refresher: From Type I/II Errors to ROC-AUC and PR-AUC</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Two kinds of mistakes:</strong> A <span class="term" data-term="type-1">Type I error</span> (<span class="term" data-term="fp">False Positive, $FP$</span>) is a false alarm on a real negative. A <span class="term" data-term="type-2">Type II error</span> (<span class="term" data-term="fn">False Negative, $FN$</span>) is a missed real positive.</li>
-        <li><strong>Row vs. column denominators:</strong> <span class="term" data-term="recall">Recall</span> and <span class="term" data-term="sensitivity">Sensitivity</span> are the exact same ratio—caught positives divided by all real positives ($\frac{TP}{TP + FN}$). <span class="term" data-term="specificity">Specificity</span> is cleared negatives divided by all real negatives ($\frac{TN}{TN + FP}$). <span class="term" data-term="precision">Precision</span> switches to the <em>predicted</em> denominator: real positives divided by all flagged alerts ($\frac{TP}{TP + FP}$).</li>
-        <li><strong>Why you need both <span class="term" data-term="roc-auc">ROC-AUC</span> and <span class="term" data-term="pr-auc">PR-AUC</span>:</strong> When positives are rare, a huge <span class="term" data-term="tn">True Negative ($TN$)</span> pool keeps the <span class="term" data-term="fpr">False Positive Rate ($\text{FPR} = \frac{FP}{FP + TN}$)</span> tiny, making <span class="term" data-term="roc-auc">ROC-AUC</span> look flattering even when false alarms drown out real hits in <span class="term" data-term="pr-auc">PR-AUC</span>.</li>
-      </ul>
-    </div>
-
-    <!-- SECTION 1 -->
-    <h2 id="s1">1. One 2&times;2 Table Generates Every Metric</h2>
-
-    <div class="story-box">
-      <div class="story-label">Running Scenario: Screening 110 Patients</div>
-      <p style="margin:0;">
-        Suppose a clinic screens <strong>110 patients</strong>: exactly <strong>10 have the disease</strong> (actual positives) and <strong>100 are healthy</strong> (actual negatives). Every number below uses clean mental math so you can trace each denominator in your head.
-      </p>
-    </div>
-
-    <div class="interactive-card" id="poe-widget">
-      <div class="widget-label">Quick Prediction: Spot the Illusion</div>
-      <h3>8 Caught out of 10 Sick, 16 False Alarms out of 100 Healthy</h3>
-      <p>
-        At our current <span class="term" data-term="threshold">cutoff $t$</span>, the test catches <span class="term" data-term="tp">$TP = 8$</span> of the 10 sick patients (missing <span class="term" data-term="fn">$FN = 2$</span>), and wrongly flags <span class="term" data-term="fp">$FP = 16$</span> of the 100 healthy patients (clearing <span class="term" data-term="tn">$TN = 84$</span>). That gives <strong>80% <span class="term" data-term="sensitivity">sensitivity</span></strong> and <strong>84% <span class="term" data-term="specificity">specificity</span></strong>. Before looking below, what is the test's <span class="term" data-term="precision">precision</span>?
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="runPOE('A')">A) 82.0% (average of 80% &amp; 84%)</button>
-        <button class="btn btn-small" onclick="runPOE('B')">B) 50.0% (half of alerts are real)</button>
-        <button class="btn btn-small" onclick="runPOE('C')">C) 33.3% (only 1 in 3 alerts is real)</button>
-        <button class="btn btn-small" onclick="runPOE('skip')">Show me the math</button>
-      </div>
-      <div id="poe-reveal" class="refutation" style="display:none;"></div>
-    </div>
-
     <p>
-      Every single-threshold metric is just a fraction pulled from one row or one column of the <span class="term" data-term="confusion-matrix">confusion matrix</span>:
+      Almost every classification metric in machine learning and statistics—<span class="term" data-term="precision">Precision</span>, <span class="term" data-term="recall">Recall</span>, <span class="term" data-term="sensitivity">Sensitivity</span>, <span class="term" data-term="specificity">Specificity</span>, <span class="term" data-term="type-1">Type I / Type II errors</span>, <span class="term" data-term="f1">$F_1$</span>, <span class="term" data-term="roc-auc">ROC-AUC</span>, and <span class="term" data-term="pr-auc">PR-AUC</span>—is built from the exact same four numbers inside a $2 \times 2$ <span class="term" data-term="confusion-matrix">confusion matrix</span>.
+    </p>
+    <p>
+      Why do different fields have three different names for the exact same fraction? Because medicine (Sensitivity / Specificity), hypothesis testing (Type I / Type II errors), and information retrieval (Precision / Recall) each invented their own vocabulary. Once you see which row or column of the $2 \times 2$ table is sitting in the denominator, you never have to memorize the formulas as isolated facts again.
     </p>
 
-    <div class="table-wrap">
-      <table class="cm">
-        <thead>
-          <tr>
-            <th>110 Patients Total</th>
-            <th>Predicted Positive (Alarm)</th>
-            <th>Predicted Negative (Clear)</th>
-            <th>Row Metric (Conditioned on Truth)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th>Actual Positive (10 Sick)</th>
-            <td class="hit"><span class="term" data-term="tp">$TP = 8$</span><br><small>Caught positive</small></td>
-            <td><span class="term" data-term="type-2">Type II Error</span><br><span class="term" data-term="fn">$FN = 2$</span> <small>(Missed)</small></td>
-            <td><span class="term" data-term="recall">Recall</span> / <span class="term" data-term="sensitivity">Sensitivity</span><br>$\frac{8}{8 + 2} = \mathbf{80\%}$</td>
-          </tr>
-          <tr>
-            <th>Actual Negative (100 Healthy)</th>
-            <td><span class="term" data-term="type-1">Type I Error</span><br><span class="term" data-term="fp">$FP = 16$</span> <small>(False alarm)</small></td>
-            <td class="hit"><span class="term" data-term="tn">$TN = 84$</span><br><small>Cleared negative</small></td>
-            <td><span class="term" data-term="specificity">Specificity</span> ($\text{TNR}$)<br>$\frac{84}{16 + 84} = \mathbf{84\%}$<br><small>(<span class="term" data-term="fpr">$\text{FPR}$</span> $= \frac{16}{100} = 16\%$)</small></td>
-          </tr>
-          <tr>
-            <th>Column Metric (Conditioned on Alarm)</th>
-            <td><span class="term" data-term="precision">Precision</span> ($\text{PPV}$)<br>$\frac{8}{8 + 16} = \frac{8}{24} = \mathbf{33.3\%}$</td>
-            <td>Negative Predictive Value<br>$\frac{84}{2 + 84} = \frac{84}{86} \approx 97.7\%$</td>
-            <td><strong>Why Precision dropped:</strong><br>$16$ false alarms outnumber $8$ real hits $2\text{ to }1$</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <h2>1. The $2 \times 2$ Confusion Matrix: Row Ratios vs. Column Ratios</h2>
+    <p>
+      Every binary classifier makes two kinds of right calls—catching a real positive (<span class="term" data-term="tp">True Positive, $TP$</span>) and clearing a real negative (<span class="term" data-term="tn">True Negative, $TN$</span>)—and two kinds of mistakes. A <strong><span class="term" data-term="type-1">Type I error</span></strong> (<span class="term" data-term="fp">False Positive, $FP$</span>) is a false alarm on a real negative (like the boy who cried wolf the first time, when there was no wolf). A <strong><span class="term" data-term="type-2">Type II error</span></strong> (<span class="term" data-term="fn">False Negative, $FN$</span>) is a missed real positive (the second time, when a real wolf attacked and nobody believed it).
+    </p>
 
     <div class="worked">
-      <p><strong>Memory anchor for Type I vs. Type II and the three ratios:</strong></p>
+      <p><strong>Worked Example (Tracing every ratio on 110 screened patients: 10 sick, 100 healthy):</strong></p>
       <p>
-        &bull; <strong><span class="term" data-term="type-1">Type I ($FP$)</span> vs. <span class="term" data-term="type-2">Type II ($FN$)</span>:</strong> Think of the boy who cried wolf. First time (<strong>Type I</strong>), the villagers believe a wolf is there when there is none (false alarm, $FP$). Second time (<strong>Type II</strong>), they believe no wolf is there when a real wolf attacks (missed detection, $FN$).<br>
-        &bull; <strong><span class="term" data-term="recall">Recall</span> = <span class="term" data-term="sensitivity">Sensitivity</span> = <span class="term" data-term="tpr">$\text{TPR}$</span>:</strong> Machine learning calls it <em>recall</em>; medicine calls it <em>sensitivity</em>. Both divide <span class="term" data-term="tp">$TP$</span> by the top row ($TP + FN = 10$).<br>
-        &bull; <strong><span class="term" data-term="specificity">Specificity</span> vs. <span class="term" data-term="precision">Precision</span>:</strong> <span class="term" data-term="specificity">Specificity</span> looks only at the bottom row of healthy people ($\frac{TN}{TN + FP} = \frac{84}{100}$). <span class="term" data-term="precision">Precision</span> looks down the left column of triggered alarms ($\frac{TP}{TP + FP} = \frac{8}{24}$) and completely ignores <span class="term" data-term="tn">$TN$</span>.
+        Suppose a diagnostic test catches <span class="term" data-term="tp">$TP = 8$</span> of the $10$ sick patients (missing <span class="term" data-term="fn">$FN = 2$</span>), and triggers <span class="term" data-term="fp">$FP = 16$</span> false alarms among the $100$ healthy patients (clearing <span class="term" data-term="tn">$TN = 84$</span>):<br>
+        1. <strong>Conditioned on Actual Positives (Top Row $= TP + FN = 10$):</strong><br>
+        <span class="term" data-term="recall">Recall</span> $=$ <span class="term" data-term="sensitivity">Sensitivity</span> $=$ <span class="term" data-term="tpr">$\text{TPR}$</span> $= \frac{TP}{TP + FN} = \frac{8}{10} = \mathbf{80\%}$ (and miss rate $\text{FNR} = \frac{2}{10} = 20\%$; notice $\text{TPR} + \text{FNR} = 100\%$).<br>
+        2. <strong>Conditioned on Actual Negatives (Bottom Row $= FP + TN = 100$):</strong><br>
+        <span class="term" data-term="specificity">Specificity</span> ($\text{TNR}$) $= \frac{TN}{FP + TN} = \frac{84}{100} = \mathbf{84\%}$, and <span class="term" data-term="fpr">False Positive Rate ($\text{FPR}$)</span> $= \frac{FP}{FP + TN} = \frac{16}{100} = \mathbf{16\%}$ (notice $\text{TNR} + \text{FPR} = 100\%$).<br>
+        3. <strong>Conditioned on Flagged Alarms (Left Column $= TP + FP = 8 + 16 = 24$):</strong><br>
+        <span class="term" data-term="precision">Precision</span> ($\text{PPV}$) $= \frac{TP}{TP + FP} = \frac{8}{8 + 16} = \frac{8}{24} = \mathbf{33.3\%}$! Even with $80\%$ sensitivity and $84\%$ specificity, only $1$ in $3$ positive test results is actually sick because healthy people outnumber sick people $10\text{ to }1$.
       </p>
     </div>
 
-    <!-- SECTION 2 -->
-    <h2 id="s2">2. Interactive ROC-AUC vs. PR-AUC Curves</h2>
     <p>
-      <span class="term" data-term="precision">Precision</span>, <span class="term" data-term="recall">recall</span>, and <span class="term" data-term="specificity">specificity</span> only evaluate <strong>one single <span class="term" data-term="threshold">threshold $t$</span></strong>. If you lower $t$, you catch more positives (<span class="term" data-term="recall">recall</span> goes up, <span class="term" data-term="type-2">Type II errors</span> drop) at the price of more false alarms (<span class="term" data-term="type-1">Type I errors</span> rise, <span class="term" data-term="precision">precision</span> and <span class="term" data-term="specificity">specificity</span> drop).
+      When you want a single number that requires <em>both</em> Precision and Recall to be high at a chosen threshold, use their harmonic mean, the <strong><span class="term" data-term="f1">$F_1$ Score</span></strong>: $F_1 = \frac{2 \cdot \text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}} = \frac{2\,TP}{2\,TP + FP + FN}$. Unlike a simple average, the harmonic mean punishes extreme imbalance: if a lazy model flags everyone ($\text{Recall} = 100\%$, $\text{Precision} = 2\%$), its $F_1$ drops near $4\%$ instead of $51\%$.
     </p>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Grouping the 4 Row Rates (TPR, FNR, TNR, FPR)">
+      <p>Which pair of rates shares the exact same denominator (all Actual Negatives, $FP + TN$) and always adds up to $100\%$?</p>
+      <label class="mcq-option" data-explain="Recall divides by Actual Positives (TP + FN), whereas Precision divides by Predicted Positives (TP + FP).">Recall ($\text{TPR}$) and Precision ($\text{PPV}$).</label>
+      <label class="mcq-option" data-explain="Correct. Among all Actual Negatives (FP + TN), every example is either cleared (TN -> Specificity/TNR) or a false alarm (FP -> FPR), so Specificity + FPR = 100%.">Specificity ($\text{TNR} = \frac{TN}{FP + TN}$) and False Positive Rate ($\text{FPR} = \frac{FP}{FP + TN}$).</label>
+      <label class="mcq-option" data-explain="Sensitivity divides by Actual Positives (TP + FN), while Specificity divides by Actual Negatives (FP + TN).">Sensitivity ($\text{TPR}$) and Specificity ($\text{TNR}$).</label>
+    </details>
+
+    <h2>2. Threshold-Free Curves: ROC-AUC vs. PR-AUC</h2>
     <p>
-      To judge a model's raw ranking quality across <em>every</em> possible cutoff at once, we sweep $t$ from strict to loose and plot two curves:
+      Precision, Recall, and Specificity only grade a classifier at <strong>one single cutoff <span class="term" data-term="threshold">$t$</span></strong>. If you lower $t$, you catch more positives ($\text{Recall} \uparrow$) at the cost of more false alarms ($\text{FPR} \uparrow$, $\text{Precision} \downarrow$). To evaluate a model's ranking quality across <em>every</em> possible cutoff at once, we sweep $t$ from $1$ down to $0$ and plot two curves:
     </p>
-    <ul>
-      <li><strong><span class="term" data-term="roc-auc">ROC Curve (Receiver Operating Characteristic)</span>:</strong> Plots <span class="term" data-term="tpr">$\text{TPR}$ (Sensitivity/Recall)</span> on the y-axis against <span class="term" data-term="fpr">$\text{FPR} = 1 - \text{Specificity}$</span> on the x-axis. <span class="term" data-term="roc-auc">ROC-AUC</span> equals the probability that a randomly chosen positive gets a higher score than a randomly chosen negative.</li>
-      <li><strong><span class="term" data-term="pr-auc">PR Curve (Precision-Recall)</span>:</strong> Plots <span class="term" data-term="precision">Precision</span> on the y-axis against <span class="term" data-term="recall">Recall</span> on the x-axis. Because neither axis uses <span class="term" data-term="tn">$TN$</span>, <span class="term" data-term="pr-auc">PR-AUC</span> exposes false-alarm flooding on rare classes.</li>
-    </ul>
 
-    <div class="interactive-card" id="curve-widget">
-      <div class="widget-label">Interactive Cutoff &amp; Base-Rate Explorer</div>
-      <h3>Step Across Cutoffs on the ROC and PR Curves</h3>
-      <p style="margin-top:0.2rem;">
-        Tap a cutoff step (or switch between <strong>100 Healthy</strong> vs. <strong>1,000 Healthy</strong>) to watch the active operating dot move along both charts simultaneously.
-      </p>
-
-      <div class="control-row">
-        <span style="font-weight:bold;">Cutoff $t$:</span>
-        <button class="btn btn-small" id="cut-0" onclick="setCutoff(0)">Strict (t=0.80)</button>
-        <button class="btn btn-small active" id="cut-1" onclick="setCutoff(1)">Balanced (t=0.50)</button>
-        <button class="btn btn-small" id="cut-2" onclick="setCutoff(2)">Loose (t=0.20)</button>
-      </div>
-
-      <div class="control-row">
-        <span style="font-weight:bold;">Negative Pool ($N_{\text{neg}}$):</span>
-        <button class="btn btn-small active" id="pool-100" onclick="setPool(100)">100 Healthy (1:10 ratio)</button>
-        <button class="btn btn-small" id="pool-1000" onclick="setPool(1000)">1,000 Healthy (1:100 rare)</button>
-      </div>
-
-      <div class="grid-2">
-        <div class="figure-box">
-          <div style="font-weight:bold; margin-bottom:4px;">ROC Curve (TPR vs. FPR) &mdash; <span id="roc-auc-lbl">AUC = 0.89</span></div>
-          <svg id="roc-svg" viewBox="0 0 280 245" width="280" height="245" role="img" aria-label="ROC curve chart"></svg>
-        </div>
-        <div class="figure-box">
-          <div style="font-weight:bold; margin-bottom:4px;">PR Curve (Precision vs. Recall) &mdash; <span id="pr-auc-lbl">AUC = 0.56</span></div>
-          <svg id="pr-svg" viewBox="0 0 280 245" width="280" height="245" role="img" aria-label="Precision-Recall curve chart"></svg>
-        </div>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat"><div class="k">Counts (TP / FN / FP / TN)</div><div class="v" id="st-counts">-</div></div>
-        <div class="stat"><div class="k">Recall = Sensitivity</div><div class="v" id="st-rec">-</div></div>
-        <div class="stat"><div class="k">Specificity (1 - FPR)</div><div class="v" id="st-spec">-</div></div>
-        <div class="stat"><div class="k">Precision (PPV)</div><div class="v" id="st-prec">-</div></div>
-      </div>
-
-      <div class="readout" id="curve-readout"></div>
+    <div class="math-block">
+      $$\text{ROC Curve: } \underbrace{\text{TPR}}_{\frac{TP}{TP+FN}} \text{ vs. } \underbrace{\text{FPR}}_{\frac{FP}{FP+TN}}, \qquad \text{PR Curve: } \underbrace{\text{Precision}}_{\frac{TP}{TP+FP}} \text{ vs. } \underbrace{\text{Recall}}_{\frac{TP}{TP+FN}}$$
     </div>
 
-    <!-- SECTION 3 -->
-    <h2 id="s3">3. When Each Metric Matters Most</h2>
+    <p>
+      Look at the two denominators in those equations to see how they react when you multiply the number of negative examples in your dataset by $10\times$ (say, from $100$ healthy patients to $1{,}000$ healthy patients, so both $FP$ and $TN$ scale up $10\times$). Because $\text{TPR}$ uses only the positive row and $\text{FPR} = \frac{10\,FP}{10(FP + TN)}$ normalizes the negative row by its own total, <strong>the ROC curve and <span class="term" data-term="roc-auc">ROC-AUC</span> do not change at all when class balance changes</strong>! By contrast, <span class="term" data-term="precision">Precision</span> $= \frac{TP}{TP + 10\,FP}$ pits $TP$ directly against $10\,FP$, so <strong><span class="term" data-term="pr-auc">PR-AUC</span> drops sharply</strong> whenever negatives flood the alert queue.
+    </p>
 
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Effect of Multiplying Negatives by 10x on ROC-AUC vs. PR-AUC">
+      <p>In our clinic example ($TP = 8, FN = 2$ out of $10$ sick; $FP = 16, TN = 84$ out of $100$ healthy), suppose $10\times$ as many healthy people visit the clinic ($1{,}000$ healthy people at the same $16\%$ false-alarm rate, so $FP = 160$ and $TN = 840$). What happens to $\text{TPR}$, $\text{FPR}$, and $\text{Precision}$?</p>
+      <label class="mcq-option" data-explain="FPR = 160 / (160 + 840) = 160 / 1,000 = 16%, which is unchanged.">All three ($\text{TPR}$, $\text{FPR}$, and $\text{Precision}$) change by $10\times$.</label>
+      <label class="mcq-option" data-explain="Precision drops from 8 / (8 + 16) = 33.3% down to 8 / (8 + 160) = 8 / 168 = 4.8%.">All three stay identical because the classifier's per-class rates did not change.</label>
+      <label class="mcq-option" data-explain="Correct. TPR stays 8/10 = 80% and FPR stays 160/1000 = 16% (so the ROC curve is invariant), whereas Precision plunges from 8/24 (33.3%) down to 8/168 (4.8%), pulling PR-AUC down sharply.">$\text{TPR}$ ($80\%$) and $\text{FPR}$ ($16\%$) stay completely unchanged (ROC is invariant), while $\text{Precision}$ plunges from $\frac{8}{24} = 33.3\%$ to $\frac{8}{168} \approx 4.8\%$ (pulling PR-AUC down).</label>
+    </details>
+
+    <h2>3. Comparing Classification Metrics at a Glance</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Metric</th>
-            <th>Core Strength</th>
-            <th>Blind Spot</th>
-            <th>Use It When...</th>
+            <th>Formula</th>
+            <th>Denominator (Conditioned On)</th>
+            <th>When to Prioritize</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong><span class="term" data-term="recall">Recall</span> / <span class="term" data-term="sensitivity">Sensitivity</span></strong></td>
-            <td>Penalizes <span class="term" data-term="type-2">Type II errors ($FN$)</span> directly</td>
-            <td>Can hit $100\%$ by flagging everyone</td>
-            <td>Missing a positive is catastrophic (cancer screening, brake failure, fraud net)</td>
+            <td><strong><span class="term" data-term="recall">Recall / Sensitivity (TPR)</span></strong></td>
+            <td class="num">$\frac{TP}{TP + FN}$</td>
+            <td>All Real Positives ($1 - \text{FNR}$)</td>
+            <td>High Type II ($FN$) miss cost: cancer screening, safety hazards, fraud catch rate</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="specificity">Specificity</span></strong></td>
-            <td>Measures how cleanly negatives are cleared</td>
-            <td>Ignores how many positives exist</td>
-            <td>Pairing with sensitivity in clinical diagnostics where rule-in/rule-out rates must hold across clinics</td>
+            <td><strong><span class="term" data-term="specificity">Specificity (TNR)</span></strong></td>
+            <td class="num">$\frac{TN}{TN + FP}$</td>
+            <td>All Real Negatives ($1 - \text{FPR}$)</td>
+            <td>Diagnostic rule-in tests where healthy patients must be cleared reliably</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="precision">Precision</span></strong></td>
-            <td>Penalizes <span class="term" data-term="type-1">Type I errors ($FP$)</span> relative to real hits</td>
-            <td>Can be gamed by only flagging 1 ultra-safe case</td>
-            <td>Every triggered alert costs human review time, customer friction, or a risky treatment</td>
+            <td><strong><span class="term" data-term="precision">Precision (PPV)</span></strong></td>
+            <td class="num">$\frac{TP}{TP + FP}$</td>
+            <td>All Flagged Alerts (ignores $TN$)</td>
+            <td>High Type I ($FP$) false-alarm cost: spam filter blocking real email, expensive human review queue</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="roc-auc">ROC-AUC</span></strong></td>
-            <td>Threshold-free ranking score; invariant to class balance ($0.5$ = random)</td>
-            <td>Looks near-$0.90$ even when false alarms flood a rare class</td>
-            <td>Classes are roughly balanced, or you want pure pairwise ranking independent of prevalence</td>
+            <td><strong><span class="term" data-term="f1">$F_1$ Score</span></strong></td>
+            <td class="num">$\frac{2\,P \cdot R}{P + R}$</td>
+            <td>Harmonic mean of Precision &amp; Recall</td>
+            <td>Single-threshold summary when both false alarms and missed positives hurt</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="pr-auc">PR-AUC</span></strong></td>
-            <td>Ignores <span class="term" data-term="tn">$TN$</span>; reflects real-world alert quality across thresholds</td>
-            <td>Baseline equals the <span class="term" data-term="base-rate">base rate</span> ($\frac{N_{\text{pos}}}{N_{\text{total}}}$), not $0.5$</td>
-            <td>Positives are rare ($&lt;10\%$) and you care whether top-ranked alerts are actually positive</td>
+            <td><strong><span class="term" data-term="roc-auc">ROC-AUC</span> vs. <span class="term" data-term="pr-auc">PR-AUC</span></strong></td>
+            <td class="num">Area under curve across all $t$</td>
+            <td>ROC: class-invariant ($0.50$ baseline)<br>PR: alert-focused ($\pi$ baseline)</td>
+            <td>Use ROC-AUC for balanced ranking; use <strong>PR-AUC</strong> whenever positives are rare ($\pi \ll 50\%$)</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- SECTION 4: CHECKS -->
-    <h2 id="s4">4. Quick Self-Checks</h2>
-
-    <details class="mcq-box" data-correct="B" data-topic="Type I vs. Type II Error">
-      <p>A smoke detector stays completely silent while a kitchen fire burns. In statistical terms, which error occurred and which metric drops?</p>
-      <label class="mcq-option" data-explain="A Type I error is a false alarm when there is no fire ($FP$), which hurts specificity and precision.">Type I error (<span class="term" data-term="fp">$FP$</span>); it lowers <span class="term" data-term="specificity">specificity</span>.</label>
-      <label class="mcq-option" data-explain="Correct. Missing a real positive is a Type II error (False Negative, $FN$), which sits in the denominator of $\text{recall/sensitivity} = \frac{TP}{TP + FN}$.">Type II error (<span class="term" data-term="fn">$FN$</span>); it lowers <span class="term" data-term="recall">recall</span> (<span class="term" data-term="sensitivity">sensitivity</span>).</label>
-      <label class="mcq-option" data-explain="$\text{Precision} = \frac{TP}{TP + FP}$; a missed positive changes $FN$, not $FP$.">Type I error (<span class="term" data-term="fn">$FN$</span>); it lowers <span class="term" data-term="precision">precision</span> only.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="C" data-topic="Mental Math: Precision vs. Specificity">
-      <p>On <strong>10 positives</strong> and <strong>200 negatives</strong>, a model gets <span class="term" data-term="tp">$TP = 9$</span>, <span class="term" data-term="fn">$FN = 1$</span>, <span class="term" data-term="fp">$FP = 18$</span>, and <span class="term" data-term="tn">$TN = 182$</span>. What are its <span class="term" data-term="sensitivity">sensitivity</span>, <span class="term" data-term="specificity">specificity</span>, and <span class="term" data-term="precision">precision</span>?</p>
-      <label class="mcq-option" data-explain="You swapped specificity ($182/200 = 91\%$) and precision ($9 / (9 + 18) = 9/27 = 33.3\%$).">Sensitivity $= 90\%$, Specificity $= 33.3\%$, Precision $= 91\%$.</label>
-      <label class="mcq-option" data-explain="$9 / (9 + 18)$ is $9/27 = 33.3\%$, not $50\%$.">Sensitivity $= 90\%$, Specificity $= 91\%$, Precision $= 50\%$.</label>
-      <label class="mcq-option" data-explain="Correct. $\text{Sensitivity} = 9/10 = 90\%$. $\text{Specificity} = 182/200 = 91\%$. $\text{Precision} = 9 / (9 + 18) = 9/27 = 33.3\%$.">Sensitivity $= 90\%$, Specificity $= 91\%$, Precision $= 33.3\%$.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="A" data-topic="ROC-AUC vs. PR-AUC Under Imbalance">
-      <p>You keep the exact same model on the same 10 sick patients, but test it in a city screening with <strong>1,000 healthy patients</strong> instead of 100 (so <span class="term" data-term="fp">$FP$</span> and <span class="term" data-term="tn">$TN$</span> both scale $10\times$). What happens to the <span class="term" data-term="roc-auc">ROC curve</span> and the <span class="term" data-term="pr-auc">PR curve</span>?</p>
-      <label class="mcq-option" data-explain="Correct. TPR and FPR are row ratios (scaling $FP$ and $TN$ by $10\times$ cancels out in $\frac{FP}{FP+TN}$), so ROC-AUC stays identical, whereas $\text{Precision} = \frac{TP}{TP + 10\cdot FP}$ drops sharply and pulls PR-AUC down.">The <span class="term" data-term="roc-auc">ROC curve</span> stays unchanged, while the <span class="term" data-term="pr-auc">PR curve</span> drops sharply.</label>
-      <label class="mcq-option" data-explain="ROC axes (TPR and FPR) normalize each class by its own row total, so changing the negative sample size $10\times$ leaves FPR unchanged.">Both <span class="term" data-term="roc-auc">ROC-AUC</span> and <span class="term" data-term="pr-auc">PR-AUC</span> stay identical.</label>
-      <label class="mcq-option" data-explain="PR-AUC drops when negatives multiply $10\times$ because $10\times$ more false alarms flood $\frac{TP}{TP + FP}$.">The <span class="term" data-term="roc-auc">ROC curve</span> drops, while the <span class="term" data-term="pr-auc">PR curve</span> stays unchanged.</label>
-    </details>
-
     <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
   </main>
 
   <script>
     var GLOSSARY = {
-      'type-1': {
-        title: 'Type I Error (False Positive, FP)',
-        body: 'Rejecting a true null hypothesis—in classification, a <strong>false alarm</strong> where a real negative is predicted positive (<span class="term" data-term="fp">$FP$</span>). Its rate among all real negatives is the <span class="term" data-term="fpr">False Positive Rate ($\\text{FPR} = 1 - \\text{Specificity}$)</span>.'
-      },
-      'type-2': {
-        title: 'Type II Error (False Negative, FN)',
-        body: 'Failing to reject a false null hypothesis—in classification, a <strong>missed detection</strong> where a real positive is predicted negative (<span class="term" data-term="fn">$FN$</span>). Its rate among all real positives is the False Negative Rate ($\\text{FNR} = 1 - \\text{Sensitivity}$).'
+      'confusion-matrix': {
+        title: 'Confusion Matrix',
+        body: '$2 \\times 2$ contingency table crossing Actual truth ($P$ vs. $N$) against Predicted class (Alarm vs. Clear) to count $TP, FN, FP, TN$.'
       },
       'tp': {
-        title: 'True Positive (TP)',
-        body: 'A real positive case correctly flagged as positive by the model.'
-      },
-      'fp': {
-        title: 'False Positive (FP / Type I Error)',
-        body: 'A real negative case wrongly flagged as positive (a false alarm).'
-      },
-      'fn': {
-        title: 'False Negative (FN / Type II Error)',
-        body: 'A real positive case wrongly cleared as negative (a missed positive).'
+        title: 'True Positive ($TP$)',
+        body: 'Real positive example correctly flagged positive by the classifier.'
       },
       'tn': {
-        title: 'True Negative (TN)',
-        body: 'A real negative case correctly left alone as negative.'
+        title: 'True Negative ($TN$)',
+        body: 'Real negative example correctly cleared as negative by the classifier.'
+      },
+      'fp': {
+        title: 'False Positive ($FP$ / Type I Error)',
+        body: 'Real negative example mistakenly flagged positive (a false alarm).'
+      },
+      'fn': {
+        title: 'False Negative ($FN$ / Type II Error)',
+        body: 'Real positive example mistakenly cleared as negative (a missed detection).'
+      },
+      'type-1': {
+        title: 'Type I Error (False Positive, $FP$)',
+        body: 'Rejecting a true null hypothesis (crying wolf when no wolf is present: a false alarm on a real negative).'
+      },
+      'type-2': {
+        title: 'Type II Error (False Negative, $FN$)',
+        body: 'Failing to reject a false null hypothesis (missing a real wolf / real positive).'
+      },
+      'recall': {
+        title: 'Recall / Sensitivity / TPR ($\\frac{TP}{TP + FN}$)',
+        body: 'Fraction of all real positives that the model caught. Conditioned on the Actual Positive row ($\\text{TPR} + \\text{FNR} = 100\\%$).'
       },
       'sensitivity': {
-        title: 'Sensitivity (Recall / True Positive Rate)',
-        body: '$\\frac{TP}{TP + FN}$: the fraction of all real positives that the test catches. Identical to <span class="term" data-term="recall">recall</span> and <span class="term" data-term="tpr">TPR</span>.'
+        title: 'Sensitivity ($\\frac{TP}{TP + FN}$)',
+        body: 'Medical/statistical name for <span class="term" data-term="recall">Recall</span> (<span class="term" data-term="tpr">True Positive Rate</span>).'
       },
-      'tnr': {
-        title: 'True Negative Rate (TNR / Specificity)',
-        body: '$\\frac{TN}{TN + FP}$: the fraction of all real negatives correctly classified as negative. Identical to <span class="term" data-term="specificity">specificity</span>, and equal to $1 - \\text{FPR}$.'
+      'tpr': {
+        title: 'True Positive Rate ($\\text{TPR} = \\frac{TP}{TP + FN}$)',
+        body: 'Y-axis of the ROC curve; identical to <span class="term" data-term="recall">Recall</span> and <span class="term" data-term="sensitivity">Sensitivity</span>.'
       },
-      'ppv': {
-        title: 'Positive Predictive Value (PPV / Precision)',
-        body: '$\\frac{TP}{TP + FP}$: the probability that a patient with a positive test result truly has the condition. Identical to <span class="term" data-term="precision">precision</span>.'
+      'specificity': {
+        title: 'Specificity / TNR ($\\frac{TN}{TN + FP}$)',
+        body: 'Fraction of all real negatives that the model correctly cleared. Conditioned on the Actual Negative row ($\\text{Specificity} + \\text{FPR} = 100\\%$).'
+      },
+      'fpr': {
+        title: 'False Positive Rate ($\\text{FPR} = \\frac{FP}{FP + TN}$)',
+        body: 'X-axis of the ROC curve: fraction of all real negatives that trigger a false alarm ($1 - \\text{Specificity}$).'
+      },
+      'precision': {
+        title: 'Precision / Positive Predictive Value ($\\frac{TP}{TP + FP}$)',
+        body: 'Fraction of all triggered alarms that are genuinely positive. Conditioned on the Predicted Positive column (ignores $TN$).'
+      },
+      'f1': {
+        title: '$F_1$ Score',
+        body: 'Harmonic mean of Precision and Recall: $F_1 = \\frac{2\\,P\\cdot R}{P + R} = \\frac{2\\,TP}{2\\,TP + FP + FN}$. Close to $\\min(P, R)$ whenever one of them is small.'
+      },
+      'threshold': {
+        title: 'Decision Threshold ($t$)',
+        body: 'Score cutoff above which an example is predicted positive. Sweeping $t$ from $1$ to $0$ traces out the ROC and PR curves.'
+      },
+      'roc-auc': {
+        title: 'ROC-AUC',
+        body: 'Area under the TPR vs. FPR curve. Equals the probability that a random positive outranks a random negative; invariant to class balance (random baseline $= 0.50$).'
+      },
+      'pr-auc': {
+        title: 'PR-AUC (Precision-Recall AUC)',
+        body: 'Area under the Precision vs. Recall curve. Sensitive to false-alarm flooding on rare classes (random baseline $=$ base rate $\\pi$).'
       }
     };
 
-    function runPOE(choice) {
-      var rev = document.getElementById('poe-reveal');
-      rev.style.display = 'block';
-      var prefix = '';
-      if (choice === 'C') {
-        prefix = '<strong>Spot on (33.3%).</strong> ';
-      } else if (choice === 'A' || choice === 'B') {
-        prefix = '<strong>Common trap!</strong> Most people expect precision to sit near $80\\%$ because both sensitivity ($80\\%$) and specificity ($84\\%$) look strong. ';
+    var SPACED_CARDS = [
+      {
+        q: 'How do you remember all 4 row rates (TPR/Sensitivity/Recall, FNR, TNR/Specificity, FPR) as just two pairs that add to $100\\%$?',
+        a: 'Group by the true class (denominator): 1) Among Real Positives ($TP+FN$): $\\text{TPR (Recall/Sensitivity)} + \\text{FNR (Miss rate)} = 100\\%$. 2) Among Real Negatives ($FP+TN$): $\\text{TNR (Specificity)} + \\text{FPR (False alarm rate)} = 100\\%$.'
+      },
+      {
+        q: 'What is the exact difference between Specificity and Precision?',
+        a: 'Specificity ($\\frac{TN}{TN + FP}$) conditions on Real Negatives (what fraction of healthy people were cleared?). Precision ($\\frac{TP}{TP + FP}$) conditions on Predicted Positives (what fraction of triggered alarms are real?) and never uses $TN$.'
+      },
+      {
+        q: 'If you keep a classifier\'s per-class error rates fixed but multiply the number of negative examples in the test set by $10\\times$, what happens to the ROC curve (ROC-AUC) vs. the PR curve (PR-AUC)?',
+        a: 'The ROC curve and ROC-AUC stay $100\\%$ identical because $\\text{TPR}$ and $\\text{FPR} = \\frac{10\\cdot FP}{10(FP+TN)}$ normalize each class by its own row total. By contrast, $\\text{Precision} = \\frac{TP}{TP + 10\\cdot FP}$ plunges and pulls PR-AUC down sharply.'
       }
-      rev.innerHTML = '<div class="refutation-title">Why Precision is only 33.3%</div>' +
-        '<p style="margin:0;">' + prefix +
-        'The test triggers $TP + FP = 8 + 16 = 24$ total alarms. Because healthy people outnumber sick people $10\\text{ to }1$ ($100$ vs. $10$), even a modest $16\\%$ <span class="term" data-term="fpr">false positive rate</span> generates $16$ false alarms—twice as many as the $8$ real cases caught. So $\\text{Precision} = \\frac{8}{8 + 16} = \\frac{8}{24} = 33.3\\%$.</p>';
-      renderMathIn(rev);
-    }
-
-    /* 5 threshold operating points on 10 sick patients; fpRate is fraction of healthy pool flagged */
-    var OPERATING_POINTS = [
-      { label: 't=1.00', tp: 0,  fpRate: 0.00 },
-      { label: 'Strict (t=0.80)',   tp: 5,  fpRate: 0.02 },
-      { label: 'Balanced (t=0.50)', tp: 8,  fpRate: 0.16 },
-      { label: 'Loose (t=0.20)',    tp: 9,  fpRate: 0.40 },
-      { label: 't=0.00', tp: 10, fpRate: 1.00 }
     ];
-
-    var activeCutIdx = 1; /* maps to OPERATING_POINTS[2] (Balanced) */
-    var negPool = 100;
-
-    function setCutoff(idx) {
-      activeCutIdx = idx;
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('cut-' + i).classList.toggle('active', i === idx);
-      }
-      renderCurves();
-    }
-
-    function setPool(n) {
-      negPool = n;
-      document.getElementById('pool-100').classList.toggle('active', n === 100);
-      document.getElementById('pool-1000').classList.toggle('active', n === 1000);
-      renderCurves();
-    }
-
-    function renderCurves() {
-      var posTotal = 10;
-      var pts = OPERATING_POINTS.map(function (p) {
-        var tp = p.tp;
-        var fn = posTotal - tp;
-        var fp = Math.round(p.fpRate * negPool);
-        var tn = negPool - fp;
-        var tpr = tp / posTotal;
-        var fpr = fp / negPool;
-        var prec = (tp + fp) === 0 ? 1.0 : tp / (tp + fp);
-        return { label: p.label, tp: tp, fn: fn, fp: fp, tn: tn, tpr: tpr, fpr: fpr, prec: prec };
-      });
-
-      /* Trapezoidal AUC calculation */
-      var rocAuc = 0, prAuc = 0;
-      for (var i = 1; i < pts.length; i++) {
-        rocAuc += 0.5 * (pts[i].tpr + pts[i - 1].tpr) * (pts[i].fpr - pts[i - 1].fpr);
-        prAuc  += 0.5 * (pts[i].prec + pts[i - 1].prec) * (pts[i].tpr - pts[i - 1].tpr);
-      }
-      document.getElementById('roc-auc-lbl').textContent = 'AUC = ' + fmt(rocAuc, 2);
-      document.getElementById('pr-auc-lbl').textContent  = 'AUC = ' + fmt(prAuc, 2);
-
-      var activePt = pts[activeCutIdx + 1];
-      drawChart('roc-svg', pts, 'fpr', 'tpr', 'FPR (1 - Specificity)', 'TPR (Sensitivity / Recall)', activePt, 'roc', negPool, posTotal);
-      drawChart('pr-svg',  pts, 'tpr', 'prec', 'Recall (Sensitivity)', 'Precision (PPV)', activePt, 'pr', negPool, posTotal);
-
-      document.getElementById('st-counts').textContent =
-        activePt.tp + ' / ' + activePt.fn + ' / ' + activePt.fp + ' / ' + activePt.tn;
-      document.getElementById('st-rec').textContent =
-        fmt(activePt.tpr * 100, 0) + '% (' + activePt.tp + '/' + posTotal + ')';
-      document.getElementById('st-spec').textContent =
-        fmt((1 - activePt.fpr) * 100, 0) + '% (' + activePt.tn + '/' + negPool + ')';
-      document.getElementById('st-prec').textContent =
-        fmt(activePt.prec * 100, 1) + '% (' + activePt.tp + '/' + (activePt.tp + activePt.fp) + ')';
-
-      var ro = document.getElementById('curve-readout');
-      ro.innerHTML = '<strong>At ' + activePt.label + ' with ' + negPool + ' healthy patients:</strong> ' +
-        'Sensitivity is <strong>' + fmt(activePt.tpr * 100, 0) + '%</strong> and Specificity is <strong>' + fmt((1 - activePt.fpr) * 100, 0) + '%</strong> (FPR = ' + fmt(activePt.fpr * 100, 0) + '%). ' +
-        'Notice that switching between 100 and 1,000 healthy patients leaves <strong>ROC-AUC (' + fmt(rocAuc, 2) + ')</strong> untouched, while <strong>Precision</strong> at this cutoff is <strong>' + fmt(activePt.prec * 100, 1) + '%</strong> and <strong>PR-AUC</strong> is <strong>' + fmt(prAuc, 2) + '</strong>.';
-    }
-
-    function drawChart(svgId, pts, xKey, yKey, xLabel, yLabel, activePt, mode, nNeg, nPos) {
-      var svg = document.getElementById(svgId);
-      if (!svg) { return; }
-      var padL = 42, padR = 16, padT = 16, padB = 38;
-      var W = 280 - padL - padR;
-      var H = 245 - padT - padB;
-      function X(v) { return Math.round(padL + v * W); }
-      function Y(v) { return Math.round(padT + (1 - v) * H); }
-
-      var h = '';
-      /* Axes box & grid lines at 0.5 */
-      h += '<rect x="' + padL + '" y="' + padT + '" width="' + W + '" height="' + H + '" fill="#fff" stroke="#000" stroke-width="1.5"/>';
-      h += '<line x1="' + X(0.5) + '" y1="' + padT + '" x2="' + X(0.5) + '" y2="' + (padT + H) + '" stroke="#ccc" stroke-dasharray="2 2"/>';
-      h += '<line x1="' + padL + '" y1="' + Y(0.5) + '" x2="' + (padL + W) + '" y2="' + Y(0.5) + '" stroke="#ccc" stroke-dasharray="2 2"/>';
-
-      /* Shaded AUC polygon */
-      var poly = pts.map(function (p) { return X(p[xKey]) + ',' + Y(p[yKey]); }).join(' ');
-      poly += ' ' + X(1) + ',' + Y(0) + ' ' + X(0) + ',' + Y(0);
-      h += '<polygon points="' + poly + '" fill="#e8e8e8" stroke="none"/>';
-
-      /* Random baseline dashed line */
-      if (mode === 'roc') {
-        h += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(1) + '" y2="' + Y(1) + '" stroke="#000" stroke-width="1" stroke-dasharray="4 3"/>';
-        h += '<text x="' + (X(0.54)) + '" y="' + (Y(0.42)) + '" font-family="sans-serif" font-size="10" fill="#000">Random (0.50)</text>';
-      } else {
-        var base = nPos / (nPos + nNeg);
-        h += '<line x1="' + X(0) + '" y1="' + Y(base) + '" x2="' + X(1) + '" y2="' + Y(base) + '" stroke="#000" stroke-width="1" stroke-dasharray="4 3"/>';
-        h += '<text x="' + (X(0.05)) + '" y="' + (Y(base) - 5) + '" font-family="sans-serif" font-size="10" fill="#000">Random (' + fmt(base * 100, 1) + '%)</text>';
-      }
-
-      /* Main curve polyline */
-      var linePts = pts.map(function (p) { return X(p[xKey]) + ',' + Y(p[yKey]); }).join(' ');
-      h += '<polyline points="' + linePts + '" fill="none" stroke="#000" stroke-width="2.5"/>';
-
-      /* Operating points */
-      for (var i = 1; i <= 3; i++) {
-        var p = pts[i];
-        var isAct = (p === activePt);
-        h += '<circle cx="' + X(p[xKey]) + '" cy="' + Y(p[yKey]) + '" r="' + (isAct ? 6 : 3.5) + '" fill="' + (isAct ? '#000' : '#fff') + '" stroke="#000" stroke-width="2"/>';
-      }
-
-      /* Direct inline label on active point */
-      var ax = X(activePt[xKey]);
-      var ay = Y(activePt[yKey]);
-      var lx = ax > 165 ? ax - 88 : ax + 9;
-      var ly = ay < 36 ? ay + 16 : ay - 8;
-      h += '<text x="' + lx + '" y="' + ly + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">(' +
-           fmt(activePt[xKey] * 100, 0) + '%, ' + fmt(activePt[yKey] * 100, 0) + '%)</text>';
-
-      /* Axis ticks and titles */
-      h += '<text x="' + padL + '" y="' + (padT + H + 14) + '" font-family="monospace" font-size="10" fill="#000">0%</text>';
-      h += '<text x="' + (X(0.5) - 10) + '" y="' + (padT + H + 14) + '" font-family="monospace" font-size="10" fill="#000">50%</text>';
-      h += '<text x="' + (padL + W - 22) + '" y="' + (padT + H + 14) + '" font-family="monospace" font-size="10" fill="#000">100%</text>';
-      h += '<text x="6" y="' + (padT + 8) + '" font-family="monospace" font-size="10" fill="#000">100%</text>';
-      h += '<text x="12" y="' + (Y(0.5) + 4) + '" font-family="monospace" font-size="10" fill="#000">50%</text>';
-      h += '<text x="18" y="' + (padT + H) + '" font-family="monospace" font-size="10" fill="#000">0%</text>';
-      h += '<text x="' + (padL + W / 2) + '" y="' + (padT + H + 31) + '" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000">' + xLabel + '</text>';
-      h += '<text x="12" y="' + (padT + H / 2) + '" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000" transform="rotate(-90 12 ' + (padT + H / 2) + ')">' + yLabel + '</text>';
-
-      svg.innerHTML = h;
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      renderCurves();
-    });
   </script>
 </body>
 </html>

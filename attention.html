@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Understanding Attention: From Intuition to Multi-Head Math</title>
+  <title>How Attention Works: From First Principles to Multi-Head Math</title>
 
-  <!-- KaTeX for crisp offline/online LaTeX math rendering (Boox Go 10.3 optimized) -->
   <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
   <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
   <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
@@ -13,644 +12,207 @@
   <script src="common.js"></script>
 </head>
 <body>
-
-  <header>
-    <div class="header-inner">
-      <div class="nav-links">
-        <a href="index.html">← All Guides</a>
-        <a href="gkd.html">Next: GKD Guide →</a>
-      </div>
-      <div class="font-controls">
-        <button id="font-dec" title="Decrease font size">A-</button>
-        <button id="font-inc" title="Increase font size">A+</button>
-      </div>
-    </div>
-  </header>
-
   <main>
     <h1>How Attention Works: From First Principles to Multi-Head Math</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Why <span class="term" data-term="rnn">RNNs</span> stalled:</strong> Compressing an entire prefix into one fixed vector $h_t$ forces early words through dozens of matrix multiplies, causing <span class="term" data-term="vanishing-gradient">vanishing gradients</span> and blocking parallel GPU training.</li>
-        <li><strong>Soft dictionary lookup:</strong> Every token projects its <span class="term" data-term="embedding">embedding</span> into a <span class="term" data-term="query">Query ($Q$)</span>, <span class="term" data-term="key">Key ($K$)</span>, and <span class="term" data-term="value">Value ($V$)</span>. Dot products $Q K^\top$ measure similarity, dividing by <span class="term" data-term="dk">$\sqrt{d_k}$</span> keeps variance near $1$, and <span class="term" data-term="softmax">softmax</span> turns scores into mixing weights over $V$.</li>
-        <li><strong><span class="term" data-term="mha">Multi-Head Attention</span> &amp; <span class="term" data-term="causal-mask">Causal Masking</span>:</strong> Running $h$ smaller heads of size $d_k = d_{\text{model}}/h$ lets different heads track pronouns, verbs, and local neighbors at once. Decoders add $-\infty$ to future positions ($j > i$) before softmax so tokens cannot peek ahead.</li>
-      </ul>
-    </div>
-
-    <!-- SECTION 1 -->
-    <h2>1. The Problem: Sequential Bottlenecks</h2>
     <p>
-      In a <span class="term" data-term="rnn">Recurrent Neural Network (RNN)</span> or <span class="term" data-term="lstm">LSTM</span>, <span class="term" data-term="token">tokens</span> are processed one at a time. At step $t$, the <span class="term" data-term="hidden-state">hidden state $h_t$</span> must compress everything from tokens $1, 2, \dots, t-1$:
+      Read the sentence: <em>"The trophy didn't fit into the suitcase because <strong>it</strong> was too big."</em> When you hit the word <strong>"it"</strong>, your brain immediately reaches back and links <strong>"it"</strong> to <strong>"trophy"</strong> (whereas if the last word were <em>"small"</em>, <strong>"it"</strong> would flip to <strong>"suitcase"</strong>).
+    </p>
+    <p>
+      Before Transformers, sequence models like <span class="term" data-term="rnn">Recurrent Neural Networks (RNNs)</span> and <span class="term" data-term="lstm">LSTMs</span> read words strictly one by one from left to right, squashing everything seen so far into a single fixed-size hidden vector $h_t$. By the time an RNN reached word $50$, signal from word $1$ had been multiplied by $49$ weight matrices in a row—blurring early details, causing <span class="term" data-term="vanishing-gradient">vanishing gradients</span>, and preventing GPUs from training across all tokens in parallel.
+    </p>
+    <p>
+      <strong><span class="term" data-term="self-attention">Self-Attention</span></strong> (Vaswani et al., 2017) throws away the sequential bottleneck completely: it lets every token look directly at every other token in a single parallel matrix multiply, acting like a differentiable, soft dictionary lookup.
     </p>
 
-    <div class="math-block">
-      $$h_t = \tanh(W_{hh} h_{t-1} + W_{xh} x_t)$$
-    </div>
-
+    <h2>1. Soft Dictionary Lookup: Queries ($Q$), Keys ($K$), Values ($V$) &amp; $\sqrt{d_k}$</h2>
     <p>
-      In a 50-word sentence, signal from word $1$ must survive $49$ matrix multiplications. Early context gets overwritten, <span class="term" data-term="vanishing-gradient">gradients vanish</span>, and step $t$ cannot run on a GPU until step $t-1$ finishes.
+      Think of how you search a database or dictionary: you type a <strong>Query</strong>, the database compares your Query against every item's <strong>Key</strong>, and it returns the matching item's <strong>Value</strong>.
+    </p>
+    <p>
+      In <span class="term" data-term="self-attention">Scaled Dot-Product Attention</span>, every input token vector $x_i \in \mathbb{R}^{d_{\text{model}}}$ is multiplied by three learned projection matrices ($W_Q, W_K, W_V$) to produce three distinct vectors of width <span class="term" data-term="dk">$d_k$</span>:
+    </p>
+    <p>
+      The <span class="term" data-term="query">Query ($q_i$)</span> represents what token $i$ is looking for; the <span class="term" data-term="key">Key ($k_j$)</span> advertises what token $j$ contains; and the <span class="term" data-term="value">Value ($v_j$)</span> holds the payload information token $j$ passes along when selected. Instead of a hard $100\% / 0\%$ match, attention takes the <span class="term" data-term="dot-product">dot product</span> $q_i \cdot k_j$ against every Key, divides by <span class="term" data-term="dk">$\sqrt{d_k}$</span>, applies <span class="term" data-term="softmax">softmax</span> so the weights sum to $1$, and blends the Values:
     </p>
 
-    <p>
-      <strong>The Attention fix:</strong> Instead of forcing one vector to carry the whole past, let every token compare itself directly against every other token in a single parallel matrix multiply.
-    </p>
-
-    <!-- CHECKPOINT 1 -->
-    <details class="mcq-box" id="mcq-1" data-correct="B" data-topic="The RNN Bottleneck">
-      <p>Why did traditional RNNs and LSTMs struggle with long paragraphs?</p>
-      <label class="mcq-option" data-explain="Tanh outputs sit in (-1, 1), not because of a hard representation cap, and LSTMs still suffer from sequential compression.">They could not represent numbers larger than $1.0$.</label>
-      <label class="mcq-option" data-explain="Correct. RNNs compress the entire history into a single fixed-size vector $h_t$, so early tokens get diluted or lost across many steps.">The entire history had to be squashed into a single fixed-size hidden vector $h_t$, causing long-range information loss.</label>
-      <label class="mcq-option" data-explain="Vanilla RNNs do not compute an $N \times N$ attention matrix at all.">They required $N \times N$ attention matrices that were too large to compute.</label>
-    </details>
-
-    <!-- SECTION 2 -->
-    <h2>2. The Core Mechanism: Soft Dictionary Lookup</h2>
-    <p>
-      Think of attention as a <span class="term" data-term="dot-product">dot-product</span> search over a key-value store:
-    </p>
-    <ul>
-      <li><span class="term" data-term="query">Query ($Q$)</span>: What the current token is looking for.</li>
-      <li><span class="term" data-term="key">Key ($K$)</span>: The label advertising what each token offers.</li>
-      <li><span class="term" data-term="value">Value ($V$)</span>: The information payload a token passes along when attended to.</li>
-    </ul>
-
-    <p>
-      A database lookup is hard ($100\%$ if $\text{Query} = \text{Key}$, else $0\%$). Neural attention is <strong>soft</strong>: we take the <span class="term" data-term="dot-product">dot product</span> $q_i \cdot k_j$ between Query $i$ and every Key $j$, scale by <span class="term" data-term="dk">$\sqrt{d_k}$</span>, apply <span class="term" data-term="softmax">softmax</span> so the row weights sum to $1.0$, and take that weighted sum of the <span class="term" data-term="value">Values ($V$)</span>.
-    </p>
-
-    <!-- DIAGRAM -->
-    <svg class="diagram-svg" viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg">
-      <!-- Background grid lines -->
-      <line x1="20" y1="20" x2="580" y2="20" stroke="#eee" />
-      <line x1="20" y1="220" x2="580" y2="220" stroke="#eee" />
-      
-      <!-- Inputs -->
-      <rect x="50" y="30" width="80" height="40" fill="#fff" stroke="#000" stroke-width="2"/>
-      <text x="90" y="55" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Queries (Q)</text>
-
-      <rect x="50" y="100" width="80" height="40" fill="#fff" stroke="#000" stroke-width="2"/>
-      <text x="90" y="125" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Keys (K)</text>
-
-      <rect x="50" y="170" width="80" height="40" fill="#fff" stroke="#000" stroke-width="2"/>
-      <text x="90" y="195" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Values (V)</text>
-
-      <!-- Dot Product Box -->
-      <rect x="180" y="60" width="100" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
-      <text x="230" y="85" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">MatMul (Q K^T)</text>
-      <text x="230" y="100" font-family="sans-serif" font-size="11" text-anchor="middle">Raw Similarity</text>
-
-      <!-- Scale & Mask -->
-      <rect x="315" y="60" width="90" height="50" fill="#fff" stroke="#000" stroke-width="2"/>
-      <text x="360" y="85" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">Scale / √d_k</text>
-      <text x="360" y="100" font-family="sans-serif" font-size="11" text-anchor="middle">+ Softmax</text>
-
-      <!-- Weight Multiplier -->
-      <rect x="440" y="115" width="100" height="50" fill="#000" stroke="#000" stroke-width="2"/>
-      <text x="490" y="140" fill="#fff" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">MatMul (A · V)</text>
-      <text x="490" y="155" fill="#fff" font-family="sans-serif" font-size="11" text-anchor="middle">Context Output</text>
-
-      <!-- Connecting arrows -->
-      <path d="M 130 50 L 180 75" stroke="#000" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-      <path d="M 130 120 L 180 95" stroke="#000" stroke-width="2" fill="none"/>
-      <path d="M 280 85 L 315 85" stroke="#000" stroke-width="2" fill="none"/>
-      <path d="M 405 85 L 450 85 L 450 115" stroke="#000" stroke-width="2" fill="none"/>
-      <path d="M 130 190 L 440 150" stroke="#000" stroke-width="2" fill="none"/>
-    </svg>
-
-    <!-- SECTION 3 -->
-    <h2>3. The Exact Mathematical Formula</h2>
     <div class="math-block">
       $$\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V$$
     </div>
 
-    <p>Each step has a distinct job:</p>
-    <ol>
-      <li><strong>Linear Projections:</strong> Multiply input <span class="term" data-term="embedding">embeddings</span> $X \in \mathbb{R}^{N \times d_{\text{model}}}$ by learned weight matrices:
-        $$Q = X W_Q, \quad K = X W_K, \quad V = X W_V$$
-      </li>
-      <li><strong><span class="term" data-term="dot-product">Dot-Product</span> Similarity ($Q K^\top$):</strong> Entry $(i, j)$ is $q_i \cdot k_j$, forming an $N \times N$ score matrix.</li>
-      <li><strong>Scaling by <span class="term" data-term="dk">$\sqrt{d_k}$</span>:</strong> Keeps dot-product variance at $1$ so <span class="term" data-term="softmax">softmax</span> does not saturate into flat zero-gradient regions.</li>
-      <li><strong>Row-Wise <span class="term" data-term="softmax">Softmax</span>:</strong> Turns row $i$'s scaled scores $S_{ij}$ into positive attention weights $A_{ij} = \frac{\exp(S_{ij})}{\sum_{k=1}^N \exp(S_{ik})}$ summing to $1$.</li>
-      <li><strong>Weighted Blend ($A V$):</strong> Token $i$'s output vector is $\sum_{j=1}^N A_{ij} v_j$, pulling payload $v_j$ in proportion to weight $A_{ij}$.</li>
-    </ol>
+    <p>
+      Why divide by <span class="term" data-term="dk">$\sqrt{d_k}$</span> before softmax? If the coordinates of $q_i$ and $k_j$ are independent random variables with mean $0$ and variance $1$, their dot product $q_i \cdot k_j = \sum_{m=1}^{d_k} q_{im} k_{jm}$ is a sum of $d_k$ unit-variance terms—so its variance grows to $d_k$ and its standard deviation grows to $\sqrt{d_k}$! At $d_k = 64$, raw dot products swing as wide as $\pm 16$, pushing softmax into flat saturation where one token gets $0.999999$ and all gradients vanish. Dividing by $\sqrt{d_k}$ rescales the dot-product variance right back to $1$.
+    </p>
 
-    <details>
-      <summary>Deep Math: Why scale by exactly $\sqrt{d_k}$? (Click to expand)</summary>
-      <div style="padding-top: 0.8rem;">
-        <p>Suppose the components of $q \in \mathbb{R}^{d_k}$ and $k \in \mathbb{R}^{d_k}$ are independent random variables with zero mean and unit variance: $\mathbb{E}[q_i] = \mathbb{E}[k_i] = 0$ and $\text{Var}(q_i) = \text{Var}(k_i) = 1$.</p>
-        <p>The dot product is $q \cdot k = \sum_{i=1}^{d_k} q_i k_i$.</p>
-        <p>The mean of each product term is $\mathbb{E}[q_i k_i] = \mathbb{E}[q_i]\mathbb{E}[k_i] = 0$.</p>
-        <p>The variance of each product term is:</p>
-        <div class="math-block">$$\text{Var}(q_i k_i) = \mathbb{E}[q_i^2 k_i^2] - (\mathbb{E}[q_i k_i])^2 = \text{Var}(q_i)\text{Var}(k_i) = 1 \cdot 1 = 1$$</div>
-        <p>Since the terms are independent, the variance of the sum is the sum of the variances:</p>
-        <div class="math-block">$$\text{Var}\left(\sum_{i=1}^{d_k} q_i k_i\right) = \sum_{i=1}^{d_k} \text{Var}(q_i k_i) = d_k$$</div>
-        <p>Thus, the standard deviation is $\sqrt{d_k}$. For large $d_k$ (e.g., $d_k = 64$ or $128$), the dot products grow very large in magnitude. When input values to softmax are large, the softmax function saturates, yielding gradients near zero (<span class="term" data-term="vanishing-gradient">vanishing gradient problem</span>). Dividing by $\sqrt{d_k}$ normalizes the variance back to 1.0!</p>
-      </div>
+    <div class="worked">
+      <p><strong>Worked Example (Tracing 2-token attention by hand with clean root $d_k = 4 \implies \sqrt{d_k} = 2$):</strong></p>
+      <p>
+        Suppose Token 1 has Query $q_1 = [2, 0, 2, 0]$, and the two tokens have Keys $k_1 = [1, 0, 1, 0]$, $k_2 = [2, 0, 2, 0]$ and scalar Values $v_1 = 10$, $v_2 = 30$:<br>
+        1. <strong>Raw dot products ($q_1 \cdot k_j$):</strong> $q_1 \cdot k_1 = 2(1) + 2(1) = \mathbf{4}$, and $q_1 \cdot k_2 = 2(2) + 2(2) = \mathbf{8}$.<br>
+        2. <strong>Scale by $\sqrt{d_k} = \sqrt{4} = 2$:</strong> Scaled scores are $[4/2,\; 8/2] = [\mathbf{2},\; \mathbf{4}]$.<br>
+        3. <strong>Weighted Value sum:</strong> Suppose after softmax (or on a clean $1/4$ vs. $3/4$ weight split $\alpha = [\frac{1}{4},\; \frac{3}{4}]$), Token 1 blends the Values as $\alpha_1 v_1 + \alpha_2 v_2 = \frac{1}{4}(10) + \frac{3}{4}(30) = 2.5 + 22.5 = \mathbf{25}$.
+      </p>
+    </div>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Why Divide by √d_k?">
+      <p>If query $q$ and key $k$ have dimension <span class="term" data-term="dk">$d_k = 64$</span> with independent unit-variance entries, what is the standard deviation of the raw dot product $q \cdot k$, and what breaks if you omit the $\frac{1}{\sqrt{d_k}}$ divisor?</p>
+      <label class="mcq-option" data-explain="Without dividing by 8, the dot products grow too large, not too small.">Standard deviation is $64$; without dividing by $\sqrt{64}$, dot products underflow to $0$.</label>
+      <label class="mcq-option" data-explain="Correct. Variance of a sum of 64 unit-variance terms is 64, so standard deviation is sqrt(64) = 8. Dividing by 8 brings standard deviation back to 1 so softmax does not saturate into near-zero gradients.">Standard deviation is $\sqrt{64} = 8$; without dividing by $8$, large dot products push softmax into flat one-hot saturation where gradients vanish.</label>
+      <label class="mcq-option" data-explain="Dividing by sqrt(d_k) does not change matrix shapes.">Standard deviation is $1$; dividing by $\sqrt{d_k}$ is only needed to make matrix dimensions match.</label>
     </details>
 
-    <!-- SECTION 4 -->
-    <h2>4. Fully Worked-Out Numerical Example</h2>
+    <h2>2. Multi-Head Attention (MHA) &amp; Causal Decoder Masking</h2>
     <p>
-      Let's work through an actual example by hand with small numbers.
+      A single attention head only gets one softmax distribution per token—so if a word needs to attend to its grammatical subject <em>and</em> its modifying adjective <em>and</em> the previous punctuation mark at the same time, one head has to average all three together.
     </p>
     <p>
-      Imagine a sequence of 3 tokens: <code>["The", "dog", "barked"]</code> ($N=3$).<br>
-      Let key dimension $d_k = 2$ and value dimension $d_v = 2$.
+      <strong><span class="term" data-term="mha">Multi-Head Attention (MHA)</span></strong> solves this by splitting the model width $d_{\text{model}}$ into $h$ parallel heads, each of width <span class="term" data-term="dk">$d_k = d_{\text{model}} / h$</span> (for example, $d_{\text{model}} = 512$ split into $h = 8$ heads of width $d_k = 64$). Each head runs its own $(W_Q^{(i)}, W_K^{(i)}, W_V^{(i)})$ lookup in its own 64D subspace, and their $h$ outputs are concatenated back to width $512$ and mixed by an output matrix $W_O$:
     </p>
 
-    <h3>Step 4.1: The Computed Q, K, and V Matrices</h3>
-    <div class="table-wrap"><table class="data-table">
-      <thead>
-        <tr>
-          <th>Token</th>
-          <th>Query $Q$ ($d_k=2$)</th>
-          <th>Key $K$ ($d_k=2$)</th>
-          <th>Value $V$ ($d_v=2$)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>1: "The"</strong></td>
-          <td>[1.0, 0.0]</td>
-          <td>[1.0, 0.0]</td>
-          <td>[2.0, 1.0]</td>
-        </tr>
-        <tr>
-          <td><strong>2: "dog"</strong></td>
-          <td>[0.0, 2.0]</td>
-          <td>[1.0, 1.0]</td>
-          <td>[0.0, 3.0]</td>
-        </tr>
-        <tr>
-          <td><strong>3: "barked"</strong></td>
-          <td>[1.0, 1.0]</td>
-          <td>[0.0, 2.0]</td>
-          <td>[1.0, 0.0]</td>
-        </tr>
-      </tbody>
-    </table></div>
-
-    <h3>Step 4.2: Compute Raw Dot Products ($Q K^T$)</h3>
-    <p>Let's calculate the score matrix $S_{raw} = Q K^T$ entry-by-entry:</p>
-    <ul>
-      <li>Row 1 ("The", $q_1=[1.0, 0.0]$):
-        <ul>
-          <li>vs $k_1=[1.0, 0.0]$: $(1.0 \times 1.0) + (0.0 \times 0.0) = \mathbf{1.0}$</li>
-          <li>vs $k_2=[1.0, 1.0]$: $(1.0 \times 1.0) + (0.0 \times 1.0) = \mathbf{1.0}$</li>
-          <li>vs $k_3=[0.0, 2.0]$: $(1.0 \times 0.0) + (0.0 \times 2.0) = \mathbf{0.0}$</li>
-        </ul>
-      </li>
-      <li>Row 2 ("dog", $q_2=[0.0, 2.0]$):
-        <ul>
-          <li>vs $k_1$: $(0.0 \times 1.0) + (2.0 \times 0.0) = \mathbf{0.0}$</li>
-          <li>vs $k_2$: $(0.0 \times 1.0) + (2.0 \times 1.0) = \mathbf{2.0}$</li>
-          <li>vs $k_3$: $(0.0 \times 0.0) + (2.0 \times 2.0) = \mathbf{4.0}$</li>
-        </ul>
-      </li>
-      <li>Row 3 ("barked", $q_3=[1.0, 1.0]$):
-        <ul>
-          <li>vs $k_1$: $(1.0 \times 1.0) + (1.0 \times 0.0) = \mathbf{1.0}$</li>
-          <li>vs $k_2$: $(1.0 \times 1.0) + (1.0 \times 1.0) = \mathbf{2.0}$</li>
-          <li>vs $k_3$: $(1.0 \times 0.0) + (1.0 \times 2.0) = \mathbf{2.0}$</li>
-        </ul>
-      </li>
-    </ul>
-
-    <h3>Step 4.3: Scale by $\sqrt{d_k} = \sqrt{2} \approx 1.414$</h3>
-    <div class="table-wrap"><table class="data-table">
-      <thead>
-        <tr><th>Query \ Key</th><th>1: "The"</th><th>2: "dog"</th><th>3: "barked"</th></tr>
-      </thead>
-      <tbody>
-        <tr><td><strong>1: "The"</strong></td><td>1.0 / 1.414 = <strong>0.707</strong></td><td>1.0 / 1.414 = <strong>0.707</strong></td><td>0.0 / 1.414 = <strong>0.000</strong></td></tr>
-        <tr><td><strong>2: "dog"</strong></td><td>0.0 / 1.414 = <strong>0.000</strong></td><td>2.0 / 1.414 = <strong>1.414</strong></td><td>4.0 / 1.414 = <strong>2.828</strong></td></tr>
-        <tr><td><strong>3: "barked"</strong></td><td>1.0 / 1.414 = <strong>0.707</strong></td><td>2.0 / 1.414 = <strong>1.414</strong></td><td>2.0 / 1.414 = <strong>1.414</strong></td></tr>
-      </tbody>
-    </table></div>
-
-    <h3>Step 4.4: Row-Wise Softmax to get Attention Weights $A$</h3>
-    <p>Let's calculate Row 2 ("dog", scores $[0.000, 1.414, 2.828]$):</p>
-    <ul>
-      <li>$e^{0.000} = 1.000$</li>
-      <li>$e^{1.414} \approx 4.112$</li>
-      <li>$e^{2.828} \approx 16.912$</li>
-      <li>$\sum = 1.000 + 4.112 + 16.912 = \mathbf{22.024}$</li>
-      <li>Weights:
-        $A_{2,1} = 1.000 / 22.024 = \mathbf{0.045}$ (4.5%)<br>
-        $A_{2,2} = 4.112 / 22.024 = \mathbf{0.187}$ (18.7%)<br>
-        $A_{2,3} = 16.912 / 22.024 = \mathbf{0.768}$ (76.8%)
-      </li>
-    </ul>
-    <p>Notice how strongly "dog" is paying attention to "barked" (76.8%)!</p>
-
-    <h3>Step 4.5: Multiply Weights by Values ($Z = A V$)</h3>
-    <p>For Token 2 ("dog"), its new contextual representation is:</p>
     <div class="math-block">
-      $$\begin{aligned}
-      z_2 &= 0.045 \cdot v_1 + 0.187 \cdot v_2 + 0.768 \cdot v_3 \\
-      z_2 &= 0.045 \begin{bmatrix}2.0 \\ 1.0\end{bmatrix} + 0.187 \begin{bmatrix}0.0 \\ 3.0\end{bmatrix} + 0.768 \begin{bmatrix}1.0 \\ 0.0\end{bmatrix} \\
-      z_2 &= \begin{bmatrix}0.090 \\ 0.045\end{bmatrix} + \begin{bmatrix}0.000 \\ 0.561\end{bmatrix} + \begin{bmatrix}0.768 \\ 0.000\end{bmatrix} = \mathbf{\begin{bmatrix}0.858 \\ 0.606\end{bmatrix}}
-      \end{aligned}$$
-    </div>
-    <p>The new vector for "dog" now contains information from "The", "dog", and especially "barked"!</p>
-
-    <!-- INTERACTIVE SECTION: ATTENTION CALCULATOR -->
-    <div class="interactive-card">
-      <h3>Interactive Scaled Dot-Product Playground</h3>
-      <p>Toggle <span class="term" data-term="causal-mask">causal masking</span> or adjust <span class="term" data-term="temperature">temperature $\tau$</span> to see the attention matrix $A$ update:</p>
-      
-      <div style="margin-bottom: 1rem; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
-        <label>
-          <strong><span class="term" data-term="causal-mask">Causal Masking</span> (Decoder Mode):</strong>
-          <input type="checkbox" id="calc-mask-toggle" onchange="updateInteractiveCalc()">
-        </label>
-        <label>
-          <strong><span class="term" data-term="temperature">Temperature</span> ($\tau$):</strong>
-          <input type="range" id="calc-temp" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateInteractiveCalc()" style="vertical-align: middle;">
-          <span id="calc-temp-val" style="font-family: monospace;">1.0</span>
-        </label>
-      </div>
-
-      <p style="font-size: 14px;">Tap any cell in the attention matrix below to inspect its exact calculation:</p>
-      <div id="interactive-matrix-container" style="text-align: center;"></div>
-      
-      <div id="cell-detail-box" style="margin-top: 15px; padding: 12px; border: 1px solid #000; background: #fafafa; font-size: 15px;">
-        Tap a cell above to view detailed math breakdown.
-      </div>
+      $$\text{MHA}(X) = \text{Concat}\bigl(\text{head}_1, \dots, \text{head}_h\bigr) W_O, \qquad M_{ij} = \begin{cases} 0 &amp; j \le i \\ -\infty &amp; j &gt; i \end{cases}$$
     </div>
 
-    <!-- SECTION 5 -->
-    <h2>5. Multi-Head Attention: Parallel Subspaces</h2>
     <p>
-      In <em>"The animal didn't cross the street because <strong>it</strong> was too tired,"</em> one attention distribution cannot simultaneously point <em>"it"</em> at <em>"animal"</em> (coreference), <em>"tired"</em> (adjective state), and <em>"because"</em> (local syntax) without blurring all three vectors together.
+      Notice that splitting $d_{\text{model}} = 512$ into $8$ heads of width $64$ costs the <strong>exact same total FLOPs and parameters</strong> as a single giant head of width $512$, while giving the layer $8$ independent attention maps!
     </p>
     <p>
-      <span class="term" data-term="mha">Multi-Head Attention (MHA)</span> splits $d_{\text{model}}$ into $h$ smaller subspaces of dimension <span class="term" data-term="dk">$d_k = d_{\text{model}} / h$</span>, runs attention independently in each head with learned projections $W_Q^i, W_K^i, W_V^i$, concatenates the $h$ outputs, and mixes them with $W_O$:
+      Finally, in an autoregressive decoder like GPT that predicts one word at a time from left to right, Token $i$ cannot be allowed to peek at future Token $j &gt; i$ during parallel training. A <span class="term" data-term="causal-mask">causal mask $M$</span> adds $-\infty$ to every upper-triangle logit ($j &gt; i$) <em>before</em> softmax runs. Because $e^{-\infty} = 0$, future tokens receive exact $0$ attention weight while the remaining past and present weights ($j \le i$) still normalize cleanly to sum to $1$.
     </p>
-    <div class="math-block">
-      $$\begin{aligned}
-      \text{MultiHead}(Q, K, V) &= \text{Concat}(\text{head}_1, \dots, \text{head}_h) W_O \\
-      \text{where } \text{head}_i &= \text{Attention}(Q W_Q^i, K W_K^i, V W_V^i)
-      \end{aligned}$$
+
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Multi-Head Dimension Math">
+      <p>A Transformer has model dimension $d_{\text{model}} = 768$ and uses <span class="term" data-term="mha">$h = 12$ attention heads</span> for a sequence of $T = 10$ tokens. What is the shape of a single head's Query matrix $Q^{(i)}$, and what is the shape of that head's attention weight matrix $A^{(i)} = \text{softmax}(Q^{(i)} K^{(i)\top} / \sqrt{d_k})$?</p>
+      <label class="mcq-option" data-explain="768 is the concatenated width across all 12 heads; each individual head has width d_k = 768 / 12 = 64.">$Q^{(i)}$ is $(10 \times 768)$, and $A^{(i)}$ is $(768 \times 768)$.</label>
+      <label class="mcq-option" data-explain="Multiplying (10 x 64) by (64 x 10) produces a (10 x 10) token-to-token matrix, not (64 x 64).">$Q^{(i)}$ is $(10 \times 64)$, and $A^{(i)}$ is $(64 \times 64)$.</label>
+      <label class="mcq-option" data-explain="Correct. Each head has width d_k = 768 / 12 = 64, so Q^(i) is (10 x 64). Multiplying Q^(i) (10 x 64) by K^(i)^T (64 x 10) produces a (10 x 10) token-by-token attention matrix.">$Q^{(i)}$ is $(10 \times 64)$, and $A^{(i)}$ is $(10 \times 10)$ ($T \times T$).</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Check 3: Why Causal Masking Uses -∞ Before Softmax">
+      <p>In a causal GPT decoder, why do we set future attention scores ($j &gt; i$) to $-\infty$ <em>before</em> <span class="term" data-term="softmax">softmax</span> instead of setting them to $0$ before softmax (or zeroing them out <em>after</em> softmax)?</p>
+      <label class="mcq-option" data-explain="Correct. Because exp(-infinity) = 0, adding -infinity before softmax zeroes out future tokens while softmax automatically normalizes the allowed past tokens (j <= i) to sum to 1.0. Setting logits to 0 before softmax would give exp(0) = 1 (nonzero weight!), and zeroing after softmax would leave row weights summing to less than 1.">Because $e^{-\infty} = 0$ ( whereas $e^0 = 1 &gt; 0$ would leak future tokens!), and masking before softmax ensures the remaining allowed weights ($j \le i$) still sum to $1.0$.</label>
+      <label class="mcq-option" data-explain="exp(0) = 1, so setting logits to 0 before softmax gives positive weight to future tokens.">Setting future scores to $0$ before softmax gives the exact same result as $-\infty$.</label>
+      <label class="mcq-option" data-explain="If you zero out entries after softmax without renormalizing, the row weights no longer sum to 1.">Zeroing out weights after softmax automatically keeps the row sum equal to $1.0$.</label>
+    </details>
+
+    <h2>3. Comparing Sequence &amp; Attention Variants</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mechanism</th>
+            <th>Path Length (Token $1 \to T$)</th>
+            <th>Parallel Training?</th>
+            <th>When to Use / Tradeoff</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="rnn">Recurrent (RNN / LSTM)</span></strong></td>
+            <td class="num">$O(T)$ sequential hops</td>
+            <td>No (step $t$ waits for $t-1$)</td>
+            <td>Tiny $O(1)$ per-step inference state, but slow to train and forgets long context</td>
+          </tr>
+          <tr>
+            <td><strong>Bidirectional <span class="term" data-term="self-attention">Self-Attention</span></strong></td>
+            <td class="num">$O(1)$ ($1$ direct hop)</td>
+            <td>Yes (full $T \times T$ matrix)</td>
+            <td>Encoders (BERT, ViT) reading full inputs for classification or embeddings</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="causal-mask">Causal Masked</span> Self-Attention</strong></td>
+            <td class="num">$O(1)$ (from any $j \le i$)</td>
+            <td>Yes (lower-triangular mask)</td>
+            <td>Autoregressive decoders (GPT, Llama, Claude) generating one token at a time</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="cross-attention">Cross-Attention</span></strong></td>
+            <td class="num">$O(1)$ (decoder $\to$ encoder)</td>
+            <td>Yes ($T_{\text{dec}} \times T_{\text{enc}}$)</td>
+            <td>Encoder-decoder models (T5, Whisper) where queries $Q$ come from the decoder and $K, V$ come from the encoder</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-
-    <!-- INTERACTIVE HEAD EXPLORER -->
-    <div class="interactive-card">
-      <h3>Interactive Multi-Head Pattern Inspector</h3>
-      <p>Select different attention heads to see the distinct linguistic relationships they specialize in:</p>
-      
-      <div style="display:flex; gap:8px; margin-bottom: 12px; flex-wrap: wrap;">
-        <button class="btn active" id="btn-head-1" onclick="selectHead(1)">Head 1: Coreference</button>
-        <button class="btn" id="btn-head-2" onclick="selectHead(2)">Head 2: Syntactic (Verb-Object)</button>
-        <button class="btn" id="btn-head-3" onclick="selectHead(3)">Head 3: Positional / Local</button>
-      </div>
-
-      <div id="head-description" style="margin-bottom: 10px; font-weight: bold;"></div>
-
-      <div id="head-sentence-vis" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px;"></div>
-    </div>
-
-    <!-- CHECKPOINT 2 -->
-    <details class="mcq-box" id="mcq-2" data-correct="B" data-topic="Multi-Head Attention Dimension Split">
-      <p>If model embedding dimension $d_{\text{model}} = 512$ and we use $h = 8$ attention heads, what is the dimension of each key/query head <span class="term" data-term="dk">$d_k$</span>?</p>
-      <label class="mcq-option" data-explain="Using 512 per head across 8 heads would multiply compute and parameters by 8x.">$512$</label>
-      <label class="mcq-option" data-explain="Correct. Standard Transformers set $d_k = d_{\text{model}} / h = 512 / 8 = 64$, keeping total FLOPs equal to a single full-width head.">$64$ ($512 / 8$)</label>
-      <label class="mcq-option" data-explain="We divide $d_{\text{model}}$ by $h$, not multiply.">$4096$ ($512 \times 8$)</label>
-    </details>
-
-    <!-- SECTION 6 -->
-    <h2>6. Self-Attention vs. Cross-Attention vs. Causal Masking</h2>
-    <div class="table-wrap"><table class="data-table">
-      <thead>
-        <tr>
-          <th>Variant</th>
-          <th>Where $Q$ Comes From</th>
-          <th>Where $K$ &amp; $V$ Come From</th>
-          <th>Use Case</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong><span class="term" data-term="self-attention">Self-Attention</span></strong></td>
-          <td>Sequence $X$</td>
-          <td>Same sequence $X$</td>
-          <td>Bidirectional encoders (BERT), prompt representation.</td>
-        </tr>
-        <tr>
-          <td><strong><span class="term" data-term="causal-mask">Causal Self-Attention</span></strong></td>
-          <td>Decoder sequence $Y$</td>
-          <td>Same sequence $Y$ (future positions $j > i$ set to $-\infty$)</td>
-          <td><span class="term" data-term="autoregressive">Autoregressive</span> generation (GPT, Gemini, Llama).</td>
-        </tr>
-        <tr>
-          <td><strong><span class="term" data-term="cross-attention">Cross-Attention</span></strong></td>
-          <td>Decoder sequence $Y$</td>
-          <td>Encoder representation $H_{\text{enc}}$</td>
-          <td>Translation, audio/vision-to-text conditioning.</td>
-        </tr>
-      </tbody>
-    </table></div>
-
-    <details>
-      <summary>PyTorch Implementation: Minimal Multi-Head Self-Attention (Click to expand)</summary>
-      <div style="padding-top: 0.8rem;">
-<pre><code>import torch
-import torch.nn as nn
-import math
-
-class SelfAttention(nn.Module):
-    def __init__(self, d_model=512, n_heads=8):
-        super().__init__()
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.d_k = d_model // n_heads
-
-        self.w_q = nn.Linear(d_model, d_model)
-        self.w_k = nn.Linear(d_model, d_model)
-        self.w_v = nn.Linear(d_model, d_model)
-        self.w_o = nn.Linear(d_model, d_model)
-
-    def forward(self, x, mask=None):
-        batch_size, seq_len, _ = x.shape
-        
-        # 1. Project and split into heads: [B, L, H, d_k] -> transpose to [B, H, L, d_k]
-        Q = self.w_q(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
-        K = self.w_k(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
-        V = self.w_v(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
-
-        # 2. Scaled Dot-Product: [B, H, L, L]
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)
-
-        # 3. Softmax & weighted blend
-        attn_weights = torch.softmax(scores, dim=-1)
-        out = torch.matmul(attn_weights, V) # [B, H, L, d_k]
-
-        # 4. Concatenate heads and project output
-        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
-        return self.w_o(out)
-</code></pre>
-      </div>
-    </details>
-
-    <!-- FINAL CHECKPOINT -->
-    <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="Causal Masking Mechanics">
-      <p>In <span class="term" data-term="causal-mask">causal (autoregressive) self-attention</span>, how is future information prevented from leaking backward?</p>
-      <label class="mcq-option" data-explain="Setting a raw score to $0.0$ before softmax gives $\exp(0) = 1.0$, which assigns positive probability mass to the future token!">Setting the raw scores of future tokens to $0.0$ before softmax.</label>
-      <label class="mcq-option" data-explain="Correct. Adding $-\infty$ (or $-10^9$) to future scores before softmax makes $\exp(-\infty) = 0$, guaranteeing zero attention weight on future tokens while the remaining past weights still sum to $1.0$.">Setting future dot-product scores to $-\infty$ before softmax so $\exp(-\infty) = 0$.</label>
-      <label class="mcq-option" data-explain="Deleting tokens prevents batched matrix multiplication across all positions in parallel.">Deleting future tokens from GPU memory during the forward pass.</label>
-    </details>
 
     <div class="score-bar"></div>
 
-    <div style="border-top: 2px solid #000; padding-top: 1.5rem; margin-top: 3rem;">
-      <p style="font-weight: bold;">Next recommended reading:</p>
-      <a href="gkd.html" class="btn" style="text-decoration: none; display: inline-block;">Continue to: Generalized Knowledge Distillation (GKD) →</a>
-    </div>
+    <div class="interactive-card" id="spaced-widget"></div>
   </main>
 
   <script>
-    const glossary = {
-      "rnn": {
-        title: "Recurrent Neural Network (RNN)",
-        body: "A sequential neural network that updates a single <span class=\"term\" data-term=\"hidden-state\">hidden state $h_t$</span> token by token: $h_t = \\tanh(W_{hh} h_{t-1} + W_{xh} x_t)$. Prone to <span class=\"term\" data-term=\"vanishing-gradient\">vanishing gradients</span> over long sequences."
+    var GLOSSARY = {
+      'self-attention': {
+        title: 'Scaled Dot-Product Self-Attention',
+        body: '$\\text{Attention}(Q, K, V) = \\text{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$, where $Q, K, V$ are linear projections of the same input sequence $X$.'
       },
-      "lstm": {
-        title: "Long Short-Term Memory (LSTM)",
-        body: "A gated <span class=\"term\" data-term=\"rnn\">RNN</span> variant with input, forget, and output gates that preserve gradients better than vanilla RNNs, but still process tokens sequentially."
+      'cross-attention': {
+        title: 'Cross-Attention',
+        body: 'Attention layer where Queries $Q$ come from one sequence (e.g. a text decoder) while Keys $K$ and Values $V$ come from another source (e.g. an audio/image/text encoder).'
       },
-      "token": {
-        title: "Token",
-        body: "A word or subword piece mapped to an integer ID and looked up as a dense <span class=\"term\" data-term=\"embedding\">embedding vector</span> $x_i \\in \\mathbb{R}^{d_{\\text{model}}}$."
+      'rnn': {
+        title: 'Recurrent Neural Network (RNN)',
+        body: 'Sequential model $h_t = \\tanh(W_{hh} h_{t-1} + W_{xh} x_t)$ that processes tokens one step at a time, compressing all history into a fixed-size vector $h_t$.'
       },
-      "hidden-state": {
-        title: "Hidden State ($h_t$)",
-        body: "The fixed-width vector in an <span class=\"term\" data-term=\"rnn\">RNN</span> that summarizes all tokens seen up to step $t$."
+      'lstm': {
+        title: 'LSTM (Long Short-Term Memory)',
+        body: 'Gated RNN with an additive cell state. Still processes tokens sequentially one at a time ($O(T)$ path length).'
       },
-      "embedding": {
-        title: "Embedding ($X$)",
-        body: "A learned continuous vector representation of each <span class=\"term\" data-term=\"token\">token</span>, stacked into matrix $X \\in \\mathbb{R}^{N \\times d_{\\text{model}}}$."
+      'vanishing-gradient': {
+        title: 'Vanishing Gradient',
+        body: 'Exponential decay of backward gradient signals across many sequential multiplications, preventing early steps or layers from learning.'
       },
-      "dot-product": {
-        title: "Dot Product ($q_i \\cdot k_j$)",
-        body: "Sum of element-wise products $\\sum_{m=1}^{d_k} q_{im} k_{jm} = \\|q_i\\| \\|k_j\\| \\cos\\theta$. High positive values mean Query $i$ and Key $j$ align in direction."
+      'query': {
+        title: 'Query ($Q = X W_Q$)',
+        body: 'Projection vector representing what the current token position is searching for.'
       },
-      "dk": {
-        title: "Key / Query Head Dimension ($d_k$)",
-        body: "Width of each attention head's <span class=\"term\" data-term=\"query\">Query</span> and <span class=\"term\" data-term=\"key\">Key</span> vectors, typically $d_k = d_{\\text{model}} / h$. Dividing dot products by $\\sqrt{d_k}$ keeps their variance at $1$."
+      'key': {
+        title: 'Key ($K = X W_K$)',
+        body: 'Projection vector advertising what information a token position offers when matched against a <span class="term" data-term="query">Query</span> via dot product.'
       },
-      "query": {
-        title: "Query Vector ($Q$)",
-        body: "Projected vector $Q = X W_Q$ representing what features the current token is searching for in context."
+      'value': {
+        title: 'Value ($V = X W_V$)',
+        body: 'Projection vector holding the actual content payload blended by the softmax attention weights.'
       },
-      "key": {
-        title: "Key Vector ($K$)",
-        body: "Projected vector $K = X W_K$ advertising what features a token contains. Matched against <span class=\"term\" data-term=\"query\">Queries</span> via $Q K^\\top$."
+      'dk': {
+        title: 'Head Dimension ($d_k = d_{\\text{model}} / h$)',
+        body: 'Width of each head\'s Query and Key vectors (typically $64$ or $128$). Dividing raw dot products by $\\sqrt{d_k}$ keeps logit variance near $1$.'
       },
-      "value": {
-        title: "Value Vector ($V$)",
-        body: "Projected payload $V = X W_V$ that gets blended using the <span class=\"term\" data-term=\"softmax\">softmax</span> attention weights $A$."
+      'dot-product': {
+        title: 'Dot Product ($q_i \\cdot k_j$)',
+        body: '$\\sum_{m=1}^{d_k} q_{im} k_{jm}$: measures unnormalized similarity/alignment between Query $i$ and Key $j$.'
       },
-      "softmax": {
-        title: "Softmax Function",
-        body: "Exponentiates and normalizes a row of scores into probabilities in $(0, 1)$ summing to $1$: $A_{ij} = \\frac{\\exp(S_{ij})}{\\sum_{k=1}^N \\exp(S_{ik})}$."
+      'softmax': {
+        title: 'Row-Wise Softmax',
+        body: '$\\alpha_{ij} = \\frac{\\exp(s_{ij})}{\\sum_m \\exp(s_{im})}$: turns a row of scaled similarity scores into positive attention weights summing to $1.0$.'
       },
-      "temperature": {
-        title: "Temperature ($\\tau$)",
-        body: "Divisor applied to scores before <span class=\"term\" data-term=\"softmax\">softmax</span>: $\\text{softmax}(S / \\tau)$. $\\tau < 1$ sharpens attention onto the top match; $\\tau > 1$ flattens weights toward uniform."
+      'mha': {
+        title: 'Multi-Head Attention (MHA)',
+        body: 'Running $h$ independent attention heads of width $d_k = d_{\\text{model}}/h$ in parallel, concatenating their outputs, and projecting with $W_O$.'
       },
-      "mha": {
-        title: "Multi-Head Attention (MHA)",
-        body: "Runs $h$ parallel attention heads in separate $d_k = d_{\\text{model}}/h$ subspaces and concatenates their outputs so the layer can attend to multiple relationships at once."
-      },
-      "self-attention": {
-        title: "Self-Attention",
-        body: "Attention where <span class=\"term\" data-term=\"query\">$Q$</span>, <span class=\"term\" data-term=\"key\">$K$</span>, and <span class=\"term\" data-term=\"value\">$V$</span> are all projected from the same input sequence $X$."
-      },
-      "cross-attention": {
-        title: "Cross-Attention",
-        body: "Attention where <span class=\"term\" data-term=\"query\">Queries $Q$</span> come from the decoder sequence while <span class=\"term\" data-term=\"key\">Keys $K$</span> and <span class=\"term\" data-term=\"value\">Values $V$</span> come from an encoder (e.g., source text, audio, or image patches)."
-      },
-      "causal-mask": {
-        title: "Causal Masking",
-        body: "Upper-triangular mask that sets scores $S_{ij} = -\\infty$ whenever key position $j > i$, ensuring $\\exp(-\\infty) = 0$ so <span class=\"term\" data-term=\"autoregressive\">autoregressive</span> models cannot peek at future tokens."
-      },
-      "autoregressive": {
-        title: "Autoregressive Generation",
-        body: "Predicting one token at a time conditioned strictly on past tokens $y_{<t}$, feeding each generated token back in as input for step $t+1$."
-      },
-      "vanishing-gradient": {
-        title: "Vanishing Gradient",
-        body: "When backpropagated derivatives shrink exponentially toward $0$ through repeated matrix multiplies or saturated activations (like extreme <span class=\"term\" data-term=\"softmax\">softmax</span> or $\\tanh$), halting learning."
+      'causal-mask': {
+        title: 'Causal Mask ($M_{ij} = -\\infty$ for $j > i$)',
+        body: 'Upper-triangular mask added to $QK^\\top / \\sqrt{d_k}$ before softmax in autoregressive decoders so token $i$ assigns exact $0$ weight ($e^{-\\infty} = 0$) to future tokens $j > i$.'
       }
     };
 
-    // INTERACTIVE CALCULATOR
-    const tokens = ["The", "dog", "barked"];
-    const baseScores = [
-      [1.0, 1.0, 0.0],
-      [0.0, 2.0, 4.0],
-      [1.0, 2.0, 2.0]
+    var SPACED_CARDS = [
+      {
+        q: 'Write the Scaled Dot-Product Attention formula and explain why we divide by $\\sqrt{d_k}$.',
+        a: '$\\text{Attention}(Q,K,V) = \\text{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$. If $q_i, k_j$ have unit-variance entries, their dot product has variance $d_k$ (std $\\sqrt{d_k}$); dividing by $\\sqrt{d_k}$ restores unit variance so softmax does not saturate into near-zero gradients.'
+      },
+      {
+        q: 'What are the distinct roles of Query ($Q$), Key ($K$), and Value ($V$) in self-attention?',
+        a: 'Query $Q = XW_Q$ asks what the current token is looking for; Key $K = XW_K$ advertises what each token contains (matched via $QK^\\top$); Value $V = XW_V$ holds the payload vectors blended by the softmax attention weights.'
+      },
+      {
+        q: 'How does Causal Masking prevent a decoder token $i$ from peeking at future tokens $j > i$, and why must it use $-\\infty$ before softmax?',
+        a: 'It adds $-\\infty$ to all upper-triangle positions ($j > i$) before softmax. Because $e^{-\\infty} = 0$, future tokens get exact $0$ weight while softmax still normalizes the allowed past tokens ($j \\le i$) to sum to $1.0$.'
+      },
+      {
+        q: 'Why do we split $d_{\\text{model}}$ into $h$ smaller heads of width $d_k = d_{\\text{model}}/h$ in Multi-Head Attention instead of using a single full-width head?',
+        a: 'A single head only has one softmax distribution per token; $h$ heads of width $d_{\\text{model}}/h$ cost the exact same total FLOPs and parameters while allowing each token to attend to $h$ different syntactic and semantic positions simultaneously.'
+      }
     ];
-    let selectedCell = { r: 1, c: 2 };
-
-    function updateInteractiveCalc() {
-      const isCausal = document.getElementById('calc-mask-toggle').checked;
-      const tau = parseFloat(document.getElementById('calc-temp').value);
-      document.getElementById('calc-temp-val').innerText = tau.toFixed(1);
-
-      const d_k_scale = Math.sqrt(2);
-      let html = '<div class="matrix-grid" style="grid-template-columns: repeat(4, 75px);">';
-      
-      // Header row
-      html += '<div class="matrix-cell" style="background:#eee; font-weight:bold;">Q \\ K</div>';
-      tokens.forEach(t => html += `<div class="matrix-cell" style="background:#eee; font-weight:bold;">${t}</div>`);
-
-      for (let r = 0; r < 3; r++) {
-        html += `<div class="matrix-cell" style="background:#eee; font-weight:bold;">${tokens[r]}</div>`;
-        
-        // Compute softmax for row
-        let expScores = [];
-        let sumExp = 0;
-        for (let c = 0; c < 3; c++) {
-          if (isCausal && c > r) {
-            expScores.push(0);
-          } else {
-            let s = (baseScores[r][c] / (d_k_scale * tau));
-            let e = Math.exp(s);
-            expScores.push(e);
-            sumExp += e;
-          }
-        }
-
-        for (let c = 0; c < 3; c++) {
-          let prob = sumExp > 0 ? (expScores[c] / sumExp) : 0;
-          let isSel = (selectedCell.r === r && selectedCell.c === c);
-          let cellStyle = isSel ? 'background:#000; color:#fff;' : '';
-          html += `<div class="matrix-cell" style="${cellStyle}" onclick="selectCell(${r}, ${c})">
-            <span>${(prob * 100).toFixed(0)}%</span>
-            <span style="font-size:10px; opacity:0.8;">${prob.toFixed(2)}</span>
-          </div>`;
-        }
-      }
-      html += '</div>';
-      document.getElementById('interactive-matrix-container').innerHTML = html;
-      renderCellDetail();
-    }
-
-    function selectCell(r, c) {
-      selectedCell = { r, c };
-      updateInteractiveCalc();
-    }
-
-    function renderCellDetail() {
-      const r = selectedCell.r;
-      const c = selectedCell.c;
-      const isCausal = document.getElementById('calc-mask-toggle').checked;
-      const tau = parseFloat(document.getElementById('calc-temp').value);
-      const box = document.getElementById('cell-detail-box');
-
-      if (isCausal && c > r) {
-        box.innerHTML = 
-          `<strong>Query: "${tokens[r]}" &rarr; Key: "${tokens[c]}"</strong><br>` +
-          `[MASKED] Future token score is set to $-\\infty$.<br>` +
-          `Softmax weight: $\\exp(-\\infty) / \\sum = \\mathbf{0.00\\ (0\\%)}$.`;
-        renderMathIn(box);
-        return;
-      }
-
-      let rawDot = baseScores[r][c];
-      let scaled = rawDot / (Math.sqrt(2) * tau);
-      box.innerHTML = 
-        `<strong>Query: "${tokens[r]}" (Row ${r+1}) &rarr; Key: "${tokens[c]}" (Col ${c+1})</strong><br>` +
-        `Raw dot product ($q_{${r+1}} \\cdot k_{${c+1}}$): $${rawDot.toFixed(1)}$<br>` +
-        `Scaled ($S_{${r+1},${c+1}} / (\\sqrt{2} \\cdot \\tau)$): $${rawDot.toFixed(1)} / ${(Math.sqrt(2)*tau).toFixed(3)} = \\mathbf{${scaled.toFixed(3)}}$<br>` +
-        `Exponent $\\exp(${scaled.toFixed(3)}) = ${Math.exp(scaled).toFixed(3)}$ (normalized across row ${r+1}).`;
-      renderMathIn(box);
-    }
-
-    // MULTI-HEAD EXPLORER
-    const headData = {
-      1: {
-        name: "Head 1: Coreference Resolution",
-        desc: "Focuses on linking pronouns to the antecedent nouns they reference (e.g., 'it' points to 'animal').",
-        sentence: [
-          { word: "The", score: 0.05 },
-          { word: "animal", score: 0.82 },
-          { word: "didn't", score: 0.01 },
-          { word: "cross", score: 0.02 },
-          { word: "the", score: 0.01 },
-          { word: "street", score: 0.04 },
-          { word: "because", score: 0.01 },
-          { word: "[IT]", score: 1.0, isQuery: true },
-          { word: "was", score: 0.01 },
-          { word: "tired", score: 0.03 }
-        ]
-      },
-      2: {
-        name: "Head 2: Syntactic (Verb-Object Structure)",
-        desc: "Focuses on linking actions to their direct objects (e.g., 'cross' attends heavily to 'street').",
-        sentence: [
-          { word: "The", score: 0.02 },
-          { word: "animal", score: 0.04 },
-          { word: "didn't", score: 0.12 },
-          { word: "[CROSS]", score: 1.0, isQuery: true },
-          { word: "the", score: 0.04 },
-          { word: "street", score: 0.74 },
-          { word: "because", score: 0.01 },
-          { word: "it", score: 0.01 },
-          { word: "was", score: 0.01 },
-          { word: "tired", score: 0.01 }
-        ]
-      },
-      3: {
-        name: "Head 3: Positional / Local Context",
-        desc: "Attends primarily to immediate neighbor tokens (unigram and bigram continuity).",
-        sentence: [
-          { word: "The", score: 0.05 },
-          { word: "animal", score: 0.10 },
-          { word: "didn't", score: 0.05 },
-          { word: "cross", score: 0.05 },
-          { word: "the", score: 0.05 },
-          { word: "street", score: 0.10 },
-          { word: "[BECAUSE]", score: 1.0, isQuery: true },
-          { word: "it", score: 0.55 },
-          { word: "was", score: 0.05 },
-          { word: "tired", score: 0.00 }
-        ]
-      }
-    };
-
-    function selectHead(id) {
-      document.querySelectorAll('.interactive-card button').forEach(b => b.classList.remove('active'));
-      const activeBtn = document.getElementById('btn-head-' + id);
-      if (activeBtn) activeBtn.classList.add('active');
-
-      const data = headData[id];
-      document.getElementById('head-description').innerHTML = 
-        `<em>${data.name}</em>: ${data.desc}`;
-
-      let visHtml = '';
-      data.sentence.forEach(item => {
-        let isQ = item.isQuery;
-        let borderStyle = isQ ? '3px solid #000' : '1px solid #444';
-        let bg = isQ ? '#000' : (item.score > 0.4 ? '#bbb' : (item.score > 0.1 ? '#eee' : '#fff'));
-        let textColor = isQ ? '#fff' : '#000';
-        
-        visHtml += `<div style="border:${borderStyle}; background:${bg}; color:${textColor}; padding: 8px 12px; text-align:center; min-width: 65px; border-radius: 2px;">
-          <div style="font-weight:bold; font-size:14px;">${item.word}</div>
-          <div style="font-size:11px; font-family:monospace;">${isQ ? 'QUERY' : (item.score * 100).toFixed(0) + '%'}</div>
-        </div>`;
-      });
-      document.getElementById('head-sentence-vis').innerHTML = visHtml;
-    }
-
-    // Initialize
-    updateInteractiveCalc();
-    selectHead(1);
   </script>
 </body>
 </html>

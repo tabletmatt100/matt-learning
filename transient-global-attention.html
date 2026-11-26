@@ -16,234 +16,97 @@
     <h1>Transient Global Attention (TGlobal): How LongT5 Scales Without Side-Inputs</h1>
 
     <p>
-      Suppose you ask a Transformer encoder to summarize a $16{,}000$-token scientific paper or answer a question at the very end of a book chapter using a clue from the opening paragraph. If you run standard <span class="term" data-term="full-attention">full self-attention</span>, every token compares itself against every other token, creating an $\ell \times \ell$ matrix of $16{,}000^2 = 256\text{ million}$ attention pairs per head in every single layer. On a standard <span class="term" data-term="t5-encoder">T5</span> model, that quadratic memory bill crashes your GPU or TPU long before you reach $6{,}000$ tokens.
+      Suppose you ask a Transformer encoder to summarize a $16{,}000$-token research paper or answer a question at the very end of a book chapter using a clue from the opening paragraph. If you run standard <span class="term" data-term="full-attention">full self-attention</span>, every token compares itself against every other token, creating an <span class="term" data-term="sym-l">$\ell \times \ell$</span> matrix of $16{,}000^2 = 256\text{ million}$ attention pairs per head in every single layer. On a standard <span class="term" data-term="t5-encoder">T5</span> model, that quadratic memory bill crashes your hardware long before you reach $6{,}000$ tokens.
     </p>
     <p>
-      The obvious way to save memory is <span class="term" data-term="local-attention">local sliding-window attention</span>, where each word only looks at a small neighborhood of $r$ words to its left and right. That cuts the work down to a linear band, but it creates a severe blind spot: if a question at the end of a document needs a fact from page one, information can only crawl across the document by one local window per layer—requiring dozens of stacked layers just for two distant paragraphs to hear each other.
+      The obvious way to save memory is <span class="term" data-term="local-attention">local sliding-window attention</span>, where each word only looks at a small neighborhood of <span class="term" data-term="sym-r">$r$</span> words to its left and right. That cuts the work down to a narrow linear band, but it creates a severe blind spot: if a question at the end of a document needs a fact from page one, information can only crawl across the document by one local window per layer—requiring dozens of stacked layers just for two distant paragraphs to hear each other.
     </p>
     <p>
-      Earlier long-context models like <span class="term" data-term="etc-bigbird">ETC and BigBird</span> bridged that gap by bolting on a separate array of persistent global memory tokens alongside the input text, which meant redesigning the data pipeline and breaking compatibility with existing pretrained checkpoints. <strong>LongT5</strong> (<a href="https://arxiv.org/abs/2112.07916" target="_blank" rel="noopener">Guo et al., 2022</a>) takes a much cleaner route called <span class="term" data-term="tglobal">Transient Global Attention (TGlobal)</span>: inside each attention layer, it temporarily pools every block of $k = 16$ consecutive tokens into a coarse summary token, lets every word attend to its local neighbors <em>plus</em> all of those temporary block summaries in a single hop, and throws the block summaries away as soon as the layer finishes.
+      Earlier long-context models like <span class="term" data-term="etc-bigbird">ETC and BigBird</span> bridged that gap by bolting on a separate array of permanent global memory tokens alongside the input text, which meant redesigning the input pipeline and breaking compatibility with existing pretrained checkpoints. <strong>LongT5</strong> (Guo et al., 2022) takes a much cleaner route called <span class="term" data-term="tglobal">Transient Global Attention (TGlobal)</span>: inside each attention layer, it temporarily sums every block of <span class="term" data-term="sym-k">$k = 16$</span> consecutive tokens into a coarse summary token <span class="term" data-term="sym-gm">$g_m$</span>, lets every word attend to its local neighbors <em>plus</em> all of those temporary block summaries in a single hop, and throws the block summaries away as soon as the layer finishes.
     </p>
 
-    <div id="scaffolding-section">
-      <h2 id="s1">1. Why Local Sliding Windows Go Blind on Long-Range Questions</h2>
-      <p>
-        To feel the difference between local hopping and a transient global bridge, shrink a document down to an $\ell = 16$-token toy sequence. A question lives at <strong>Token 16</strong>, and the fact that answers it sits all the way back at <strong>Token 1</strong> (a gap of $15$ positions).
-      </p>
-      <p>
-        Suppose our local sliding window has radius <span class="term" data-term="sym-r">$r = 1$</span>, meaning each token can only look $1$ neighbor to its left and $1$ neighbor to its right. Compare what happens under pure local attention versus TGlobal with block size <span class="term" data-term="sym-k">$k = 4$</span>:
-      </p>
-      <ul>
-        <li><strong>Case A (<span class="term" data-term="local-attention">Pure Local Attention</span>, $r = 1$):</strong> In Layer 1, Token 1 can only pass its signal as far right as Token 2. In Layer 2, that signal reaches Token 3, advancing by at most $r = 1$ position per layer.</li>
-        <li><strong>Case B (<span class="term" data-term="tglobal">Transient Global Attention</span>, $r = 1$, block size <span class="term" data-term="sym-k">$k = 4$</span>):</strong> Before attention runs in Layer 1, the layer sums every $k = 4$ tokens into a temporary block summary <span class="term" data-term="sym-gm">$g_m$</span> (so $g_1$ summarizes Tokens $1\text{–}4$, $g_2$ summarizes $5\text{–}8$, $g_3$ summarizes $9\text{–}12$, and $g_4$ summarizes $13\text{–}16$). Every token attends to its local neighbors <em>and</em> all four global block summaries $[g_1, g_2, g_3, g_4]$ in the very same layer.</li>
-      </ul>
-
-      <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Quick Prediction</div>
-        <h3>Minimum Layers for Token 16 to Read Signal From Token 1</h3>
-        <p>How many stacked encoder layers does Token 16 need to receive information from Token 1 in Case A (Pure Local, $r=1$) versus Case B (TGlobal, $r=1, k=4$)?</p>
-        <div class="control-row">
-          <button class="btn btn-small" onclick="runPOE('A')">A) Case A needs 4 layers; Case B needs 4 layers</button>
-          <button class="btn btn-small" onclick="runPOE('B')">B) Case A needs 15 layers (15 one-step hops); Case B needs only 1 layer (via block summary g₁)</button>
-          <button class="btn btn-small" onclick="runPOE('C')">C) Case A needs 256 layers; Case B needs 16 layers</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">I'm not sure &mdash; show me</button>
-        </div>
-        <div id="poe-reveal" style="display:none;">
-          <div class="figure-box">
-            <svg id="poe-svg" viewBox="0 0 460 130" width="460" height="130" role="img" aria-label="Local multi-hop chain vs TGlobal 1-layer global bridge"></svg>
-          </div>
-          <div class="refutation" id="poe-refutation"></div>
-        </div>
-      </div>
-    </div>
-
-    <h2 id="s2">2. How TGlobal Builds and Discards Block Summaries on the Fly</h2>
+    <h2>1. How TGlobal Builds and Discards Block Summaries on the Fly</h2>
     <p>
-      Why did earlier global-local architectures like <span class="term" data-term="etc-bigbird">ETC</span> require so much custom engineering? Because they treated global tokens as a permanent second stream of inputs that had to be pre-allocated before Layer 1 and carried through every feed-forward network. You couldn't just drop an existing <span class="term" data-term="t5-encoder">T5</span> checkpoint into ETC without changing how text is tokenized and fed into the model.
+      Why did earlier global-local architectures like <span class="term" data-term="etc-bigbird">ETC</span> require so much custom engineering? Because they treated global tokens as a permanent second stream of inputs that had to be pre-allocated before Layer 1 and carried through every feed-forward network. You couldn't just drop an existing <span class="term" data-term="t5-encoder">T5</span> checkpoint into ETC without changing how text is fed into the model.
     </p>
     <p>
-      <span class="term" data-term="tglobal">TGlobal</span> avoids side-inputs entirely by making its global tokens temporary scratchpad vectors inside the self-attention module. At the start of an encoder attention layer, it slices the <span class="term" data-term="sym-l">$\ell$</span> input token vectors $x_1, \dots, x_\ell$ into <span class="term" data-term="sym-l-over-k">$M = \ell / k$</span> fixed, non-overlapping blocks of size <span class="term" data-term="sym-k">$k$</span> ($k = 16$ in LongT5). For each block $m$, it sums the $k$ token vectors together and passes that sum through T5's <span class="term" data-term="rms-layernorm">root-mean-square LayerNorm</span> to produce a <span class="term" data-term="transient-token">transient global token</span> <span class="term" data-term="sym-gm">$g_m$</span>.
+      <span class="term" data-term="tglobal">TGlobal</span> avoids side-inputs completely by making its global tokens temporary scratchpad vectors inside the self-attention module. At the start of an encoder attention layer, it slices the <span class="term" data-term="sym-l">$\ell$</span> input token vectors $x_1, \dots, x_\ell$ into <span class="term" data-term="sym-l-over-k">$M = \ell / k$</span> fixed, non-overlapping blocks of size <span class="term" data-term="sym-k">$k$</span> ($k = 16$ in LongT5). For each block $m$, it sums the $k$ token vectors together and passes that sum through T5's <span class="term" data-term="rms-layernorm">root-mean-square LayerNorm</span> to produce a <span class="term" data-term="transient-token">transient global token</span> <span class="term" data-term="sym-gm">$g_m$</span>:
     </p>
-    <p>
-      Why is that <span class="term" data-term="rms-layernorm">LayerNorm</span> step mandatory right after summing? If you sum $k = 16$ token vectors without normalizing, the resulting global vector has a magnitude roughly $\sqrt{16}$ to $16$ times larger than any individual local token vector. Feeding an unnormalized sum into dot-product attention would produce giant logits that hijack the softmax and drown out every local neighbor. Normalizing <span class="term" data-term="sym-gm">$g_m$</span> puts it back on the exact same scale and in the exact same embedding space $\mathbb{R}^{d_{\text{model}}}$ as the regular tokens $x_i$—which means TGlobal can project $g_m$ into keys and values using the layer's existing $W_K$ and $W_V$ matrices without adding a single new projection matrix.
-    </p>
-
-    <div class="worked">
-      <p><strong>Tracing transient block pooling by hand ($k = 4$ tokens, clean square-root dimension):</strong></p>
-      <p>
-        Take Block $m = 1$ containing $k = 4$ tokens with distinct scalar values so you can follow each number:<br>
-        $$x_1 = 1, \qquad x_2 = 2, \qquad x_3 = 4, \qquad x_4 = 5$$
-        1. <strong>Block sum ($s_1$):</strong> Add the $k = 4$ tokens in the block: $s_1 = 1 + 2 + 4 + 5 = \mathbf{12}$.<br>
-        2. <strong>Root-mean-square normalization:</strong> Suppose across a $d = 4$-dimensional embedding vector, the raw block sum is $s_1 = [3, 3, 3, 3]$ with learned gain $\gamma = 1$. T5's root-mean-square scale is $\text{RMS}(s_1) = \sqrt{\frac{1}{4}(3^2 + 3^2 + 3^2 + 3^2)} = \sqrt{9} = \mathbf{3}$.<br>
-        <strong>Your turn &mdash; dividing by $\text{RMS}(s_1) = 3$, what is the normalized first coordinate $g_{1,1} = s_{1,1} / \text{RMS}(s_1)$ of the transient global token?</strong>
-      </p>
-      <div class="control-row">
-        <label for="wk1-input">$g_{1,1} = 3 / 3 =$</label>
-        <input type="number" id="wk1-input" step="1" placeholder="Value" style="width:6.5rem;">
-        <button class="btn btn-small" onclick="checkWorked1()">Check</button>
-      </div>
-      <div id="wk1-feedback" class="readout" style="display:none;"></div>
-    </div>
 
     <div class="math-block">
       $$g_m = \text{LayerNorm}\!\left(\sum_{j=1}^{k} x_{(m-1)k + j}\right), \qquad \text{Keys}(x_i) = \underbrace{\{x_j : |i - j| \le r\}}_{\text{Local window } (\le 2r+1)} \;\cup\; \underbrace{\{g_1, g_2, \dots, g_{\ell/k}\}}_{\text{Transient globals } (\ell/k)}$$
-      <div class="math-hint">Once each query token $x_i$ computes its weighted value sum over its local window and the $\ell/k$ transient globals, $g_1, \dots, g_{\ell/k}$ are discarded. The next encoder layer synthesizes fresh global summaries from the updated token states.</div>
     </div>
 
     <p>
-      To make sure a query token knows whether a global block summary comes from the adjacent paragraph or from $100$ blocks away—without treating the document as an unordered bag of blocks—TGlobal adds a small <span class="term" data-term="block-rel-bias">block-distance relative position bias</span> table indexed by the distance between the query's block $\lfloor i/k \rfloor$ and global block $m$. Between that bias table and the global LayerNorm scale vector, converting a full T5 checkpoint to TGlobal adds only about $10{,}000$ parameters in Base ($50{,}000$ in XL). And when multiple short training examples are packed into a single $4{,}096$-token sequence (<span class="term" data-term="example-packing">example packing</span>), a block-level mask prevents tokens in Example A from attending to transient global tokens pooled from Example B.
+      Why is that <span class="term" data-term="rms-layernorm">LayerNorm</span> step mandatory right after summing? If you sum $k = 16$ token vectors without normalizing, the resulting global vector has a magnitude roughly $\sqrt{16}$ to $16$ times larger than any individual local token vector. Feeding an unnormalized sum into dot-product attention would produce giant logits that hijack the softmax and drown out every local neighbor. Normalizing <span class="term" data-term="sym-gm">$g_m$</span> puts it back on the exact same scale and in the exact same embedding space $\mathbb{R}^{d_{\text{model}}}$ as the regular tokens $x_i$—which means TGlobal can project $g_m$ into keys and values using the layer's existing $W_K$ and $W_V$ matrices with zero extra projection weights.
+    </p>
+    <p>
+      To make sure a query token knows whether a global block summary comes from the adjacent paragraph or from $100$ blocks away, TGlobal adds a small <span class="term" data-term="block-rel-bias">block-distance relative position bias</span> table indexed by the distance between the query's block $\lfloor i/k \rfloor$ and global block $m$. Between that bias table and the global LayerNorm scale vector, converting a full T5 checkpoint to TGlobal adds only about $10{,}000$ parameters in Base ($50{,}000$ in XL). And when multiple short training examples are packed into one $4{,}096$-token sequence (<span class="term" data-term="example-packing">example packing</span>), a block-level mask blocks tokens in Example A from attending to transient global tokens pooled from Example B.
     </p>
 
-    <h2 id="s3">3. The Attention Cost Math &amp; Principle-Sentence Pre-Training</h2>
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Local Hops vs. TGlobal 1-Layer Bridge">
+      <p>Suppose an $\ell = 16$-token sequence has a question at Token 16 whose answer sits back at Token 1 ($15$ positions away), and the local radius is <span class="term" data-term="sym-r">$r = 1$</span> ($1$ neighbor left/right). How many stacked encoder layers does Token 16 need to receive signal from Token 1 under <strong>Pure Local Attention</strong> versus <strong>TGlobal</strong> ($k = 4$)?</p>
+      <label class="mcq-option" data-explain="With radius r=1, pure local attention only moves signal by 1 token per layer, so 4 layers only reaches 4 tokens away.">Pure Local needs $4$ layers; TGlobal needs $4$ layers.</label>
+      <label class="mcq-option" data-explain="Correct. Pure local attention with r=1 advances at most 1 position per layer (15 hops). TGlobal pools Tokens 1-4 into global token g_1 inside Layer 1, and Token 16 attends directly to g_1 in that very first layer.">Pure Local needs $15$ layers ($15$ one-step hops); TGlobal needs only $1$ layer (via global block summary $g_1$).</label>
+      <label class="mcq-option" data-explain="16^2 = 256 is the number of attention pairs in 1 layer of full attention, not a layer count.">Pure Local needs $256$ layers; TGlobal needs $16$ layers.</label>
+    </details>
+
+    <h2>2. The Attention Cost Math &amp; Principle-Sentence Pre-Training</h2>
     <p>
       How much memory and compute does TGlobal actually save compared to full attention? Look at the two sets of keys that each of the <span class="term" data-term="sym-l">$\ell$</span> query tokens attends to in a single layer. First, attending to the local sliding window of width $W \le 2r+1$ forms a narrow diagonal band of $\ell \cdot W$ pairs. Second, attending to all <span class="term" data-term="sym-l-over-k">$\ell / k$</span> transient global tokens forms a skinny side rectangle of $\ell \cdot (\ell / k) = \ell^2 / k$ pairs:
     </p>
 
     <div class="math-block">
       $$\text{Pairs}_{\text{Full}} = \ell^2, \qquad \text{Pairs}_{\text{Local}} = \ell \cdot W \;\sim\; O(\ell r), \qquad \text{Pairs}_{\text{TGlobal}} = \ell\!\left(W + \frac{\ell}{k}\right) \;\sim\; O\!\left(\ell\!\left(r + \frac{\ell}{k}\right)\right)$$
-      <div class="math-hint">Notice an honest mathematical detail: TGlobal still has an $\ell^2 / k$ term! It is not strictly linear as $\ell \to \infty$, but dividing the quadratic term by $k = 16$ shrinks the global matrix $16\times$, pushing the TPU out-of-memory wall from $\sim 4\text{k}$ tokens out past $16\text{k}$ tokens.</div>
     </div>
+
+    <p>
+      Notice an honest detail in that equation: TGlobal still has a quadratic $\ell^2 / k$ term! It is not strictly linear as $\ell \to \infty$, but dividing the quadratic global matrix by $k = 16$ shrinks it $16\times$, pushing the TPU out-of-memory wall from $\sim 4\text{k}$ tokens out past $16\text{k}$ tokens.
+    </p>
 
     <div class="worked">
-      <p><strong>Counting attention pairs on our $\ell = 16$ toy sequence (local window $W = 3$, block size $k = 4$):</strong></p>
+      <p><strong>Worked Example (Counting attention pairs on $\ell = 16$ tokens with window $W = 3$ and block size $k = 4$):</strong></p>
       <p>
-        Compare the total query-key pairs evaluated in one layer for $\ell = 16$ tokens:<br>
         1. <strong>Full self-attention ($\ell^2$):</strong> Every token attends to all $16$ tokens $\implies 16 \times 16 = \mathbf{256\text{ pairs}}$.<br>
-        2. <strong>Pure local attention ($\ell \times W$ with $W = 3$):</strong> Each of the $16$ tokens attends to $3$ local tokens $\implies 16 \times 3 = \mathbf{48\text{ pairs}}$ (cheap, but takes $15$ layers to cross the sequence).<br>
-        3. <strong>TGlobal attention ($\ell \times (W + \ell/k)$ with $k = 4$):</strong> Pooling every $4$ tokens creates $\ell / k = 16 / 4 = \mathbf{4\text{ global tokens}}$, so each of the $16$ queries attends to $3\text{ local} + 4\text{ global} = 7\text{ keys}$:<br>
-        <strong>Your turn &mdash; how many total query-key pairs ($16 \times 7$, or $48\text{ local} + 64\text{ global}$) does TGlobal evaluate?</strong>
+        2. <strong>Pure local attention ($\ell \cdot W$):</strong> Each of the $16$ tokens attends to $W = 3$ local tokens $\implies 16 \times 3 = \mathbf{48\text{ pairs}}$ (cheap, but blind past distance $1$).<br>
+        3. <strong>TGlobal attention ($\ell(W + \ell/k)$):</strong> Pooling every $k = 4$ tokens creates $M = 16 / 4 = \mathbf{4\text{ global tokens}}$. Each of the $16$ queries attends to $3\text{ local} + 4\text{ global} = 7\text{ keys}$ $\implies 16 \times 7 = \mathbf{112\text{ pairs}}$ ($48$ local $+ 64$ global)—cutting full attention pairs by more than half even on a tiny 16-token toy sequence.
       </p>
-      <div class="control-row">
-        <label for="wk2-input">$\text{Pairs}_{\text{TGlobal}} = 16 \times 7 =$</label>
-        <input type="number" id="wk2-input" step="1" placeholder="Pairs" style="width:6.5rem;">
-        <span>pairs (vs. $256$ full)</span>
-        <button class="btn btn-small" onclick="checkWorked2()">Check</button>
-      </div>
-      <div id="wk2-feedback" class="readout" style="display:none;"></div>
     </div>
 
     <p>
-      Giving an encoder global summary hubs is only half the battle; you also have to train the model to actually route long-range themes through them. Standard <span class="term" data-term="span-corruption">T5 span corruption</span> masks out random 3-word phrases, which a model can usually guess just by reading the ten words next door. LongT5 instead pre-trains with <span class="term" data-term="psg-pretraining">PEGASUS Principle Sentences Generation (PSG)</span>: it scores every sentence in a long document by its <span class="term" data-term="rouge">ROUGE-F1</span> word overlap with the rest of the text, masks out the top $20\%$ most central "topic sentences," and forces the decoder to reconstruct them all as a summary. Because those missing sentences summarize entire sections, the encoder is forced to pass document-wide signal through the transient global tokens <span class="term" data-term="sym-gm">$g_m$</span>.
+      Giving an encoder global summary hubs is only half the job; you also have to train the model to route long-range themes through them. Standard <span class="term" data-term="span-corruption">T5 span corruption</span> masks out random 3-word phrases, which a model can usually guess just by reading the ten words next door. LongT5 instead pre-trains with <span class="term" data-term="psg-pretraining">PEGASUS Principle Sentences Generation (PSG)</span>: it scores every sentence in a long document by its <span class="term" data-term="rouge">ROUGE-F1</span> word overlap with the rest of the text, masks out the top $20\%$ most central "topic sentences," and trains the decoder to generate all of them together as a pseudo-summary. Because those missing sentences summarize entire sections, the encoder is forced to pass document-wide signal through the transient global tokens <span class="term" data-term="sym-gm">$g_m$</span>.
     </p>
 
-    <div class="interactive-card" id="stepper-widget">
-      <div class="widget-label">Side-by-Side Matrix Comparison</div>
-      <h3>Attention Grid &amp; Pair Count for $\ell = 8$ Tokens ($W = 3, k = 2$)</h3>
-      <p style="margin:0.2rem 0 0.5rem 0; font-size:0.88rem;">
-        Compare which key-value cells (black squares) are computed for each query row across the three attention patterns:
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small active" id="step-btn-0" onclick="setTgaStep(0)">Full O(l²)</button>
-        <button class="btn btn-small" id="step-btn-1" onclick="setTgaStep(1)">Local O(l·r)</button>
-        <button class="btn btn-small" id="step-btn-2" onclick="setTgaStep(2)">TGlobal O(l(r+l/k))</button>
-      </div>
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Counting TGlobal Pairs">
+      <p>An encoder layer processes <span class="term" data-term="sym-l">$\ell = 32$</span> tokens with local window width $W = 5$ ($r = 2$ left/right plus self) and TGlobal block size <span class="term" data-term="sym-k">$k = 8$</span>. How many total query-key pairs does TGlobal compute compared to $\ell^2 = 1{,}024$ for full self-attention?</p>
+      <label class="mcq-option" data-explain="160 is only the local window pairs (32 x 5), forgetting the 32/8 = 4 transient global tokens.">$160\text{ pairs}$ ($32 \times 5$).</label>
+      <label class="mcq-option" data-explain="128 is only the global pairs (32 x 4), forgetting the 5 local neighbors per query.">$128\text{ pairs}$ ($32 \times 4$).</label>
+      <label class="mcq-option" data-explain="Correct. Dividing 32 tokens into blocks of 8 creates M = 32/8 = 4 global tokens. Each of the 32 queries attends to 5 local + 4 global = 9 keys, giving 32 x 9 = 288 pairs (vs. 1,024 full).">$288\text{ pairs}$ ($32 \text{ queries} \times (5\text{ local} + 4\text{ global keys})$).</label>
+    </details>
 
-      <div class="small-multiples" id="tga-sm-grid"></div>
-      <div class="readout" id="tga-step-explain"></div>
+    <details class="mcq-box" data-correct="B" data-topic="Check 3: Why TGlobal Tokens Are Called Transient">
+      <p>Why do the LongT5 authors call TGlobal's pooled block tokens <em>transient</em> global tokens compared to the global tokens in <span class="term" data-term="etc-bigbird">ETC</span> or <span class="term" data-term="etc-bigbird">BigBird</span>?</p>
+      <label class="mcq-option" data-explain="Every query token attends to all l/k transient global tokens deterministically; there is no random dropout of global tokens.">Because TGlobal randomly drops 50% of the global tokens at each training step like dropout.</label>
+      <label class="mcq-option" data-explain="Correct. Instead of maintaining a persistent secondary global memory stream across layers, TGlobal dynamically constructs l/k block-pooled tokens inside each attention operation and discards them right after.">Because they are dynamically synthesized (by summing and normalizing $k$-token blocks) inside each attention layer and immediately discarded afterward, requiring no persistent global side-input.</label>
+      <label class="mcq-option" data-explain="TGlobal is applied in every encoder layer during both training and inference.">Because they are used only during PEGASUS pre-training and removed during fine-tuning.</label>
+    </details>
 
-      <div id="sim-gate-box" style="margin-top:0.9rem; border-top:1px solid #000; padding-top:0.75rem;">
-        <div class="widget-label">Quick Check Before Unlocking Explorer</div>
-        <p style="margin:0.25rem 0 0.5rem 0; font-size:0.9rem;">
-          If you increase the block size $k$ from $k = 4$ to $k = 8$ on a sequence of length $\ell = 32$, each block pools twice as many tokens. How many transient global tokens $M = \ell / k = 32 / 8$ are created?
-        </p>
-        <div class="control-row">
-          <label for="gate-input">Global tokens $M = 32 / 8 =$</label>
-          <input type="number" id="gate-input" step="1" placeholder="Count" style="width:5.5rem;">
-          <button class="btn btn-small" onclick="checkSimGate(false)">Verify &amp; Unlock</button>
-          <button class="btn btn-small" onclick="checkSimGate(true)">Show me</button>
-        </div>
-        <div id="gate-feedback" class="readout" style="display:none;"></div>
-      </div>
+    <details class="mcq-box" data-correct="B" data-topic="Check 4: Where TGlobal Is Applied in LongT5">
+      <p>In LongT5, where is <span class="term" data-term="tglobal">Transient Global Attention</span> applied, and where does it hit its main trade-off?</p>
+      <label class="mcq-option" data-explain="Summaries and QA answers are short (128-512 tokens), so LongT5 keeps a standard T5 decoder.">Only in the autoregressive decoder self-attention layers.</label>
+      <label class="mcq-option" data-explain="Correct. LongT5 replaces only the encoder self-attention (where inputs are 4k-16k tokens) while keeping a standard T5 decoder for the short output summary; its main trade-off is that pooling k=16 tokens into one vector blurs fine single-word detail outside local radius r.">In the encoder self-attention layers (while keeping a standard T5 decoder for short outputs); pooling $k=16$ tokens into one vector blurs fine single-token detail far outside radius $r$.</label>
+      <label class="mcq-option" data-explain="Cross-attention in LongT5 remains standard T5 encoder-decoder attention.">Only in the decoder-to-encoder cross-attention layers.</label>
+    </details>
 
-      <div id="sim-unlocked" style="display:none; margin-top:0.9rem; border-top:1px solid #000; padding-top:0.8rem;">
-        <div class="widget-label">Interactive TGlobal Complexity &amp; Compression Explorer ($\ell = 64$ Tokens)</div>
-        <p style="margin:0.2rem 0 0.5rem 0; font-size:0.88rem;">
-          Adjust block size <span class="term" data-term="sym-k">$k$</span> and local window width $W = 2r+1$ on an $\ell = 64$-token sequence ($\text{Full} = 64^2 = 4{,}096\text{ pairs}$) to see the trade-off between local window cost and global block compression:
-        </p>
-        <div class="control-row">
-          <button class="btn btn-small active" onclick="setTgaPreset(16, 5)">LongT5 Ratio ($k=16, W=5$)</button>
-          <button class="btn btn-small" onclick="setTgaPreset(4, 3)">Fine Global ($k=4, W=3$)</button>
-          <button class="btn btn-small" onclick="setTgaPreset(32, 9)">Coarse Global ($k=32, W=9$)</button>
-        </div>
-        <div class="control-row">
-          <label for="k-slider">Block size $k$:</label>
-          <input type="range" id="k-slider" min="2" max="32" step="2" value="16" oninput="updateTgaSim()">
-          <span class="val" id="k-val">16</span>
-        </div>
-        <div class="control-row">
-          <label for="w-slider">Local window $W$:</label>
-          <input type="range" id="w-slider" min="1" max="15" step="2" value="5" oninput="updateTgaSim()">
-          <span class="val" id="w-val">5</span>
-        </div>
-        <div class="figure-box">
-          <svg id="tga-svg" viewBox="0 0 460 125" width="460" height="125" role="img" aria-label="Full vs Local vs TGlobal attention pair count comparison"></svg>
-        </div>
-        <div class="stat-grid">
-          <div class="stat"><div class="k">Global Tokens ($\ell/k$)</div><div class="v" id="st-globals">4</div></div>
-          <div class="stat"><div class="k">Local Pairs ($\ell W$)</div><div class="v" id="st-local">320</div></div>
-          <div class="stat"><div class="k">Global Pairs ($\ell^2/k$)</div><div class="v" id="st-global-pairs">256</div></div>
-          <div class="stat"><div class="k">TGlobal vs Full ($4096$)</div><div class="v" id="st-ratio">14.1%</div></div>
-        </div>
-      </div>
-    </div>
-
-    <h2 id="s4">4. Where TGlobal Hits Its Limits &amp; Hands-On Practice</h2>
-    <p>
-      TGlobal has two practical trade-offs worth keeping in mind. First, summing $k = 16$ tokens into a single vector blurs fine, single-word details outside the local radius $r$: a distant token can easily tell <em>which</em> 16-token block talks about a topic, but exact word-level extraction still leans on the decoder's cross-attention over the final encoder states. Second, because the output summary or answer in tasks like summarization and QA is usually short ($128$ to $512$ tokens), LongT5 only uses TGlobal inside the <strong>encoder</strong> self-attention layers while leaving the decoder completely untouched.
-    </p>
-
-    <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Try It By Hand</div>
-      <h3>Compute Total Attention Pairs for $\ell = 32, W = 5, k = 8$</h3>
-      <p>
-        Consider an encoder layer processing $\ell = 32$ tokens with local window width $W = 5$ ($r = 2$ left, $2$ right, plus self) and TGlobal block size $k = 8$:<br>
-        <strong>Step 1 (Full attention baseline):</strong> $\text{Pairs}_{\text{Full}} = \ell^2 = 32 \times 32 = \mathbf{1{,}024\text{ pairs}}$.<br>
-        <strong>Step 2 (Count transient global tokens):</strong> Dividing $\ell = 32$ tokens into blocks of $k = 8$ creates $M = \ell / k = 32 / 8 = \mathbf{4\text{ global tokens}}$.<br>
-        <strong>Step 3 (Your turn &mdash; Total TGlobal pairs):</strong> Each of the $\ell = 32$ tokens attends to $W = 5$ local tokens plus $M = 4$ global tokens ($5 + 4 = 9$ keys per query). What is $\text{Pairs}_{\text{TGlobal}} = 32 \times 9$?
-      </p>
-      <div class="control-row">
-        <label for="fade-input">$\text{Pairs}_{\text{TGlobal}} = 32 \times 9 =$</label>
-        <input type="number" id="fade-input" step="1" placeholder="Pairs" style="width:6.5rem;">
-        <span>pairs (vs. $1{,}024$ full)</span>
-        <button class="btn btn-small" onclick="checkFaded()">Check</button>
-      </div>
-      <div id="fade-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <div class="interactive-card" id="recall-widget">
-      <div class="widget-label">Quick Boundary Checks</div>
-      <h3>Test the Two TGlobal Extremes</h3>
-
-      <p style="margin-bottom:0.35rem;">
-        <strong>1. Collapsing Back to Full Attention:</strong> At what integer block size $k$ does the transient global rectangle $\ell \cdot (\ell / k)$ generate $\ell$ global tokens and compute the exact same $\ell^2$ global pairs as full self-attention?
-      </p>
-      <div class="control-row">
-        <label for="bc-k">Block size $k =$</label>
-        <input type="number" id="bc-k" step="1" placeholder="Integer k" style="width:7.5rem;">
-        <button class="btn btn-small" onclick="checkBoundary1()">Check</button>
-      </div>
-      <div id="bc1-feedback" class="readout" style="display:none;"></div>
-
-      <p style="margin:0.85rem 0 0.35rem 0;">
-        <strong>2. Why Local Attention Loses on Long-Document QA:</strong> In LongT5's Natural Questions benchmark, scaling pure Local Attention up to $36\text{k}$ tokens still scores lower than TGlobal at $4\text{k}$ tokens. Why?
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="checkBoundary2('A')">A) Without global block summaries, tokens near the question and tokens in a distant answer paragraph cannot exchange information in early encoder layers</button>
-        <button class="btn btn-small" onclick="checkBoundary2('B')">B) Pure Local Attention adds too many extra parameters and overfits</button>
-      </div>
-      <div id="bc2-feedback" class="readout" style="display:none;"></div>
-    </div>
-
-    <h2 id="s5">5. When to Use Which Attention Pattern &amp; Diagnostic Checks</h2>
-
+    <h2>3. Comparing Long-Context Attention Mechanisms</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Attention Mechanism</th>
-            <th>Attention Complexity</th>
+            <th>Complexity</th>
             <th>Extra Inputs / Params</th>
-            <th>Primary Failure Mode</th>
+            <th>Tradeoff / Failure Mode</th>
             <th>When to Use</th>
           </tr>
         </thead>
@@ -252,61 +115,33 @@
             <td><strong><span class="term" data-term="full-attention">Full Self-Attention</span> (Vanilla T5)</strong></td>
             <td class="num">$O(\ell^2)$</td>
             <td>None ($0$ extra params)</td>
-            <td><strong>OOM wall:</strong> T5-large runs out of TPU memory past $\sim 3\text{k}$ tokens</td>
-            <td>Short inputs ($\ell \le 1{,}024$) where exact token-to-token precision matters</td>
+            <td>Runs out of memory past $\sim 3\text{k}\text{–}5\text{k}$ tokens</td>
+            <td>Short inputs ($\ell \le 1{,}024$) where exact token-to-token attention matters</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="local-attention">Local Sliding Window</span> (LongT5-Local)</strong></td>
             <td class="num">$O(\ell r)$ ($r=127$)</td>
             <td>None ($0$ extra params)</td>
-            <td><strong>Multi-hop blindness:</strong> distant question and answer spans cannot interact in 1 hop</td>
+            <td>Distant question and answer spans cannot interact in 1 hop</td>
             <td>Ultra-long sequences ($\ell \ge 32\text{k}$) with strictly local extraction cues</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="etc-bigbird">ETC / BigBird</span> Global-Local</strong></td>
             <td class="num">$O(\ell(r + g))$</td>
             <td>Requires persistent global side-input tokens &amp; custom masks</td>
-            <td><strong>Pipeline friction:</strong> incompatible with drop-in text-to-text T5 checkpoints</td>
+            <td>Incompatible with drop-in text-to-text T5 checkpoints</td>
             <td>Structured documents with explicit pre-segmented hierarchy nodes</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="tglobal">Transient Global (TGlobal)</span> (LongT5)</strong></td>
             <td class="num">$O(\ell(r + \ell/k))$ ($k=16$)</td>
             <td>No side-inputs; $+10\text{k}\text{–}50\text{k}$ params (block bias + LayerNorm)</td>
-            <td>Pools $k=16$ tokens per block, blurring fine single-token details far outside radius $r$</td>
-            <td><strong>Best drop-in default</strong> for long summarization &amp; QA ($\ell = 4\text{k}\text{–}16\text{k}$)</td>
+            <td>Pools $k=16$ tokens per block, blurring single-token details far outside radius $r$</td>
+            <td>Best drop-in default for long summarization &amp; QA ($\ell = 4\text{k}\text{–}16\text{k}$)</td>
           </tr>
         </tbody>
       </table>
     </div>
-
-    <details class="mcq-box" data-correct="B" data-topic="Why TGlobal Tokens Are Called Transient">
-      <p>Why do the LongT5 authors call TGlobal's pooled block tokens <em>transient</em> global tokens compared to the global tokens in <span class="term" data-term="etc-bigbird">ETC</span> or <span class="term" data-term="etc-bigbird">BigBird</span>?</p>
-      <label class="mcq-option" data-explain="Every query token attends to all l/k transient global tokens deterministically; there is no random dropout of global tokens.">Because TGlobal randomly drops 50% of the global tokens at each training step like dropout.</label>
-      <label class="mcq-option" data-explain="Correct. Instead of maintaining a persistent secondary global memory stream across layers, TGlobal dynamically constructs l/k block-pooled tokens inside each attention operation and discards them right after.">Because they are dynamically synthesized (by summing and normalizing $k$-token blocks) inside each attention layer and immediately discarded afterward, requiring no persistent global side-input.</label>
-      <label class="mcq-option" data-explain="TGlobal is applied in every encoder layer during both training and inference.">Because they are used only during PEGASUS pre-training and removed during fine-tuning.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="C" data-topic="New Parameters Introduced by TGlobal">
-      <p>When converting a pre-trained <span class="term" data-term="t5-encoder">T5</span> encoder into LongT5 with <span class="term" data-term="tglobal">TGlobal</span> attention, which small set of new parameters ($\sim 10\text{k}$ in Base, $\sim 50\text{k}$ in XL) is added?</p>
-      <label class="mcq-option" data-explain="TGlobal reuses the existing T5 W_K and W_V projection matrices on the global tokens.">Separate $W_Q^{\text{global}}, W_K^{\text{global}}, W_V^{\text{global}}$ projection matrices in every head.</label>
-      <label class="mcq-option" data-explain="TGlobal uses a fixed parameter-free sum over k=16 contiguous tokens followed by LayerNorm, not a learned CNN.">A learned 1D convolutional strided pooling kernel of width $k=16$.</label>
-      <label class="mcq-option" data-explain="Correct. Section 3.1.2 notes that TGlobal only introduces (1) T5-style relative position biases for block-to-block distance and (2) T5-style LayerNorm parameters for normalizing each global token's summed embedding.">T5-style block-to-block relative position biases and LayerNorm scale parameters for normalizing the summed global tokens.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="A" data-topic="Example Packing Masking in TGlobal">
-      <p>To avoid wasting compute on padding when training at sequence length $4{,}096$, LongT5 packs multiple short documents into one sequence (<span class="term" data-term="example-packing">example packing</span>). What special masking rule must TGlobal enforce?</p>
-      <label class="mcq-option" data-explain="Correct. In addition to masking local attention across document boundaries, input tokens from Example 1 must be masked from attending to transient global tokens constructed from blocks in Example 2.">Mask attention from any input token to both local tokens and transient global tokens belonging to other packed examples.</label>
-      <label class="mcq-option" data-explain="Sharing global tokens across unrelated packed documents leaks cross-document noise into every layer.">Allow all packed examples to share the same $\ell/k$ transient global tokens so batch statistics mix.</label>
-      <label class="mcq-option" data-explain="LongT5 explicitly supports example packing with TGlobal via block-level attention masks.">Disable transient global tokens whenever more than one example is packed into a sequence.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="B" data-topic="Where TGlobal Is Applied in LongT5">
-      <p>In the LongT5 architecture (Section 3.1 &amp; Section 7), where is <span class="term" data-term="tglobal">Transient Global Attention</span> applied?</p>
-      <label class="mcq-option" data-explain="The decoder generates relatively short summaries or answers (128-512 tokens), so LongT5 keeps a standard T5 decoder.">Only in the autoregressive decoder self-attention layers.</label>
-      <label class="mcq-option" data-explain="Correct. LongT5 replaces only the encoder self-attention with Local or TGlobal attention while keeping standard T5 decoder self-attention and cross-attention, because inputs are long (up to 16k-36k) while outputs are short (128-512).">In the encoder self-attention layers (while keeping a standard T5 decoder for the shorter output sequences).</label>
-      <label class="mcq-option" data-explain="Cross-attention in LongT5 remains standard T5 encoder-decoder attention.">Only in the decoder-to-encoder cross-attention layers.</label>
-    </details>
 
     <div class="score-bar"></div>
 
@@ -317,7 +152,7 @@
     var GLOSSARY = {
       'tglobal': {
         title: 'Transient Global Attention (TGlobal)',
-        body: 'LongT5\'s drop-in sparse encoder attention (<a href="https://arxiv.org/abs/2112.07916" target="_blank" rel="noopener">Guo et al., 2022</a>). Splits <span class="term" data-term="sym-l">$\\ell$</span> tokens into fixed blocks of <span class="term" data-term="sym-k">$k$</span> tokens, sums and <span class="term" data-term="rms-layernorm">LayerNorms</span> each block into a temporary global token <span class="term" data-term="sym-gm">$g_m$</span>, lets every token attend locally ($\\pm r$) plus to all $\\ell/k$ global tokens, and discards $g_m$ after each layer.'
+        body: 'LongT5\'s drop-in sparse encoder attention (Guo et al., 2022). Splits <span class="term" data-term="sym-l">$\\ell$</span> tokens into fixed blocks of <span class="term" data-term="sym-k">$k$</span> tokens, sums and <span class="term" data-term="rms-layernorm">LayerNorms</span> each block into a temporary global token <span class="term" data-term="sym-gm">$g_m$</span>, lets every token attend locally ($\\pm r$) plus to all $\\ell/k$ global tokens, and discards $g_m$ after each layer.'
       },
       'full-attention': {
         title: 'Full Quadratic Self-Attention',
@@ -357,320 +192,52 @@
       },
       'block-rel-bias': {
         title: 'Block Relative Position Bias',
-        body: 'Learned scalar bias added to query-global attention logits based on the bucketed distance between the query token\'s block index $\\lfloor i/k \\rfloor$ and the global token\'s block index $m$.'
+        body: 'Learned scalar bias added to query-to-global attention logits based on the bucketed distance between the query token\'s block index $\\lfloor i/k \\rfloor$ and global block index $m$.'
       },
       'etc-bigbird': {
         title: 'ETC & BigBird (Persistent Global-Local Transformers)',
-        body: 'Earlier long-context architectures (Ainslie et al., 2020; Zaheer et al., 2020) that required a separate, persistent "global memory" side-input stream rather than synthesizing transient global tokens inside standard self-attention.'
+        body: 'Earlier long-range Transformers (Ainslie et al., 2020; Zaheer et al., 2020) that allocate a permanent auxiliary array of global tokens alongside the input sequence.'
       },
       't5-encoder': {
-        title: 'T5 (Text-to-Text Transfer Transformer)',
-        body: 'Encoder-decoder Transformer (Raffel et al., 2019) that frames every NLP task as text-to-text generation using relative position biases and RMS LayerNorm.'
-      },
-      'example-packing': {
-        title: 'Example Packing',
-        body: 'Concatenating several short training documents into a single long sequence (e.g. $4{,}096$ tokens) to avoid padding waste. Requires block masking so queries in one example cannot attend to local or global tokens from another packed example.'
+        title: 'T5 Encoder-Decoder Architecture',
+        body: 'Text-to-Text Transfer Transformer (Raffel et al., 2020). LongT5 keeps the standard T5 decoder and cross-attention intact while replacing only the encoder\'s self-attention with Local or TGlobal attention.'
       },
       'psg-pretraining': {
         title: 'Principle Sentences Generation (PSG)',
-        body: 'PEGASUS pre-training objective adopted by LongT5: select the top $20\\%$ of sentences with the highest <span class="term" data-term="rouge">ROUGE-F1</span> overlap against the rest of the document, mask them out, and train the model to generate them as a summary.'
+        body: 'Pre-training objective adopted from PEGASUS (Zhang et al., 2020): selects the top $20\\%$ most central sentences in a document (by <span class="term" data-term="rouge">ROUGE-F1</span> against the remainder), masks them out, and trains the decoder to generate them sequentially.'
       },
       'span-corruption': {
-        title: 'Span Corruption',
-        body: 'Vanilla T5\'s pre-training task where random short spans of consecutive tokens (average length $3$) are replaced by sentinel masks. Less effective than <span class="term" data-term="psg-pretraining">PSG</span> on long-document summarization and QA.'
+        title: 'T5 Span Corruption',
+        body: 'Vanilla T5\'s pre-training task that masks short random spans (mean length $3$ tokens). Less effective than <span class="term" data-term="psg-pretraining">PSG</span> for teaching long-range global synthesis.'
       },
       'rouge': {
-        title: 'ROUGE Score (R-1, R-2, R-L)',
-        body: 'Standard summarization metric measuring unigram ($R\\text{-}1$), bigram ($R\\text{-}2$), and longest common subsequence ($R\\text{-}L$) overlap between generated and reference summaries.'
+        title: 'ROUGE-F1 Overlap Score',
+        body: 'Recall-Oriented Understudy for Gisting Evaluation: measures n-gram word overlap between a candidate sentence and the rest of the document.'
+      },
+      'example-packing': {
+        title: 'Example Packing',
+        body: 'Concatenating multiple short training documents into one fixed $4{,}096$-token sequence to eliminate padding waste. Requires block-level masks so tokens in one example cannot attend to global tokens pooled from another.'
       }
     };
 
     var SPACED_CARDS = [
       {
-        q: 'How does Transient Global Attention (TGlobal) in LongT5 construct global tokens inside each encoder layer, and why are they called "transient"?',
-        a: 'It divides the $\\ell$ input tokens into fixed blocks of $k$ tokens ($k=16$), sums and LayerNorms the $k$ embeddings in each block to produce $\\ell/k$ global tokens $g_m$, lets every query attend to its local radius $\\pm r$ plus all $g_m$, and discards $g_m$ at the end of the attention operation (no persistent side-input).'
+        q: 'In LongT5, how does Transient Global Attention (TGlobal) construct global tokens inside each encoder layer, and why are they called "transient"?',
+        a: 'It slices the $\\ell$ input tokens into fixed blocks of $k$ tokens ($k=16$), sums the $k$ vectors in each block and applies T5 LayerNorm to create $\\ell/k$ transient global tokens $g_m$, lets every token attend locally ($\\pm r$) plus to all $\\ell/k$ global tokens, and discards $g_m$ at the end of the layer.'
       },
       {
-        q: 'What is the time/space complexity of TGlobal attention in terms of sequence length $\\ell$, local radius $r$, and block size $k$?',
-        a: '$O\\!\\left(\\ell\\!\\left(r + \\frac{\\ell}{k}\\right)\\right)$: $\\ell \\cdot (2r+1)$ local query-key pairs plus $\\ell \\cdot (\\ell/k) = \\ell^2/k$ query-to-global pairs.'
+        q: 'What is the attention complexity of TGlobal compared to Full Attention $O(\\ell^2)$ and Local Sliding-Window Attention $O(\\ell r)$?',
+        a: '$O\\!\\left(\\ell\\!\\left(r + \\frac{\\ell}{k}\\right)\\right)$: each of the $\\ell$ queries attends to $2r+1$ local neighbors ($O(\\ell r)$) plus all $\\ell/k$ transient global tokens ($\\ell^2 / k$, which is $k=16\\times$ smaller than full $\\ell^2$).'
       },
       {
-        q: 'What are the only two sets of new parameters ($\\sim 10\\text{k}$–$50\\text{k}$ total) that TGlobal adds on top of a standard T5 encoder checkpoint?',
-        a: '(1) T5-style relative position biases for the distance between a query token\'s block and each global token\'s block, and (2) T5-style LayerNorm parameters for normalizing each block\'s summed global token.'
+        q: 'Why must TGlobal apply T5 LayerNorm right after summing the $k=16$ token vectors in a block?',
+        a: 'Summing $k$ embeddings scales vector norms up by $\\sim \\sqrt{k}$ to $k\\times$ relative to single local tokens; without LayerNorm, query-to-global dot products would saturate softmax and drown out local neighbors.'
       },
       {
-        q: 'Why does TGlobal apply LayerNorm after summing the $k$ token embeddings in a block?',
-        a: 'Without LayerNorm, summing $k=16$ embeddings inflates the global vector\'s norm by $\\sim \\sqrt{k}$ to $k\\times$ relative to single local tokens, which would saturate dot-product logits and drown out local attention.'
-      },
-      {
-        q: 'Why does pure Local Attention ($O(\\ell r)$) underperform TGlobal on long-context Question Answering (Natural Questions) even when scaled to $36\\text{k}$ tokens?',
-        a: 'Local attention can only propagate information by at most $r$ tokens per layer (requiring many hops across distant paragraphs), whereas TGlobal\'s $\\ell/k$ block tokens bridge distant question and answer paragraphs in every single encoder layer.'
-      },
-      {
-        q: 'What pre-training objective does LongT5 pair with TGlobal attention instead of vanilla T5 span corruption?',
-        a: 'PEGASUS Principle Sentences Generation (PSG): masking out the top $20\\%$ highest-ROUGE sentences in a document and generating them as a single target summary string.'
+        q: 'Which small set of new parameters ($\\sim 10\\text{k}$ in Base) does TGlobal add when converting a standard T5 encoder checkpoint?',
+        a: 'Only (1) T5-style block-to-block relative position biases and (2) LayerNorm scale parameters for the summed global tokens (it reuses the existing $W_K, W_V$ projections).'
       }
     ];
-
-    /* ---------- Stage 0: Fast-Forward Diagnostic ---------- */
-    function checkFastForward() {
-      var val = parseInt(document.getElementById('ff-input').value.trim(), 10);
-      var fb = document.getElementById('ff-feedback');
-      fb.style.display = 'block';
-      if (val === 7) {
-        fb.innerHTML = '<strong>Verified ($3 + 16/4 = 7$ keys per query, $16 \\times 7 = 112$ total pairs vs. $256$ full).</strong> Section 1 collapsed. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Section 1</button>';
-        toggleScaffolding(false);
-        unlockSim();
-      } else {
-        fb.innerHTML = 'Not quite. With $\\ell = 16$ and $k = 4$, there are $\\ell / k = 4$ global tokens. Adding $3$ local keys gives $3 + 4 = 7$ keys per query.';
-      }
-      renderMathIn(fb);
-    }
-
-    function toggleScaffolding(show) {
-      var el = document.getElementById('scaffolding-section');
-      if (el) { el.style.display = show ? 'block' : 'none'; }
-    }
-
-    /* ---------- Stage 1 & 2: POE + Refutation ---------- */
-    function runPOE(choice) {
-      document.getElementById('poe-reveal').style.display = 'block';
-      var svg = document.getElementById('poe-svg');
-      var h = '';
-      h += '<text x="10" y="20" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Case A: Pure Local (r=1) -> 15 sequential hops (15 layers) from Token 1 to 16</text>';
-      for (var i = 0; i < 8; i++) {
-        var x = 14 + i * 54;
-        var lbl = i < 7 ? 'T' + (i + 1) : 'T16';
-        h += '<rect x="' + x + '" y="28" width="34" height="20" fill="#fff" stroke="#000" stroke-width="1.5"/>';
-        h += '<text x="' + (x + 17) + '" y="42" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + lbl + '</text>';
-        if (i < 7) {
-          h += '<line x1="' + (x + 34) + '" y1="38" x2="' + (x + 54) + '" y2="38" stroke="#000" stroke-width="1.5" stroke-dasharray="' + (i === 6 ? '3 2' : 'none') + '"/>';
-        }
-      }
-
-      h += '<text x="10" y="74" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Case B: TGlobal (r=1, k=4) -> 1 layer! Token 1 pools into g1; T16 reads g1 directly</text>';
-      h += '<rect x="14" y="84" width="95" height="24" fill="#fff" stroke="#000" stroke-width="1.5"/>';
-      h += '<text x="61" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#000">Block 1 (T1..T4)</text>';
-      h += '<line x1="109" y1="96" x2="155" y2="96" stroke="#000" stroke-width="2"/>';
-      h += '<rect x="155" y="82" width="110" height="28" fill="#000" stroke="#000"/>';
-      h += '<text x="210" y="100" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold" fill="#fff">Global g1 (sum)</text>';
-      h += '<line x1="265" y1="96" x2="325" y2="96" stroke="#000" stroke-width="2"/>';
-      h += '<rect x="325" y="84" width="115" height="24" fill="#fff" stroke="#000" stroke-width="2"/>';
-      h += '<text x="382" y="100" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold" fill="#000">Query T16 attends</text>';
-      svg.innerHTML = h;
-
-      var ref = document.getElementById('poe-refutation');
-      var verdict = (choice === 'B')
-        ? '<strong>Spot on.</strong> '
-        : '<strong>Notice the hop gap:</strong> ';
-      ref.innerHTML = '<div class="refutation-title">Why Pure Local Windows Struggle on Long-Range Reasoning</div>' +
-        '<p style="margin:0;">' + verdict +
-        'With radius $r$, pure local attention can only move information by $r$ tokens per layer—so bridging a distance of $D$ tokens takes $\\lceil D / r \\rceil$ layers ($15 / 1 = 15$ layers here, or $\\sim 95$ layers across a $12{,}000$-token document at $r=127$, far deeper than a 12- or 24-layer encoder!). ' +
-        'TGlobal fixes this in <strong>1 layer</strong>: Token 1 is summed into block global token $g_1$, and Token 16 attends directly to $g_1$ in the very first layer.</p>';
-      renderMathIn(ref);
-    }
-
-    /* ---------- Stage 3: Inline-Faded Worked Examples ---------- */
-    function checkWorked1() {
-      var val = parseFloat(document.getElementById('wk1-input').value);
-      var fb = document.getElementById('wk1-feedback');
-      fb.style.display = 'block';
-      if (!isNaN(val) && Math.abs(val - 1) <= 0.01) {
-        fb.innerHTML = '<strong>Correct ($g_{1,1} = 3 / 3 = 1$).</strong> Regardless of whether a block sums $k=4$ or $k=16$ tokens, dividing by $\\text{RMS}(s_1)$ normalizes $g_1$ back to unit scale $[1, 1, 1, 1]$ so global keys do not overpower local keys.';
-      } else {
-        fb.innerHTML = 'Not quite. Divide the coordinate $s_{1,1} = 3$ by $\\text{RMS}(s_1) = 3$: $3 / 3 = 1$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function checkWorked2() {
-      var val = parseInt(document.getElementById('wk2-input').value, 10);
-      var fb = document.getElementById('wk2-feedback');
-      fb.style.display = 'block';
-      if (val === 112) {
-        fb.innerHTML = '<strong>Correct ($16 \\times 7 = 112$ pairs).</strong> That is $48$ local pairs $+ 64$ global pairs $= 112$ total pairs—cutting full attention\'s $256$ pairs by more than half even on a tiny $16$-token sequence, and by $>10\\times$ on multi-thousand-token sequences.';
-      } else {
-        fb.innerHTML = 'Not quite. Multiply $16$ queries by $7$ keys per query ($3$ local $+ 4$ global): $16 \\times 7 = 112$.';
-      }
-      renderMathIn(fb);
-    }
-
-    /* ---------- Stage 3: Discrete Stepper + Small Multiples ---------- */
-    var TGA_STEPS = [
-      {
-        title: '1. Full: 8x8 = 64 pairs',
-        mode: 'full',
-        note: 'Step 1 (Full Self-Attention): Every one of the 8 query rows attends to all 8 token keys (8 x 8 = 64 black cells). Exact 1-hop global context, but quadratic O(l^2) cost explodes memory at l >= 4,096.'
-      },
-      {
-        title: '2. Local (r=1): 22 pairs',
-        mode: 'local',
-        note: 'Step 2 (Local Window, r=1, W<=3): Each query attends only to itself and immediate left/right neighbors (diagonal band). Fast linear O(l*r) cost, but Row 8 has zero connection to Column 1.'
-      },
-      {
-        title: '3. TGlobal (k=2): +32 global',
-        mode: 'tglobal',
-        note: 'Step 3 (TGlobal, r=1, k=2): Keeps the local diagonal band PLUS adds M = 8/2 = 4 transient global columns (g1..g4) on the right. Every query row attends to all 4 global block summaries in 1 hop!'
-      }
-    ];
-
-    function setTgaStep(idx) {
-      for (var i = 0; i < 3; i++) {
-        var b = document.getElementById('step-btn-' + i);
-        if (b) { b.classList.toggle('active', i === idx); }
-      }
-      renderTgaSmallMultiples(idx);
-      document.getElementById('tga-step-explain').textContent = TGA_STEPS[idx].note;
-    }
-
-    function renderTgaSmallMultiples(activeIdx) {
-      var grid = document.getElementById('tga-sm-grid');
-      if (!grid) { return; }
-      var html = '';
-      TGA_STEPS.forEach(function (st, idx) {
-        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
-        html += '<div class="' + cls + '"><div style="font-weight:bold; font-size:0.82em; margin-bottom:4px;">' + st.title + '</div>';
-        html += '<svg viewBox="0 0 205 110" width="205" height="110" role="img" aria-label="' + st.title + '">';
-        var cell = 11;
-        var ox = 16;
-        var oy = 14;
-        html += '<text x="' + (ox + 4 * cell) + '" y="10" text-anchor="middle" font-family="monospace" font-size="9" fill="#000">Token Keys (1..8)</text>';
-        for (var r = 0; r < 8; r++) {
-          for (var c = 0; c < 8; c++) {
-            var active = (st.mode === 'full') || (Math.abs(r - c) <= 1);
-            var fill = active ? '#000' : '#fff';
-            html += '<rect x="' + (ox + c * cell) + '" y="' + (oy + r * cell) + '" width="' + cell + '" height="' + cell + '" fill="' + fill + '" stroke="#000" stroke-width="0.8"/>';
-          }
-        }
-        if (st.mode === 'tglobal') {
-          var gx = ox + 8 * cell + 10;
-          html += '<text x="' + (gx + 2 * cell) + '" y="10" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#000">Globals (g1..g4)</text>';
-          for (var r2 = 0; r2 < 8; r2++) {
-            for (var g = 0; g < 4; g++) {
-              html += '<rect x="' + (gx + g * cell) + '" y="' + (oy + r2 * cell) + '" width="' + cell + '" height="' + cell + '" fill="#000" stroke="#fff" stroke-width="0.8"/>';
-              html += '<rect x="' + (gx + g * cell) + '" y="' + (oy + r2 * cell) + '" width="' + cell + '" height="' + cell + '" fill="none" stroke="#000" stroke-width="0.8"/>';
-            }
-          }
-        }
-        html += '</svg></div>';
-      });
-      grid.innerHTML = html;
-    }
-
-    function unlockSim() {
-      var gate = document.getElementById('sim-gate-box');
-      var sim = document.getElementById('sim-unlocked');
-      if (gate) { gate.style.display = 'none'; }
-      if (sim) { sim.style.display = 'block'; }
-      updateTgaSim();
-    }
-
-    function checkSimGate(skip) {
-      var fb = document.getElementById('gate-feedback');
-      var raw = parseInt(document.getElementById('gate-input').value, 10);
-      fb.style.display = 'block';
-      if (skip || raw === 4) {
-        fb.innerHTML = '<strong>Unlocked.</strong> Doubling block size $k$ from $4$ to $8$ pools twice as many tokens per block, cutting the global token count in half from $32/4 = 8$ down to $32/8 = 4$. Explore the live trade-off below.';
-        renderMathIn(fb);
-        unlockSim();
-      } else {
-        fb.innerHTML = 'Not quite: divide $\\ell = 32$ by block size $k = 8$ ($32 / 8 = 4$ global tokens).';
-        renderMathIn(fb);
-      }
-    }
-
-    function setTgaPreset(kVal, wVal) {
-      var ks = document.getElementById('k-slider');
-      var ws = document.getElementById('w-slider');
-      if (ks && ws) {
-        ks.value = kVal;
-        ws.value = wVal;
-        updateTgaSim();
-      }
-    }
-
-    function updateTgaSim() {
-      var ks = document.getElementById('k-slider');
-      var ws = document.getElementById('w-slider');
-      var svg = document.getElementById('tga-svg');
-      if (!ks || !ws || !svg) { return; }
-
-      var L = 64;
-      var fullPairs = L * L; /* 4096 */
-      var k = parseInt(ks.value, 10);
-      var W = parseInt(ws.value, 10);
-
-      document.getElementById('k-val').textContent = k;
-      document.getElementById('w-val').textContent = W;
-
-      var globals = Math.ceil(L / k);
-      var localPairs = L * W;
-      var globalPairs = L * globals;
-      var tgaPairs = localPairs + globalPairs;
-      var pct = (tgaPairs / fullPairs) * 100;
-
-      document.getElementById('st-globals').textContent = globals;
-      document.getElementById('st-local').textContent = localPairs;
-      document.getElementById('st-global-pairs').textContent = globalPairs;
-      document.getElementById('st-ratio').textContent = fmt(pct, 1) + '%';
-
-      var rows = [
-        { label: 'Full Attention (l^2)', val: fullPairs, sub: '4096 pairs (100%)' },
-        { label: 'Local Window (l*W)', val: localPairs, sub: localPairs + ' pairs (' + fmt((localPairs / fullPairs) * 100, 1) + '%)' },
-        { label: 'TGlobal (Local + l^2/k)', val: tgaPairs, sub: tgaPairs + ' pairs (' + fmt(pct, 1) + '%)' }
-      ];
-
-      var out = '';
-      rows.forEach(function (r, idx) {
-        var y = 14 + idx * 38;
-        var wBar = Math.max(3, Math.min(200, Math.round((r.val / fullPairs) * 200)));
-        out += '<text x="8" y="' + (y + 16) + '" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">' + r.label + '</text>';
-        out += '<rect x="155" y="' + y + '" width="200" height="22" fill="#fff" stroke="#000" stroke-width="1"/>';
-        out += '<rect x="155" y="' + y + '" width="' + wBar + '" height="22" fill="#000"/>';
-        out += '<text x="362" y="' + (y + 16) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">' + r.sub + '</text>';
-      });
-      svg.innerHTML = out;
-    }
-
-    /* ---------- Stage 4: Backward-Faded Practice & Boundary Checks ---------- */
-    function checkFaded() {
-      var val = parseInt(document.getElementById('fade-input').value, 10);
-      var fb = document.getElementById('fade-feedback');
-      fb.style.display = 'block';
-      if (val === 288) {
-        fb.innerHTML = '<strong>Correct ($32 \\times 9 = 288$ pairs).</strong> That decomposes into $32 \\times 5 = 160$ local pairs plus $32 \\times 4 = 128$ transient global pairs ($288$ total vs. $1{,}024$ for full attention).';
-      } else {
-        fb.innerHTML = 'Not quite. Multiply $\\ell = 32$ queries by $9$ keys per query ($5$ local $+ 4$ global): $32 \\times 9 = 288$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function checkBoundary1() {
-      var val = parseInt(document.getElementById('bc-k').value.trim(), 10);
-      var fb = document.getElementById('bc1-feedback');
-      fb.style.display = 'block';
-      if (val === 1) {
-        fb.innerHTML = '<strong>Exact ($k = 1$).</strong> When $k = 1$, every single token becomes its own "block" ($M = \\ell / 1 = \\ell$), so the global attention rectangle alone computes $\\ell \\times \\ell = \\ell^2$ pairs and loses all sparsity savings.';
-      } else {
-        fb.innerHTML = 'Not quite. Set $\\ell / k = \\ell$ and solve for $k$: $k = 1$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function checkBoundary2(choice) {
-      var fb = document.getElementById('bc2-feedback');
-      fb.style.display = 'block';
-      if (choice === 'A') {
-        fb.innerHTML = '<strong>Correct.</strong> Question answering requires matching the question tokens against candidate answer paragraphs thousands of tokens away. Pure Local Attention cannot connect them until late encoder layers (or not at all if distance exceeds $\\text{layers} \\times r$), whereas TGlobal connects every token to every $16$-token block summary in Layer 1.';
-      } else {
-        fb.innerHTML = 'Not quite: Local Attention introduces <em>zero</em> new parameters. It underperforms because tokens outside radius $r = 127$ cannot communicate directly.';
-      }
-      renderMathIn(fb);
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      setTgaStep(0);
-    });
   </script>
 </body>
 </html>

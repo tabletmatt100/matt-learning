@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Feature Engineering Refresher: Encoding, Interactions, Cyclical Time &amp; Target Leakage</title>
+  <title>Feature Engineering: Encoding, Interactions, Cyclical Time &amp; Target Leakage</title>
 
   <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
   <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
@@ -16,146 +16,80 @@
     <h1>Feature Engineering: Turning Raw Columns Into Signals Models Can Actually Split On</h1>
 
     <p>
-      Raw database columns are optimized for storage, not for machine learning geometry. When you hand a model raw columns like <code>annual_debt</code>, <code>annual_income</code>, <code>zip_code</code>, and <code>application_hour</code> ($0$ to $23$), the signal is technically in the table, yet different model families will trip over their own geometric blind spots trying to read it.
+      Raw database columns are designed for storage, not for machine learning geometry. When you hand a model raw columns like <code>annual_debt</code>, <code>annual_income</code>, <code>zip_code</code>, and <code>application_hour</code> ($0$ to $23$), the signal is technically in the table, yet different model families will trip over their own geometric blind spots trying to read it.
     </p>
     <p>
-      Consider the difference between a <span class="term" data-term="decision-tree">decision tree</span> (<span class="term" data-term="gbdt">XGBoost / LightGBM</span>) and a <span class="term" data-term="linear-model">linear model</span> or <span class="term" data-term="neural-net">neural network</span>. A decision tree only cares about the sorted rank order of a column, so rescaling dollars into thousands or taking a logarithm $\ln(x)$ changes literally nothing for a tree—yet that same tree can only make horizontal or vertical cuts ($x_1 &gt; c$), forcing it to carve a clumsy 10-step staircase just to approximate a simple ratio like Debt-to-Income ($x_1 / x_2$). Conversely, a linear model or <span class="term" data-term="knn">k-NN</span> classifier gets completely hijacked by unscaled dollar columns or skewed millionaire outliers, and thinks 11:00 PM ($h = 23$) and Midnight ($h = 0$) are $23$ hours apart unless you wrap time around a circle with $\sin$ and $\cos$.
+      Consider the difference between a <span class="term" data-term="decision-tree">decision tree</span> (<span class="term" data-term="gbdt">XGBoost / LightGBM</span>) and a <span class="term" data-term="linear-model">linear model</span> or <span class="term" data-term="neural-net">neural network</span>. A decision tree only cares about the sorted rank order of a column, so rescaling dollars into thousands or taking a logarithm $\ln(x)$ changes literally nothing for a tree—yet that same tree can only make horizontal or vertical axis-aligned cuts ($x_1 &gt; c$), forcing it to carve a clumsy 10-step staircase just to approximate a simple diagonal ratio like Debt-to-Income ($x_1 / x_2$). Conversely, a linear model or <span class="term" data-term="knn">k-NN</span> classifier gets completely hijacked by unscaled dollar columns or skewed millionaire outliers, and thinks 11:00 PM ($h = 23$) and Midnight ($h = 0$) are $23$ hours apart unless you wrap time around a circle with $\sin$ and $\cos$.
     </p>
     <p>
       Good feature engineering means matching each transformation to the model's exact blind spot—while guarding against the silent killer of tabular ML: <span class="term" data-term="leakage">target leakage</span> when encoding high-cardinality categories like zip codes.
     </p>
 
-    <h2 id="s1">1. Why Trees Need Ratios While Linear Models Need Scaling</h2>
-
-    <div class="story-box">
-      <div class="story-label">Running Scenario: Loan Default Risk</div>
-      <p style="margin:0;">
-        You are predicting whether a loan applicant will default (<span class="term" data-term="target-y">$y \in \{0, 1\}$</span>) from two raw columns: <strong>Annual Debt (<span class="term" data-term="feature-x">$x_1$</span>)</strong> and <strong>Annual Income (<span class="term" data-term="feature-x">$x_2$</span>)</strong>, plus their <strong>Zip Code</strong> and <strong>Application Hour ($h \in [0, 23]$)</strong>.
-      </p>
-    </div>
-
-    <div class="interactive-card" id="poe-widget">
-      <div class="widget-label">Quick Prediction: Tree Blind Spots</div>
-      <h3>Can a Decision Tree Split Cleanly on $x_1 / x_2 > 0.5$?</h3>
-      <p>
-        Suppose applicants default whenever their <strong>Debt-to-Income ratio</strong> exceeds $0.5$ ($x_1 > 0.5\,x_2$, a diagonal line across the Debt vs. Income plot). You train a <span class="term" data-term="decision-tree">decision tree</span> on raw Debt ($x_1$) and raw Income ($x_2$). If you now add a third column $x_3 = \ln(x_2)$, vs. adding $x_4 = x_1 / x_2$, which engineered column helps the tree?
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="runPOE('A')">A) Both help equally</button>
-        <button class="btn btn-small" onclick="runPOE('B')">B) Only $\ln(x_2)$ helps</button>
-        <button class="btn btn-small" onclick="runPOE('C')">C) Only the ratio $x_1 / x_2$ helps ($\ln$ does nothing to a tree)</button>
-        <button class="btn btn-small" onclick="runPOE('skip')">Show me why</button>
-      </div>
-      <div id="poe-reveal" class="refutation" style="display:none;"></div>
-    </div>
-
+    <h2>1. Why Trees Need Ratios While Linear Models Need Scaling &amp; $\sin/\cos$</h2>
     <p>
-      A <span class="term" data-term="decision-tree">decision tree</span> only makes <strong>axis-aligned splits</strong> ($x_1 > c$ or $x_2 > c$, vertical or horizontal cuts). To approximate a diagonal boundary like $\text{Debt} / \text{Income} > 0.5$, a tree on raw $(x_1, x_2)$ has to carve a jagged staircase of many splits—and fails completely whenever income rises outside the training range.
+      A <span class="term" data-term="decision-tree">decision tree</span> splits data by testing whether a single column exceeds a threshold ($x_j &gt; c$). Because a <span class="term" data-term="monotonic">monotonic transformation</span> like <span class="term" data-term="z-score">Z-score scaling</span> ($z = \frac{x - \mu}{\sigma}$) or <span class="term" data-term="log-transform">$\ln(1 + x)$</span> preserves the exact sorted order of rows, every split threshold on $\ln(x_2)$ separates the exact same rows as a threshold on $x_2$. Single-column scaling has zero effect on a tree. What trees struggle to learn on their own are <strong><span class="term" data-term="interaction-feature">ratios and differences</span></strong> between two columns ($x_1 / x_2$ or $x_1 - x_2$), because a diagonal line across two features requires dozens of axis-aligned staircase splits.
     </p>
 
     <div class="worked">
-      <p><strong>Worked trace (3 applicants with identical 50% debt-to-income ratio):</strong></p>
+      <p><strong>Worked Example (Why an interaction ratio collapses a staircase into 1 split):</strong></p>
       <p>
-        &bull; <strong>Applicant A:</strong> Debt $x_1 = 20\text{k}$, Income $x_2 = 40\text{k} \implies \text{Ratio } r = \frac{20}{40} = \mathbf{0.50}$.<br>
-        &bull; <strong>Applicant B:</strong> Debt $x_1 = 40\text{k}$, Income $x_2 = 80\text{k} \implies \text{Ratio } r = \frac{40}{80} = \mathbf{0.50}$.<br>
-        &bull; <strong>Applicant C:</strong> Debt $x_1 = 30\text{k}$, Income $x_2 = 100\text{k} \implies \text{Ratio } r = \frac{30}{100} = \mathbf{0.30}$.<br>
-        On raw $x_1$ alone, Applicant C ($30\text{k}$ debt) sits <em>between</em> A ($20\text{k}$) and B ($40\text{k}$), so no single threshold on Debt can separate $\{A, B\}$ from $C$. Once you engineer the <span class="term" data-term="interaction-feature">interaction feature</span> $r = x_1 / x_2$, a single split at $r \ge 0.50$ separates them cleanly in <strong>1 node</strong>.
+        Suppose loan applicants default whenever their Debt-to-Income ratio hits $0.50$:<br>
+        &bull; <strong>Applicant A (Default):</strong> Debt $x_1 = 20\text{k}$, Income $x_2 = 40\text{k} \implies \text{Ratio } r = \frac{20}{40} = \mathbf{0.50}$.<br>
+        &bull; <strong>Applicant B (Default):</strong> Debt $x_1 = 40\text{k}$, Income $x_2 = 80\text{k} \implies \text{Ratio } r = \frac{40}{80} = \mathbf{0.50}$.<br>
+        &bull; <strong>Applicant C (Paid):</strong> Debt $x_1 = 30\text{k}$, Income $x_2 = 100\text{k} \implies \text{Ratio } r = \frac{30}{100} = \mathbf{0.30}$.<br>
+        On raw Debt $x_1$ alone, Applicant C ($30\text{k}$) sits right <em>between</em> A ($20\text{k}$) and B ($40\text{k}$), so no single threshold on Debt can separate $\{A, B\}$ from $C$. Once you engineer the ratio $r = x_1 / x_2$, a single split at $r \ge 0.50$ separates them cleanly in <strong>1 node</strong>.
       </p>
     </div>
 
-    <div class="interactive-card" id="split-widget">
-      <div class="widget-label">Interactive Geometric Comparison</div>
-      <h3>Raw Axis Staircase vs. Engineered Ratio Feature</h3>
-      <p style="margin-top:0.2rem;">
-        Toggle between raw features $(x_1, x_2)$ and the engineered ratio $r = x_1 / x_2$ to see how feature representation changes the decision boundary.
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small active" id="view-raw" onclick="setSplitView('raw')">1. Raw Features $(x_1, x_2)$: 7-Split Staircase</button>
-        <button class="btn btn-small" id="view-ratio" onclick="setSplitView('ratio')">2. Engineered Ratio ($r = x_1/x_2$): 1 Clean Split</button>
-      </div>
-      <div class="figure-box">
-        <svg id="split-svg" viewBox="0 0 460 220" width="460" height="220" role="img" aria-label="Decision tree staircase vs engineered ratio split"></svg>
-      </div>
-      <div class="readout" id="split-readout"></div>
-    </div>
-
-    <!-- SECTION 2 -->
-    <h2 id="s2">2. Numerical &amp; Cyclical Transforms</h2>
     <p>
-      While decision trees ignore <span class="term" data-term="monotonic">monotonic rescaling</span> of a single column, <span class="term" data-term="linear-model">linear models</span> ($\hat{y} = w_1 x_1 + w_2 x_2 + b$), <span class="term" data-term="neural-net">neural networks</span>, and <span class="term" data-term="knn">k-NN</span> depend directly on numerical distances and slopes. If Income is measured in raw dollars ($40{,}000$) and Age in years ($40$), an unscaled <span class="term" data-term="l2-reg">L2 penalty</span> or <span class="term" data-term="gradient">gradient descent</span> step treats a $1$-unit change in Income and Age identically. Applying <span class="term" data-term="z-score">Z-score standardization</span> ($z = \frac{x - \mu_{\text{train}}}{\sigma_{\text{train}}}$) subtracts the training mean <span class="term" data-term="mu">$\mu_{\text{train}}$</span> and divides by the training standard deviation <span class="term" data-term="sigma">$\sigma_{\text{train}}$</span>, putting every continuous feature into common standard-deviation units (mean $0$, variance $1$).
+      For <span class="term" data-term="linear-model">linear models</span>, <span class="term" data-term="neural-net">neural networks</span>, and <span class="term" data-term="knn">k-NN</span>, the priorities flip. Unscaled dollars ($40{,}000$) dwarf age ($40$) in Euclidean distance and <span class="term" data-term="l2-reg">L2 regularization</span>, so you must standardize continuous columns with <span class="term" data-term="z-score">Z-score scaling</span> using the <strong>training fold's</strong> mean <span class="term" data-term="mu">$\mu_{\text{train}}$</span> and standard deviation <span class="term" data-term="sigma">$\sigma_{\text{train}}$</span>, and apply <span class="term" data-term="log-transform">$\ln(1 + x)$</span> to heavy-tailed dollar or count columns so a single millionaire outlier doesn't tilt the regression line.
     </p>
     <p>
-      Standardizing mean and variance is still not enough when a column has a heavy right tail, like household income or transaction counts ($10\text{k}$, $100\text{k}$, $10\text{M}$). Applying a <span class="term" data-term="log-transform">log transform</span> ($\tilde{x} = \ln(1 + x)$, or base-10 $\log_{10}$) turns multiplicative $10\times$ jumps into equal $+1$ additive steps ($4, 5, 7$) so a single millionaire outlier cannot hijack the regression slope.
-    </p>
-    <p>
-      Periodic time columns like hour-of-day $h \in \{0, 1, \dots, 23\}$ or day-of-week create a different geometric trap: in raw integers, 11:00 PM ($h = 23$) and Midnight ($h = 0$) look $23$ hours apart—the maximum possible distance on the clock! Wrapping $h$ around a 2D unit circle with <span class="term" data-term="cyclical-encoding">cyclical $\sin/\cos$ encoding</span> stitches midnight seamlessly back onto 11:00 PM:
+      And for periodic time columns like hour-of-day $h \in [0, 23]$, <span class="term" data-term="cyclical-encoding">cyclical $\sin/\cos$ encoding</span> maps the clock onto a 2D unit circle so 11:00 PM ($h = 23$) and Midnight ($h = 0$) sit right next to each other:
     </p>
 
     <div class="math-block">
       $$h_{\sin} = \sin\!\left(\frac{2\pi h}{24}\right), \qquad h_{\cos} = \cos\!\left(\frac{2\pi h}{24}\right)$$
-      <div class="math-hint">Why do you always need <strong>both</strong> $\sin$ and $\cos$? Because $\sin$ alone hits the exact same value twice every cycle (for instance, $\sin = 0$ at both Midnight $0:00$ and Noon $12:00$). Pairing it with $\cos$ ($+1$ at Midnight, $-1$ at Noon) gives every hour a unique $(x, y)$ coordinate on the circle.</div>
     </div>
 
-    <!-- SECTION 3 -->
-    <h2 id="s3">3. Categorical Encoding &amp; The Target Leakage Trap</h2>
+    <details class="mcq-box" data-correct="C" data-topic="Check 1: Tree Invariance vs. Interaction Ratios">
+      <p>You are training an <span class="term" data-term="gbdt">XGBoost</span> tree model on house data with <code>total_price</code> ($x_1$) and <code>square_feet</code> ($x_2$). Which engineered feature actually gives the tree new splitting power?</p>
+      <label class="mcq-option" data-explain="Z-score scaling is a strictly increasing linear transform; every tree split on z_1 is identical to a split on x_1.">Standardizing <code>total_price</code> with <span class="term" data-term="z-score">$z = (x_1 - \mu)/\sigma$</span>.</label>
+      <label class="mcq-option" data-explain="Log1p is a strictly increasing monotonic transform on positive numbers, so the sorted order of rows stays 100% identical.">Taking the <span class="term" data-term="log-transform">log transform</span> $\ln(1 + x_2)$ of <code>square_feet</code>.</label>
+      <label class="mcq-option" data-explain="Correct. Dividing two features (price per square foot = x_1 / x_2) creates a diagonal interaction that changes row ordering and lets a single tree node split on value density.">Computing the <span class="term" data-term="interaction-feature">ratio</span> <code>price_per_sqft</code> $= x_1 / x_2$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Check 2: Why Both Sine and Cosine Are Required">
+      <p>Why do we encode hour-of-day $h \in [0, 23]$ using <strong>both</strong> $\sin(2\pi h / 24)$ and $\cos(2\pi h / 24)$ instead of only $\sin(2\pi h / 24)$?</p>
+      <label class="mcq-option" data-explain="Correct. Sine alone hits every value twice on a full circle—for example, sin(0) = 0 at midnight and sin(pi) = 0 at noon. Pairing sine and cosine gives every hour a unique (x, y) point on the unit circle.">Because $\sin$ alone assigns identical values to two different hours every day (e.g., $0:00$ and $12:00$ both have $\sin = 0$).</label>
+      <label class="mcq-option" data-explain="Models handle negative numbers between -1 and +1 without any issue.">Because machine learning models crash when features take negative values.</label>
+      <label class="mcq-option" data-explain="Both sine and cosine have the exact same 24-hour period.">Because $\sin$ only covers 12 hours while $\cos$ covers the other 12 hours.</label>
+    </details>
+
+    <h2>2. High-Cardinality Categories &amp; The Target Leakage Trap</h2>
     <p>
-      How do you turn a string category column into numbers without inventing a fake mathematical ordering? When a column only has a handful of unique levels ($K \le 15$, such as <code>payment_type</code>), <span class="term" data-term="one-hot">one-hot encoding</span> works cleanly by creating $K$ binary $0/1$ indicator columns—avoiding the classic mistake of feeding arbitrary integer IDs ($1, 2, 3$) into a linear model that would treat Category 3 as "three times" Category 1.
+      When a categorical column only has a few unique values ($K \le 15$, like <code>payment_type</code>), <span class="term" data-term="one-hot">one-hot encoding</span> works cleanly by creating $K$ binary $0/1$ columns. When a column has thousands of levels ($K = 5{,}000$, like <code>zip_code</code> or <code>merchant_id</code>), one-hot encoding explodes into $5{,}000$ sparse columns.
     </p>
     <p>
-      When a column has thousands of unique levels ($K = 5{,}000$, like <code>zip_code</code> or <code>merchant_id</code>), one-hot encoding explodes into $5{,}000$ sparse columns that shatter decision tree depth and starve rare categories of data. Instead, <span class="term" data-term="target-encoding">Smoothed Target Encoding</span> compresses the entire column into a single number by replacing each category $c$ with a weighted blend of its historical target rate $\bar{y}_c$ and the overall dataset <span class="term" data-term="base-rate">base rate $\bar{y}_{\text{global}}$</span>:
+      Instead, <span class="term" data-term="target-encoding">Smoothed Target Encoding</span> compresses a high-cardinality column into a single number by replacing each category $c$ with a blend of its historical target rate <span class="term" data-term="y-bar-c">$\bar{y}_c$</span> (across <span class="term" data-term="n-c">$n_c$</span> rows) and the global <span class="term" data-term="base-rate">prior $\bar{y}_{\text{global}}$</span>, weighted by a smoothing pseudo-count <span class="term" data-term="smoothing-m">$m$</span>:
     </p>
 
     <div class="math-block">
       $$\hat{y}_c = \frac{n_c \bar{y}_c + m \bar{y}_{\text{global}}}{n_c + m} = \frac{\text{positives}_c + m \bar{y}_{\text{global}}}{n_c + m}$$
-      <div class="math-hint">Click any symbol: <span class="term" data-term="te-symbol">$\hat{y}_c$</span> = encoded feature value, <span class="term" data-term="n-c">$n_c$</span> = training count in category $c$, <span class="term" data-term="y-bar-c">$\bar{y}_c$</span> = category positive rate, <span class="term" data-term="smoothing-m">$m$</span> = smoothing weight (pseudo-count), <span class="term" data-term="base-rate">$\bar{y}_{\text{global}}$</span> = overall base rate.</div>
     </div>
 
-    <div class="worked">
-      <p><strong>Mental-math trace (why smoothing $m$ and <span class="term" data-term="out-of-fold">out-of-fold</span> computation matter):</strong></p>
-      <p>
-        Suppose the overall default rate is <span class="term" data-term="base-rate">$\bar{y}_{\text{global}} = 0.20$</span> ($20\%$) and we set smoothing weight <span class="term" data-term="smoothing-m">$m = 10$</span>.<br>
-        &bull; <strong>Zip A (tiny sample: $n_A = 1$ loan, and it defaulted, so $\text{positives}_A = 1$, raw $\bar{y}_A = 100\%$):</strong><br>
-        Naive target encoding gives $1.00$ (memorizing a 1-row fluke!). With smoothing $m = 10$:<br>
-        $$\hat{y}_A = \frac{1 + 10(0.20)}{1 + 10} = \frac{1 + 2}{11} = \frac{3}{11} \approx \mathbf{0.273}$$
-        Because $n_A = 1 \ll m = 10$, the estimate shrinks heavily toward the $0.20$ global prior.<br>
-        &bull; <strong>Zip B (large sample: $n_B = 90$ loans, $45$ defaulted, raw $\bar{y}_B = 50\%$):</strong><br>
-        $$\hat{y}_B = \frac{45 + 10(0.20)}{90 + 10} = \frac{45 + 2}{100} = \mathbf{0.470}$$
-        Because $n_B = 90 \gg m = 10$, the data dominates and the encoded value stays close to $0.50$.
-      </p>
-    </div>
+    <p>
+      Why are <strong>smoothing ($m &gt; 0$)</strong> and <strong><span class="term" data-term="out-of-fold">out-of-fold (OOF)</span> calculation</strong> non-negotiable here? Suppose a rare zip code only appears once in your training set ($n_c = 1$), and that single applicant defaulted ($y_1 = 1$). If you compute naive in-fold target encoding without smoothing ($m = 0$), that row gets encoded as $\hat{y}_c = 1.00$—baking its own ground-truth label $y_1$ directly into its input feature (<span class="term" data-term="leakage">target leakage</span>)! A decision tree will immediately split on $\hat{y}_c$ to get $100\%$ training accuracy and fail horribly in production. Computing target encoding <strong>out-of-fold</strong> ensures a row's own label $y_i$ is never included in its numerator, while smoothing $m$ pulls tiny categories back toward the safe global base rate $\bar{y}_{\text{global}}$.
+    </p>
 
-    <div class="interactive-card" id="te-widget">
-      <div class="widget-label">Interactive Target-Encoding &amp; Leakage Simulator</div>
-      <h3>See What Happens When a Rare Category Leaks Its Own Label</h3>
-      <p style="margin-top:0.2rem;">
-        Inspect a rare category with <strong>$n_c = 2$ training rows</strong> (Row 1 defaulted $y_1 = 1$; Row 2 paid back $y_2 = 0$; global base rate $\bar{y}_{\text{global}} = 0.20$). Step across the three encoding modes below:
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small active" id="te-btn-0" onclick="setTEMode(0)">1. Naive In-Fold (Leaks $y_i$!)</button>
-        <button class="btn btn-small" id="te-btn-1" onclick="setTEMode(1)">2. Leave-One-Out (Un-smoothed $m=0$)</button>
-        <button class="btn btn-small" id="te-btn-2" onclick="setTEMode(2)">3. Out-of-Fold + Smoothed ($m=4$)</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Row in Zip Z</th>
-              <th>True Label $y_i$</th>
-              <th>Positives Used</th>
-              <th>Denominator ($n_{\text{used}} + m$)</th>
-              <th>Encoded Feature $\hat{y}_i$</th>
-              <th>Diagnosis</th>
-            </tr>
-          </thead>
-          <tbody id="te-tbody"></tbody>
-        </table>
-      </div>
-      <div class="readout" id="te-readout"></div>
-    </div>
+    <details class="mcq-box" data-correct="B" data-topic="Check 3: Smoothed Target Encoding Mental Math">
+      <p>The global fraud <span class="term" data-term="base-rate">base rate</span> is $\bar{y}_{\text{global}} = 0.10$ ($10\%$) and you use smoothing weight <span class="term" data-term="smoothing-m">$m = 10$</span>. A merchant has <span class="term" data-term="n-c">$n_c = 10$</span> past out-of-fold transactions, and $3$ of them were fraud ($\bar{y}_c = 0.30$). What is its <span class="term" data-term="target-encoding">smoothed target encoding</span> $\hat{y}_c$?</p>
+      <label class="mcq-option" data-explain="0.30 is the raw unsmoothed rate (3/10), ignoring the m = 10 prior weight.">$\hat{y}_c = 0.30$.</label>
+      <label class="mcq-option" data-explain="Correct. With n_c = 10 and m = 10, the numerator is 3 + 10(0.10) = 4, and the denominator is 10 + 10 = 20, giving 4 / 20 = 0.20 (halfway between 0.30 and 0.10).">$\hat{y}_c = \frac{3 + 10(0.10)}{10 + 10} = \frac{4}{20} = \mathbf{0.20}$.</label>
+      <label class="mcq-option" data-explain="0.10 is the global prior alone, which only happens when n_c = 0.">$\hat{y}_c = 0.10$.</label>
+    </details>
 
-    <!-- SECTION 4: CONTRASTIVE MATRIX -->
-    <h2 id="s4">4. Cheat Sheet: Which Model Needs Which Feature?</h2>
-
+    <h2>3. Comparing Feature Transforms Across Model Families</h2>
     <div class="table-wrap">
       <table>
         <thead>
@@ -163,76 +97,54 @@
             <th>Transform</th>
             <th><span class="term" data-term="linear-model">Linear / Logistic</span> &amp; <span class="term" data-term="neural-net">MLP</span></th>
             <th><span class="term" data-term="gbdt">Tree Ensembles (XGBoost / RF)</span></th>
-            <th>Leakage Risk?</th>
+            <th>Leakage Risk &amp; Rule</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong><span class="term" data-term="z-score">Z-Score</span> / Min-Max Scaling</strong></td>
-            <td><strong>Essential</strong> (balances gradient steps &amp; L1/L2 penalties)</td>
-            <td><strong>Zero effect</strong> (trees split on rank order only)</td>
-            <td>Low (still fit $\mu, \sigma$ on train only)</td>
+            <td>Essential (balances gradients &amp; L1/L2 penalties)</td>
+            <td>Zero effect (trees split on rank order only)</td>
+            <td>Fit $\mu_{\text{train}}, \sigma_{\text{train}}$ on training fold only</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="log-transform">Log1p ($\ln(1+x)$)</span></strong></td>
-            <td><strong>High impact</strong> (tames right-skewed outliers)</td>
-            <td><strong>Zero effect</strong> on single column (monotonic)</td>
-            <td>None (stateless row operation)</td>
+            <td>High impact (tames right-skewed outliers)</td>
+            <td>Zero effect on single column (monotonic)</td>
+            <td>None (stateless row transform)</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="interaction-feature">Ratios &amp; Differences ($x_1/x_2$)</span></strong></td>
-            <td><strong>High impact</strong> (linear models cannot divide inputs)</td>
-            <td><strong>Huge impact</strong> (replaces multi-split staircases)</td>
-            <td>None (stateless row operation)</td>
+            <td>High impact (linear models cannot divide inputs)</td>
+            <td>Huge impact (replaces multi-split staircases)</td>
+            <td>None (stateless row transform)</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="cyclical-encoding">Cyclical $\sin/\cos$</span></strong></td>
-            <td><strong>Essential</strong> (connects $23:00$ to $00:00$)</td>
-            <td><strong>Helpful</strong> (saves 2 splits to wrap midnight)</td>
-            <td>None (known period $P = 24$ or $7$)</td>
+            <td>Essential (connects $23:00$ to $00:00$)</td>
+            <td>Helpful (saves 2 splits to wrap midnight)</td>
+            <td>None (fixed period $P = 24$ or $7$)</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="target-encoding">Smoothed Target Encoding</span></strong></td>
-            <td><strong>High impact</strong> (compresses $5{,}000$ levels into 1 slope)</td>
-            <td><strong>High impact</strong> (avoids deep one-hot trees)</td>
-            <td><strong>Extreme</strong> (must use <span class="term" data-term="out-of-fold">out-of-fold</span> + smoothing $m$)</td>
+            <td>High impact (compresses $5{,}000$ levels into 1 slope)</td>
+            <td>High impact (avoids deep one-hot trees)</td>
+            <td>Extreme: must compute <span class="term" data-term="out-of-fold">out-of-fold</span> + smoothing $m$</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- SECTION 5: SELF-CHECKS -->
-    <h2 id="s5">5. Quick Self-Checks</h2>
-
-    <details class="mcq-box" data-correct="C" data-topic="Tree Invariance vs. Interactions">
-      <p>You are training an <span class="term" data-term="gbdt">XGBoost</span> tree model on house data with <code>total_price</code> ($x_1$) and <code>square_feet</code> ($x_2$). Which engineered feature actually gives the tree new splitting power?</p>
-      <label class="mcq-option" data-explain="Z-score scaling is a strictly increasing linear transform; every tree split on $z_1$ is identical to a split on $x_1$.">Standardizing <code>total_price</code> with <span class="term" data-term="z-score">$z = (x_1 - \mu)/\sigma$</span>.</label>
-      <label class="mcq-option" data-explain="Log1p is a strictly increasing monotonic transform on positive numbers, so the sorted order of rows (and every tree threshold) stays $100\%$ identical.">Taking the <span class="term" data-term="log-transform">log transform</span> $\ln(1 + x_2)$ of <code>square_feet</code>.</label>
-      <label class="mcq-option" data-explain="Correct. Dividing two features ($\text{price per square foot} = x_1 / x_2$) creates a diagonal interaction that changes row ordering and lets a single tree node split on value density.">Computing the <span class="term" data-term="interaction-feature">ratio</span> <code>price_per_sqft</code> $= x_1 / x_2$.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="B" data-topic="Mental Math: Smoothed Target Encoding">
-      <p>The global fraud <span class="term" data-term="base-rate">base rate</span> is $\bar{y}_{\text{global}} = 0.10$ ($10\%$) and you use smoothing weight <span class="term" data-term="smoothing-m">$m = 10$</span>. A new merchant has <span class="term" data-term="n-c">$n_c = 10$</span> past transactions, and $3$ of them were fraud ($\bar{y}_c = 0.30$). What is its <span class="term" data-term="target-encoding">smoothed target encoding</span> <span class="term" data-term="te-symbol">$\hat{y}_c$</span>?</p>
-      <label class="mcq-option" data-explain="$0.30$ is the un-smoothed raw rate ($3 / 10$), ignoring the $m = 10$ prior weight.">$\hat{y}_c = 0.30$</label>
-      <label class="mcq-option" data-explain="Correct. With $n_c = 10$ and $m = 10$, the numerator is $3 + 10(0.10) = 4$, and the denominator is $10 + 10 = 20$, giving $4 / 20 = 0.20$ (halfway between $0.30$ and $0.10$).">$\hat{y}_c = 0.20$</label>
-      <label class="mcq-option" data-explain="$0.10$ is the global prior alone, which only happens when $n_c = 0$.">$\hat{y}_c = 0.10$</label>
-    </details>
-
-    <details class="mcq-box" data-correct="A" data-topic="Cyclical Encoding">
-      <p>Why do we encode hour-of-day $h \in [0, 23]$ using <strong>both</strong> $\sin(2\pi h / 24)$ and $\cos(2\pi h / 24)$ instead of only $\sin(2\pi h / 24)$?</p>
-      <label class="mcq-option" data-explain="Correct. Sine alone is non-unique on a full circle—for example, $\sin(0) = 0$ at midnight and $\sin(\pi) = 0$ at noon. Pairing sine and cosine gives every hour a unique $(x, y)$ point on the unit circle.">Because $\sin$ alone assigns identical values to two different hours (e.g., $0:00$ and $12:00$ both have $\sin = 0$).</label>
-      <label class="mcq-option" data-explain="Decision trees and linear models handle negative numbers between $-1$ and $+1$ without any issue.">Because machine learning models crash when features take negative values.</label>
-      <label class="mcq-option" data-explain="Both sine and cosine have the exact same 24-hour period.">Because $\sin$ only covers 12 hours while $\cos$ covers the other 12 hours.</label>
-    </details>
-
     <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
   </main>
 
   <script>
     var GLOSSARY = {
       'linear-model': {
         title: 'Linear / Logistic Model',
-        body: 'Predicts via a weighted sum $\\hat{y} = w_1 x_1 + w_2 x_2 + \\dots + b$ (wrapped in a sigmoid for classification). Cannot automatically multiply or divide features, and is sensitive to feature scale and outliers.'
+        body: 'Predicts via a weighted sum $\\hat{y} = w_1 x_1 + w_2 x_2 + \\dots + b$. Cannot automatically divide features, and is sensitive to feature scale and outliers.'
       },
       'decision-tree': {
         title: 'Decision Tree',
@@ -244,55 +156,51 @@
       },
       'knn': {
         title: 'k-Nearest Neighbors (k-NN)',
-        body: 'Classifies a point by looking up the $k$ closest training rows using Euclidean distance $\\sqrt{\\sum_j (x_j - x\'_j)^2}$. Unscaled features with large numeric ranges completely dominate the distance.'
+        body: 'Classifies a point by looking up the $k$ closest training rows using Euclidean distance. Unscaled features with large numeric ranges completely dominate the distance.'
       },
       'neural-net': {
         title: 'Neural Network (MLP)',
-        body: 'Stacked linear layers with non-linear activations trained by <span class="term" data-term="gradient">gradient descent</span>. Converges much faster when inputs are standardized near mean $0$, variance $1$.'
+        body: 'Stacked linear layers with non-linear activations trained by gradient descent. Converges much faster when inputs are standardized near mean $0$, variance $1$.'
       },
       'monotonic': {
         title: 'Monotonic Transformation',
-        body: 'Any function $f(x)$ that strictly preserves order: if $a < b$, then $f(a) < f(b)$ (such as $x + 5$, $10x$, or $\\ln(1+x)$ for $x > 0$). <span class="term" data-term="decision-tree">Decision trees</span> are invariant to monotonic transforms.'
+        body: 'Any function $f(x)$ that strictly preserves order: if $a < b$, then $f(a) < f(b)$ (such as $x + 5$, $10x$, or $\\ln(1+x)$ for $x > 0$). Decision trees are invariant to monotonic transforms.'
       },
       'interaction-feature': {
         title: 'Interaction Feature (Ratio / Difference / Product)',
-        body: 'A column engineered from two or more raw features—such as Debt-to-Income ($x_1 / x_2$), Net Cashflow ($x_2 - x_1$), or Area ($L \\times W$)—that exposes a joint relationship in 1 dimension.'
+        body: 'A column engineered from two or more raw features—such as Debt-to-Income ($x_1 / x_2$) or Net Cashflow ($x_2 - x_1$)—that exposes a diagonal relationship in 1 dimension.'
       },
       'z-score': {
         title: 'Z-Score Standardization',
-        body: '$z = (x - \\mu_{\\text{train}}) / \\sigma_{\\text{train}}$. Centers a feature at $0$ and scales its standard deviation to $1$. Always apply $\\mu_{\\text{train}}$ and $\\sigma_{\\text{train}}$ to validation/test rows without re-fitting.'
+        body: '$z = (x - \\mu_{\\text{train}}) / \\sigma_{\\text{train}}$. Centers a feature at $0$ and scales its standard deviation to $1$.'
       },
       'mu': {
         title: 'Training Mean ($\\mu_{\\text{train}}$)',
-        body: 'Average of a feature computed strictly on the training fold: $\\mu_{\\text{train}} = \\frac{1}{N_{\\text{train}}}\\sum_{i \\in \\text{train}} x_i$.'
+        body: 'Average of a feature computed strictly on the training fold.'
       },
       'sigma': {
         title: 'Training Standard Deviation ($\\sigma_{\\text{train}}$)',
-        body: 'Spread of a feature computed strictly on the training fold: $\\sigma_{\\text{train}} = \\sqrt{\\frac{1}{N_{\\text{train}}}\\sum (x_i - \\mu_{\\text{train}})^2}$.'
+        body: 'Spread of a feature computed strictly on the training fold.'
       },
       'log-transform': {
         title: 'Log1p Transform: $\\ln(1 + x)$',
-        body: 'Applies $\\ln(1 + x)$ to non-negative right-skewed quantities (dollars, clicks, population). Adding $1$ safely maps $x = 0$ to $\\ln(1) = 0$ while pulling huge outliers back into a compact range.'
+        body: 'Applies $\\ln(1 + x)$ to non-negative right-skewed quantities (dollars, clicks). Adding $1$ safely maps $x = 0$ to $\\ln(1) = 0$ while pulling outliers into a compact range.'
       },
       'cyclical-encoding': {
         title: 'Cyclical Encoding ($\\sin / \\cos$)',
-        body: 'Maps a periodic number $t \\in [0, P)$ onto a 2D unit circle via $(\\sin(2\\pi t/P), \\cos(2\\pi t/P))$ so the wrap-around boundary ($t = P - 1$ to $t = 0$) is contiguous.'
+        body: 'Maps a periodic number $t \\in [0, P)$ onto a 2D unit circle via $(\\sin(2\\pi t/P), \\cos(2\\pi t/P))$ so the wrap-around seam ($t = P - 1$ to $t = 0$) is contiguous.'
       },
       'one-hot': {
         title: 'One-Hot Encoding',
         body: 'Expands a categorical column with $K$ unique values into $K$ binary ($0/1$) indicator columns.'
       },
       'target-encoding': {
-        title: 'Target Encoding (Mean Encoding)',
-        body: 'Replaces each category level $c$ with the smoothed average of the target <span class="term" data-term="target-y">$y$</span> among training examples in $c$. High leakage risk unless computed <span class="term" data-term="out-of-fold">out-of-fold</span>.'
+        title: 'Smoothed Target Encoding',
+        body: 'Replaces each category level $c$ with a smoothed average of the target $y$ among training examples in $c$: $\\hat{y}_c = \\frac{\\text{positives}_c + m\\bar{y}_{\\text{global}}}{n_c + m}$.'
       },
       'out-of-fold': {
         title: 'Out-of-Fold (OOF) Target Encoding',
-        body: 'Splits the training set into $K$ folds; for rows in Fold 1, category target averages are computed using only Folds $2\\text{--}K$. Prevents a row\'s own label $y_i$ from leaking into its feature value.'
-      },
-      'te-symbol': {
-        title: 'Smoothed Target Encoding Value ($\\hat{y}_c$)',
-        body: 'The numeric feature value assigned to category $c$: a weighted average between the category mean $\\bar{y}_c$ and the global prior $\\bar{y}_{\\text{global}}$.'
+        body: 'Splits the training set into $K$ folds; for rows in Fold 1, category target averages are computed using only Folds $2\\text{--}K$. Prevents a row\'s own label $y_i$ from leaking into its feature.'
       },
       'n-c': {
         title: 'Category Sample Size ($n_c$)',
@@ -304,131 +212,36 @@
       },
       'smoothing-m': {
         title: 'Smoothing Weight / Pseudo-Count ($m$)',
-        body: 'Hyperparameter controlling how many "virtual rows" at the global base rate $\\bar{y}_{\\text{global}}$ are blended into every category. When $n_c = m$, the category mean and global prior get equal $50/50$ weight.'
+        body: 'Hyperparameter controlling how many virtual rows at the global base rate $\\bar{y}_{\\text{global}}$ are blended into every category. When $n_c = m$, category mean and global prior get equal $50/50$ weight.'
       },
-      'target-y': {
-        title: 'Target Variable ($y$)',
-        body: 'The ground-truth label the model is trying to predict (e.g., $y = 1$ for default, $y = 0$ for paid).'
+      'base-rate': {
+        title: 'Global Prior / Base Rate ($\\bar{y}_{\\text{global}}$)',
+        body: 'Overall average of the target $y$ across the entire training fold.'
       },
-      'feature-x': {
-        title: 'Input Feature ($x_j$)',
-        body: 'A predictor column fed into the model.'
+      'leakage': {
+        title: 'Target / Data Leakage',
+        body: 'Accidentally encoding information from a row\'s own target label $y_i$ (or from validation/test rows) into the input features during training.'
       },
       'l2-reg': {
         title: 'L2 Regularization (Ridge Penalty)',
-        body: 'Adds $\\lambda \\sum_j w_j^2$ to the loss so no single weight $w_j$ grows huge. Requires standardized features (<span class="term" data-term="z-score">Z-score</span>) so $\\lambda$ penalizes every column fairly.'
-      },
-      'gradient': {
-        title: 'Gradient',
-        body: 'Vector of partial derivatives $\\partial L / \\partial w_j$ telling the optimizer how to adjust each weight.'
+        body: 'Adds $\\lambda \\sum_j w_j^2$ to the loss. Requires standardized features (<span class="term" data-term="z-score">Z-score</span>) so $\\lambda$ penalizes every column on an equal scale.'
       }
     };
 
-    function runPOE(choice) {
-      var rev = document.getElementById('poe-reveal');
-      rev.style.display = 'block';
-      var msg = '';
-      if (choice === 'C') {
-        msg = '<strong>Spot on.</strong> ';
-      } else if (choice === 'A' || choice === 'B') {
-        msg = '<strong>Watch out for the monotonic trap!</strong> Most people assume $\\ln(x_2)$ helps every model because it compresses skew. ';
-      }
-      rev.innerHTML = '<div class="refutation-title">Why Trees Ignore log(x) But Love Ratios</div>' +
-        '<p style="margin:0;">' + msg +
-        'A <span class="term" data-term="decision-tree">decision tree</span> only checks whether $x_2 > c$. Since $\\ln(x_2)$ is <span class="term" data-term="monotonic">strictly increasing</span>, the set of rows with $x_2 > 50\\text{k}$ is <em>100% identical</em> to the set of rows with $\\ln(x_2) > \\ln(50\\text{k})$. So $\\ln(x_2)$ changes nothing for a tree! By contrast, the <span class="term" data-term="interaction-feature">ratio</span> $r = x_1 / x_2$ combines two columns and lets a single split cut along the diagonal $x_1 = 0.5\\,x_2$.</p>';
-      renderMathIn(rev);
-    }
-
-    function setSplitView(mode) {
-      document.getElementById('view-raw').classList.toggle('active', mode === 'raw');
-      document.getElementById('view-ratio').classList.toggle('active', mode === 'ratio');
-      var svg = document.getElementById('split-svg');
-      var ro = document.getElementById('split-readout');
-      var h = '';
-
-      if (mode === 'raw') {
-        /* 2D plot: x-axis Income (20k..120k), y-axis Debt (10k..60k) */
-        h += '<rect x="55" y="16" width="360" height="164" fill="#fff" stroke="#000" stroke-width="1.5"/>';
-        /* True diagonal boundary Debt = 0.5 * Income */
-        h += '<line x1="55" y1="180" x2="415" y2="16" stroke="#000" stroke-width="1.5" stroke-dasharray="4 3"/>';
-        h += '<text x="275" y="65" font-family="sans-serif" font-size="11" fill="#000">True rule: Debt / Income = 0.50</text>';
-        /* Tree staircase approximation */
-        var stair = '55,180 55,148 115,148 115,120 185,120 185,92 260,92 260,64 335,64 335,38 415,38';
-        h += '<polyline points="' + stair + '" fill="none" stroke="#000" stroke-width="2.5"/>';
-        h += '<text x="72" y="42" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Default Zone (y=1): 7 axis-aligned tree cuts</text>';
-        h += '<text x="245" y="158" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Safe Zone (y=0)</text>';
-        /* Sample points */
-        h += '<circle cx="120" cy="115" r="5" fill="#000"/><text x="129" y="113" font-family="monospace" font-size="10">A(20k/40k=0.5)</text>';
-        h += '<circle cx="250" cy="60" r="5" fill="#000"/><text x="259" y="58" font-family="monospace" font-size="10">B(40k/80k=0.5)</text>';
-        h += '<circle cx="325" cy="100" r="5" fill="#fff" stroke="#000" stroke-width="2"/><text x="334" y="104" font-family="monospace" font-size="10">C(30k/100k=0.3)</text>';
-        /* Labels */
-        h += '<text x="235" y="206" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">Raw Income x2 ($20k &rarr; $120k)</text>';
-        h += '<text x="18" y="98" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" transform="rotate(-90 18 98)">Raw Debt x1</text>';
-        ro.innerHTML = '<strong>Raw features $(x_1, x_2)$:</strong> Because each tree node can only cut horizontally ($x_1 > c$) or vertically ($x_2 > c$), approximating the diagonal rule $x_1 / x_2 > 0.50$ takes a 7-step staircase and leaves triangular error pockets along the boundary.';
-      } else {
-        /* 1D number line on Engineered Ratio r = x1 / x2 */
-        h += '<rect x="55" y="40" width="360" height="115" fill="#fff" stroke="#000" stroke-width="1.5"/>';
-        h += '<rect x="235" y="40" width="180" height="115" fill="#e8e8e8" stroke="none"/>';
-        h += '<line x1="235" y1="30" x2="235" y2="165" stroke="#000" stroke-width="3"/>';
-        h += '<text x="235" y="23" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold">Single Split: r = 0.50</text>';
-        /* Axis line */
-        h += '<line x1="75" y1="105" x2="395" y2="105" stroke="#000" stroke-width="2"/>';
-        h += '<circle cx="171" cy="105" r="6" fill="#fff" stroke="#000" stroke-width="2"/>';
-        h += '<text x="171" y="88" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">C (r=0.30)</text>';
-        h += '<circle cx="235" cy="105" r="6" fill="#000"/>';
-        h += '<text x="292" y="88" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold">A &amp; B (r=0.50)</text>';
-        h += '<text x="145" y="138" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">Safe (r &lt; 0.50)</text>';
-        h += '<text x="325" y="138" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">Default (r &ge; 0.50)</text>';
-        h += '<text x="235" y="198" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold">Engineered Feature r = Debt / Income (0.0 &rarr; 1.0)</text>';
-        ro.innerHTML = '<strong>Engineered ratio $r = x_1 / x_2$:</strong> Applicants A ($20\\text{k}/40\\text{k}$) and B ($40\\text{k}/80\\text{k}$) collapse onto the exact same coordinate $r = 0.50$, while C ($30\\text{k}/100\\text{k}$) lands at $r = 0.30$. One tree split at $r \\ge 0.50$ achieves $100\\%$ separation.';
-      }
-      svg.innerHTML = h;
-      renderMathIn(ro);
-    }
-
-    var TE_MODES = [
+    var SPACED_CARDS = [
       {
-        rows: [
-          { id: 'Row 1 (Zip Z)', y: 1, pos: '1 (includes self!)', den: '2 + 0 = 2', val: '0.50', note: 'memorizes own y=1' },
-          { id: 'Row 2 (Zip Z)', y: 0, pos: '1 (same in-fold map)', den: '2 + 0 = 2', val: '0.50', note: 'overfits tiny n=2' }
-        ],
-        explain: '<strong>Mode 1 &mdash; Naive In-Fold Encoding (Broken):</strong> If a category has $n_c = 1$ row, its in-fold average equals $y_i$ itself ($1.00$ for positives, $0.00$ for negatives). The model sees $\\hat{y}_c$ as a crystal ball during training and collapses on test data.'
+        q: 'Why does taking $\\ln(1 + x)$ or Z-score standardizing a column have zero effect on a single Decision Tree, whereas engineering a ratio $x_1 / x_2$ helps it?',
+        a: 'Decision trees split on rank-order thresholds ($x > c$), and any strictly increasing monotonic transform ($\\ln x$, Z-score) preserves the exact sorted order of rows. A ratio $x_1 / x_2$ combines two columns diagonally, replacing a clumsy multi-split axis-aligned staircase with a single split.'
       },
       {
-        rows: [
-          { id: 'Row 1 (Zip Z)', y: 1, pos: '0 (only Row 2 used)', den: '1 + 0 = 1', val: '0.00', note: 'swings to 0%!' },
-          { id: 'Row 2 (Zip Z)', y: 0, pos: '1 (only Row 1 used)', den: '1 + 0 = 1', val: '1.00', note: 'swings to 100%!' }
-        ],
-        explain: '<strong>Mode 2 &mdash; Leave-One-Out Without Smoothing ($m = 0$):</strong> Excluding the row\'s own label stops direct self-leakage, but with only $1$ other row in Zip Z, the feature swings wildly between $0.00$ and $1.00$ (extreme variance).'
+        q: 'Why must cyclical time features (like hour $h \\in [0, 23]$) be encoded with BOTH $\\sin(2\\pi h / 24)$ and $\\cos(2\\pi h / 24)$?',
+        a: 'Because $\\sin$ alone is non-unique on a full circle (e.g. $\\sin = 0$ at both $0:00$ Midnight and $12:00$ Noon). Pairing $\\sin$ and $\\cos$ gives every hour a unique $(x, y)$ coordinate on the unit circle and connects $23:00$ to $00:00$.'
       },
       {
-        rows: [
-          { id: 'Row 1 (Zip Z)', y: 1, pos: '0 + 4(0.20) = 0.8', den: '1 + 4 = 5', val: '0.16', note: 'stable near 0.20 prior' },
-          { id: 'Row 2 (Zip Z)', y: 0, pos: '1 + 4(0.20) = 1.8', den: '1 + 4 = 5', val: '0.36', note: 'shrunk toward 0.20 prior' }
-        ],
-        explain: '<strong>Mode 3 &mdash; Out-of-Fold + Smoothing ($m = 4$, global prior $0.20$):</strong> Combining out-of-fold exclusion with $m = 4$ virtual prior rows keeps both estimates anchored near the $0.20$ base rate ($0.16$ and $0.36$) until Zip Z accumulates enough real data ($n_c \\gg m$).'
+        q: 'Write the Smoothed Target Encoding formula for category $c$ and explain the two rules required to prevent target leakage.',
+        a: '$\\hat{y}_c = \\frac{n_c \\bar{y}_c + m \\bar{y}_{\\text{global}}}{n_c + m}$. To prevent target leakage on rare categories, you must (1) compute $\\bar{y}_c$ out-of-fold so row $i$\'s own label $y_i$ is never in its numerator, and (2) use smoothing $m > 0$ to shrink small-$n_c$ categories toward the training prior $\\bar{y}_{\\text{global}}$.'
       }
     ];
-
-    function setTEMode(idx) {
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('te-btn-' + i).classList.toggle('active', i === idx);
-      }
-      var m = TE_MODES[idx];
-      var tb = document.getElementById('te-tbody');
-      tb.innerHTML = m.rows.map(function (r) {
-        return '<tr><td><strong>' + r.id + '</strong></td><td class="num">$y = ' + r.y + '$</td><td>' + r.pos + '</td><td class="num">' + r.den + '</td><td class="num"><strong>' + r.val + '</strong></td><td>' + r.note + '</td></tr>';
-      }).join('');
-      var ro = document.getElementById('te-readout');
-      ro.innerHTML = m.explain;
-      renderMathIn(tb);
-      renderMathIn(ro);
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      setSplitView('raw');
-      setTEMode(0);
-    });
   </script>
 </body>
 </html>

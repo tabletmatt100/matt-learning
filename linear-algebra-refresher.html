@@ -15,282 +15,111 @@
   <main>
     <h1>Linear Algebra for ML Refresher: Only the Parts You Actually Use</h1>
 
-    <div class="tldr">
-      <h2>TL;DR</h2>
-      <ul>
-        <li><strong>Skip the textbook busywork:</strong> In machine learning, you will never compute a $4\times 4$ determinant by hand, invert a matrix with cofactors, use Cramer's rule, or row-reduce matrices to echelon form on paper.</li>
-        <li><strong>Dot products &amp; norms measure similarity and size:</strong> The <span class="term" data-term="dot-product">dot product</span> $a \cdot b = \sum_i a_i b_i = \|a\|_2 \|b\|_2 \cos\theta$ drives every neural layer and attention score. Dividing out the <span class="term" data-term="l2-norm">$L_2$ lengths</span> gives <span class="term" data-term="cosine-similarity">cosine similarity</span> ($\cos\theta$), which compares direction alone.</li>
-        <li><strong>Shapes tell you the backprop formula for free:</strong> If a linear layer computes $Y = XW$ with $X \in \mathbb{R}^{B \times d_{\text{in}}}$ and $W \in \mathbb{R}^{d_{\text{in}} \times d_{\text{out}}}$, the inner dimensions ($d_{\text{in}}$) must match and cancel. During backprop, <span class="term" data-term="transpose">transposes</span> ($dX = dY\,W^\top$ and $dW = X^\top dY$) are uniquely forced by shape matching.</li>
-        <li><strong><span class="term" data-term="rank">Rank</span> &amp; <span class="term" data-term="svd">SVD</span> explain compression (PCA and LoRA):</strong> A matrix's <span class="term" data-term="rank">rank</span> is the number of independent directions it passes through. Factoring a huge weight update $\Delta W \in \mathbb{R}^{d \times d}$ into two skinny matrices $B A$ of inner width $r \ll d$ (<span class="term" data-term="lora">LoRA</span>) cuts parameters from $d^2$ to $2dr$.</li>
-      </ul>
-    </div>
-
-    <!-- SECTION 1 -->
-    <h2 id="s1">1. Vectors, Norms, Dot Products, and Cosine Similarity</h2>
     <p>
-      In ML, a vector $x \in \mathbb{R}^d$ is just a list of $d$ numbers representing features or an <span class="term" data-term="embedding">embedding</span>. Almost everything we do with two vectors boils down to two questions: <strong>how big is each vector?</strong> (<span class="term" data-term="l2-norm">norm</span>) and <strong>do they point in the same direction?</strong> (<span class="term" data-term="dot-product">dot product</span> / <span class="term" data-term="cosine-similarity">cosine similarity</span>).
+      University linear algebra courses spend months on cofactor determinants, Cramer's rule, and hand-reducing $4 \times 4$ matrices to row-echelon form. In day-to-day machine learning and deep learning, you use almost none of that.
+    </p>
+    <p>
+      Instead, 95% of ML linear algebra comes down to three working skills: using <span class="term" data-term="dot-product">dot products</span>, <span class="term" data-term="l2-norm">$L_1/L_2$ norms</span>, and <span class="term" data-term="cosine-similarity">cosine similarity</span> to measure vector size and alignment; tracking matrix shapes $(B \times d_{\text{in}})\cdot(d_{\text{in}} \times d_{\text{out}})$ and <span class="term" data-term="transpose">transposes</span> through forward and backward passes; and understanding how <span class="term" data-term="rank">matrix rank</span>, <span class="term" data-term="eigen">eigenvectors</span>, and <span class="term" data-term="svd">SVD</span> compress high-dimensional matrices in PCA and <a href="lora.html">LoRA</a>.
+    </p>
+
+    <h2>1. Vectors, Norms ($L_1$ vs. $L_2$), Dot Products &amp; Cosine Similarity</h2>
+    <p>
+      In ML, a vector $x \in \mathbb{R}^d$ is a point or arrow in $d$-dimensional space representing an example's features or a token's <span class="term" data-term="embedding">embedding</span>. To measure a single vector's size, we use the <span class="term" data-term="l2-norm">$L_2$ Euclidean length</span> $\|x\|_2 = \sqrt{\sum_i x_i^2}$ or the <span class="term" data-term="l1-norm">$L_1$ Manhattan sum</span> $\|x\|_1 = \sum_i |x_i|$. To measure how strongly two vectors $a$ and $b$ align, we take their <span class="term" data-term="dot-product">dot product</span>—or divide out their lengths to get pure directional <span class="term" data-term="cosine-similarity">cosine similarity</span>:
     </p>
 
     <div class="math-block">
-      $$a \cdot b = a^\top b = \sum_{i=1}^{d} a_i b_i = \|a\|_2 \, \|b\|_2 \cos\theta, \qquad \text{Cosine Similarity} = \cos\theta = \frac{a \cdot b}{\|a\|_2 \, \|b\|_2}$$
-      <div class="math-hint">Tap terms: <span class="term" data-term="dot-product">$a \cdot b$ (dot product)</span> &middot; <span class="term" data-term="l2-norm">$\|a\|_2$ ($L_2$ Euclidean length)</span> &middot; <span class="term" data-term="cosine-similarity">$\cos\theta$ (direction alignment in $[-1, 1]$)</span></div>
+      $$a \cdot b = a^\top b = \sum_{i=1}^{d} a_i b_i = \|a\|_2\,\|b\|_2\cos\theta, \qquad \cos\theta = \frac{a \cdot b}{\|a\|_2\,\|b\|_2} \in [-1, 1]$$
     </div>
 
     <div class="worked">
-      <p><strong>Worked mental-math example ($d = 2$):</strong></p>
+      <p><strong>Worked Example (Dot product vs. Cosine similarity in 2D with clean 3-4-5 right triangles):</strong></p>
       <p>
-        Suppose query vector $a = [3, 4]$ and two candidate document vectors are $b = [6, 8]$ and $c = [4, -3]$.
-      </p>
-      <p>
-        1. <strong><span class="term" data-term="l2-norm">$L_2$ Norm</span> (Euclidean length $\sqrt{x_1^2 + x_2^2}$):</strong>
-        $\|a\|_2 = \sqrt{3^2 + 4^2} = \sqrt{9 + 16} = \mathbf{5}$. Meanwhile $\|b\|_2 = \sqrt{6^2 + 8^2} = \mathbf{10}$, and $\|c\|_2 = \sqrt{4^2 + (-3)^2} = \mathbf{5}$.<br>
-        2. <strong><span class="term" data-term="l1-norm">$L_1$ Norm</span> (Manhattan sum $|x_1| + |x_2|$):</strong>
-        $\|a\|_1 = |3| + |4| = \mathbf{7}$.<br>
-        3. <strong><span class="term" data-term="dot-product">Dot product</span> &amp; <span class="term" data-term="cosine-similarity">Cosine similarity</span>:</strong><br>
-        &bull; $a \cdot b = (3)(6) + (4)(8) = 18 + 32 = \mathbf{50}$, and $\cos\theta = \frac{50}{5 \times 10} = \mathbf{+1.00}$ (exact same direction; $b$ is just $2\times$ longer).<br>
-        &bull; $a \cdot c = (3)(4) + (4)(-3) = 12 - 12 = \mathbf{0}$, and $\cos\theta = \frac{0}{5 \times 5} = \mathbf{0.00}$ (<span class="term" data-term="orthogonal">orthogonal</span> / $90^\circ$ perpendicular: zero shared signal).
+        Take query vector $a = [3,\; 4]$ and compare it against $b = [6,\; 8]$ and $c = [4,\; -3]$:<br>
+        1. <strong>Norms:</strong> $\|a\|_2 = \sqrt{3^2 + 4^2} = \sqrt{25} = \mathbf{5}$ (and $\|a\|_1 = |3| + |4| = \mathbf{7}$). Meanwhile $\|b\|_2 = \sqrt{36 + 64} = \mathbf{10}$, and $\|c\|_2 = \sqrt{16 + 9} = \mathbf{5}$.<br>
+        2. <strong>Same direction ($a$ and $b = 2a$):</strong> $a \cdot b = 3(6) + 4(8) = 18 + 32 = \mathbf{50}$, and $\cos\theta = \frac{50}{5 \times 10} = \mathbf{+1.00}$ (doubling a vector's length doubles its dot product, but leaves cosine similarity at $+1.00$).<br>
+        3. <strong>Perpendicular / <span class="term" data-term="orthogonal">Orthogonal</span> ($a$ and $c$):</strong> $a \cdot c = 3(4) + 4(-3) = 12 - 12 = \mathbf{0} \implies \cos\theta = \mathbf{0.00}$ ($90^\circ$ angle, zero shared signal).
       </p>
     </div>
 
-    <div class="interactive-card" id="vec-widget">
-      <div class="widget-label">Interactive Dot Product vs. Cosine Explorer</div>
-      <h3>Why Dot Product Cares About Length While Cosine Only Cares About Angle</h3>
-      <p style="margin-top:0.2rem;">
-        Fix vector $a = [3, 4]$ ($\|a\|_2 = 5$). Pick a preset for vector $b$ or adjust its length multiplier to see how scaling a vector inflates its <span class="term" data-term="dot-product">dot product</span> without changing <span class="term" data-term="cosine-similarity">cosine similarity</span>.
-      </p>
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Dot Product vs. Cosine Similarity Mental Math">
+      <p>Let $a = [3,\; 4]$ and $b = [0,\; 2]$. Without a calculator, what are $a \cdot b$, $\|a\|_2$, $\|b\|_2$, and $\cos\theta$?</p>
+      <label class="mcq-option" data-explain="a . b = 3(0) + 4(2) = 8, not 14.">$a \cdot b = 14$, $\|a\|_2 = 7$, $\|b\|_2 = 2$, and $\cos\theta = 1.0$.</label>
+      <label class="mcq-option" data-explain="Correct. a . b = 3(0) + 4(2) = 8. ||a||_2 = sqrt(9+16) = 5, and ||b||_2 = sqrt(0+4) = 2. Thus cos(theta) = 8 / (5 x 2) = 0.8.">$a \cdot b = 8$, $\|a\|_2 = 5$, $\|b\|_2 = 2$, and $\cos\theta = \frac{8}{5 \times 2} = \mathbf{0.80}$.</label>
+      <label class="mcq-option" data-explain="You divided 8 by 25 instead of ||a||_2 * ||b||_2 = 5 * 2 = 10.">$a \cdot b = 8$, $\|a\|_2 = 25$, $\|b\|_2 = 4$, and $\cos\theta = 0.08$.</label>
+    </details>
 
-      <div class="control-row">
-        <span style="font-weight:bold;">Direction of $b$:</span>
-        <button class="btn btn-small active" id="vdir-0" onclick="setVecDir(0)">Same direction [3, 4]</button>
-        <button class="btn btn-small" id="vdir-1" onclick="setVecDir(1)">45&deg; angled [4, 1]</button>
-        <button class="btn btn-small" id="vdir-2" onclick="setVecDir(2)">Orthogonal (90&deg;) [4, -3]</button>
-        <button class="btn btn-small" id="vdir-3" onclick="setVecDir(3)">Opposite (180&deg;) [-3, -4]</button>
-      </div>
-
-      <div class="control-row">
-        <label for="vscale-slider">Length multiplier $s$ on $b$:</label>
-        <input type="range" id="vscale-slider" min="0.5" max="3.0" step="0.5" value="1.0" oninput="updateVecWidget()">
-        <span class="val" id="vscale-val">1.0x</span>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat"><div class="k">Vector b</div><div class="v" id="st-vec-b">[3.0, 4.0]</div></div>
-        <div class="stat"><div class="k">Norms ||b||₂ / ||b||₁</div><div class="v" id="st-vec-norm">5.00 / 7.0</div></div>
-        <div class="stat"><div class="k">Dot Product (a &middot; b)</div><div class="v" id="st-vec-dot">25.0</div></div>
-        <div class="stat"><div class="k">Cosine Sim (cos &theta;)</div><div class="v" id="st-vec-cos">+1.00</div></div>
-      </div>
-
-      <div class="readout" id="vec-readout"></div>
-    </div>
-
-    <div class="callout">
-      <div class="callout-title">Why $L_1$ regularization zeroes weights out while $L_2$ shrinks them smoothly</div>
-      <p style="margin:0;">
-        For a small weight $w = 0.01$, its <span class="term" data-term="l2-norm">$L_2$ penalty</span> ($w^2 = 0.0001$) has derivative $2w = 0.02$, which gets weaker and weaker near zero—so <span class="term" data-term="l2-norm">$L_2$ weight decay</span> shrinks weights toward zero without hitting exact zero. The <span class="term" data-term="l1-norm">$L_1$ penalty</span> ($|w| = 0.01$) has derivative $\text{sign}(w) = \pm 1$ all the way down to $0$, pushing noisy features all the way to exact zero (sparsity).
-      </p>
-    </div>
-
-    <!-- SECTION 2 -->
-    <h2 id="s2">2. Matrix Multiplication &amp; Shape Tracking (The #1 Daily ML Skill)</h2>
+    <h2>2. Matrix Multiplication Shapes, Transposes &amp; Low-Rank Compression (SVD / PCA / LoRA)</h2>
     <p>
-      Every dense layer (<code>nn.Linear(d_in, d_out)</code>) and every attention projection is a <span class="term" data-term="matmul">matrix multiplication</span> $Y = XW$. You only need two mental pictures of $Y = XW$:
-    </p>
-    <ol>
-      <li><strong>Cell-by-cell (<span class="term" data-term="dot-product">dot product</span> view):</strong> Entry $Y_{i,j}$ is the dot product of <strong>row $i$ of $X$</strong> (example $i$'s features) with <strong>column $j$ of $W$</strong> (neuron $j$'s weights).</li>
-      <li><strong>Shape cancellation rule:</strong> An $(m \times \mathbf{k})$ matrix can only multiply a $(\mathbf{k} \times n)$ matrix because the inner dimension $\mathbf{k}$ matches. The inner $\mathbf{k}$ cancels out, leaving outer shape $(m \times n)$.</li>
-    </ol>
-
-    <div class="math-block">
-      $$\underbrace{Y}_{(B \times d_{\text{out}})} = \underbrace{X}_{(B \times d_{\text{in}})} \underbrace{W}_{(d_{\text{in}} \times d_{\text{out}})} \quad \Longrightarrow \quad \underbrace{\frac{\partial L}{\partial X}}_{(B \times d_{\text{in}})} = \underbrace{\frac{\partial L}{\partial Y}}_{(B \times d_{\text{out}})} \underbrace{W^\top}_{(d_{\text{out}} \times d_{\text{in}})}, \qquad \underbrace{\frac{\partial L}{\partial W}}_{(d_{\text{in}} \times d_{\text{out}})} = \underbrace{X^\top}_{(d_{\text{in}} \times B)} \underbrace{\frac{\partial L}{\partial Y}}_{(B \times d_{\text{out}})}$$
-      <div class="math-hint">You never need to memorize matrix-calculus derivatives: <span class="term" data-term="transpose">$W^\top$</span> and <span class="term" data-term="transpose">$X^\top$</span> are the <strong>only</strong> ways to make the shapes match!</div>
-    </div>
-
-    <div class="interactive-card" id="matmul-widget">
-      <div class="widget-label">Interactive Matrix Multiply &amp; Backprop Shape Inspector</div>
-      <h3>Tap Any Output Cell or Switch Between Forward and Backward Passes</h3>
-      <p style="margin-top:0.2rem;">
-        Below is a batch of $B = 2$ examples with $d_{\text{in}} = 3$ features multiplied by a weight matrix $W$ with $d_{\text{out}} = 2$ outputs. Tap an operation mode or a cell of the result to see the exact row-column dot product.
-      </p>
-
-      <div class="control-row">
-        <button class="btn btn-small active" id="mm-mode-0" onclick="setMMMode(0)">Forward: $Y = X W$ $(2\times 3)\cdot(3\times 2) \to (2\times 2)$</button>
-        <button class="btn btn-small" id="mm-mode-1" onclick="setMMMode(1)">Input Grad: $dX = dY\,W^\top$ $(2\times 2)\cdot(2\times 3) \to (2\times 3)$</button>
-        <button class="btn btn-small" id="mm-mode-2" onclick="setMMMode(2)">Weight Grad: $dW = X^\top dY$ $(3\times 2)\cdot(2\times 2) \to (3\times 2)$</button>
-      </div>
-
-      <div class="control-row" id="mm-cell-buttons"></div>
-
-      <div class="table-wrap" id="mm-tables"></div>
-      <div class="readout" id="mm-readout"></div>
-    </div>
-
-    <!-- SECTION 3 -->
-    <h2 id="s3">3. Rank, Outer Products, and Why LoRA Works</h2>
-    <p>
-      A matrix of shape $(4096 \times 4096)$ looks massive ($16{,}777{,}216$ numbers), but if every column is just a multiple of the first column, it only carries <strong>1 independent direction</strong> of information. The number of linearly independent rows (or columns—they are always equal!) is the matrix's <span class="term" data-term="rank">rank</span>.
+      Every dense layer in a neural network computes a <span class="term" data-term="matmul">matrix multiplication</span> $Y = XW$, where input batch $X$ has shape $(B \times d_{\text{in}})$ and weight matrix $W$ has shape $(d_{\text{in}} \times d_{\text{out}})$. An $(m \times \mathbf{k})$ matrix can only multiply a $(\mathbf{k} \times n)$ matrix when their inner dimension $\mathbf{k}$ matches; the inner $\mathbf{k}$ cancels out and leaves outer shape $(m \times n)$.
     </p>
     <p>
-      If you multiply a column vector $u \in \mathbb{R}^{d \times 1}$ by a row vector $v^\top \in \mathbb{R}^{1 \times d}$, you get a full $d \times d$ matrix called an <span class="term" data-term="outer-product">outer product</span> $u v^\top$ whose <span class="term" data-term="rank">rank</span> is $1$. More generally, multiplying a tall skinny matrix $B \in \mathbb{R}^{d \times r}$ by a wide flat matrix $A \in \mathbb{R}^{r \times d}$ creates a $(d \times d)$ matrix $\Delta W = BA$ with <span class="term" data-term="rank">$\text{rank}(\Delta W) \le r$</span>.
+      That single shape-cancellation rule gives you the matrix backpropagation formulas for free! Given upstream gradient $dY$ of shape $(B \times d_{\text{out}})$, there is only one way to arrange $W$ or $X$ using a <span class="term" data-term="transpose">transpose ($^\top$)</span> so the inner dimensions match:
     </p>
 
     <div class="math-block">
-      $$h = (W_0 + \Delta W)x = W_0 x + \underbrace{B}_{(d \times r)} \underbrace{(A x)}_{(r \times 1)}, \qquad \text{Parameters: } d^2 \;\longrightarrow\; 2dr$$
-      <div class="math-hint">In <span class="term" data-term="lora">LoRA (Low-Rank Adaptation)</span>, $A$ compresses $x \in \mathbb{R}^d$ down to an $r$-dimensional bottleneck, and $B$ expands it back to $\mathbb{R}^d$.</div>
-    </div>
-
-    <div class="interactive-card" id="lora-widget">
-      <div class="widget-label">Interactive Low-Rank (LoRA) Bottleneck Calculator</div>
-      <h3>Compare Full Matrix Fine-Tuning vs. Low-Rank Factorization</h3>
-
-      <div class="control-row">
-        <span style="font-weight:bold;">Hidden Dimension $d$:</span>
-        <button class="btn btn-small" id="ldim-1024" onclick="setLoraDim(1024)">d = 1,024</button>
-        <button class="btn btn-small active" id="ldim-4096" onclick="setLoraDim(4096)">d = 4,096 (7B/8B LLM)</button>
-        <button class="btn btn-small" id="ldim-8192" onclick="setLoraDim(8192)">d = 8,192 (70B LLM)</button>
-      </div>
-
-      <div class="control-row">
-        <label for="lrank-slider">LoRA Rank $r$:</label>
-        <input type="range" id="lrank-slider" min="1" max="64" step="1" value="8" oninput="updateLoraWidget()">
-        <span class="val" id="lrank-val">r = 8</span>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat"><div class="k">Full W Shape (d &times; d)</div><div class="v" id="st-lora-full">16,777,216</div></div>
-        <div class="stat"><div class="k">LoRA B&middot;A Params (2dr)</div><div class="v" id="st-lora-low">65,536</div></div>
-        <div class="stat"><div class="k">Parameter Reduction</div><div class="v" id="st-lora-ratio">256.0x smaller</div></div>
-        <div class="stat"><div class="k">Max Rank of &Delta;W = BA</div><div class="v" id="st-lora-rank">8 (of 4,096)</div></div>
-      </div>
-
-      <div class="readout" id="lora-readout"></div>
-    </div>
-
-    <!-- SECTION 4 -->
-    <h2 id="s4">4. Eigenvectors, Eigenvalues, and SVD in Plain Geometry</h2>
-    <p>
-      When a square matrix $A$ multiplies a vector $x$, it usually both <strong>rotates</strong> and <strong>stretches</strong> $x$. An <span class="term" data-term="eigenvector">eigenvector</span> $v$ is a special axis of $A$ that <strong>does not rotate at all</strong>—multiplying $v$ by $A$ simply scales it by a scalar <span class="term" data-term="eigenvalue">eigenvalue</span> $\lambda$:
-    </p>
-
-    <div class="math-block">
-      $$A v = \lambda v \qquad (\text{direction of } v \text{ stays fixed; length scales by } \lambda)$$
-      <div class="math-hint">For a symmetric matrix like a <span class="term" data-term="covariance">covariance matrix</span> $\Sigma = \frac{1}{n}X^\top X$ or a loss <span class="term" data-term="hessian">Hessian $H$</span>, the eigenvectors are always mutually <span class="term" data-term="orthogonal">orthogonal</span> ($90^\circ$ apart).</div>
+      $$\underbrace{Y}_{(B \times d_{\text{out}})} = \underbrace{X}_{(B \times d_{\text{in}})} \underbrace{W}_{(d_{\text{in}} \times d_{\text{out}})} \quad \Longrightarrow \quad \underbrace{dX}_{(B \times d_{\text{in}})} = \underbrace{dY}_{(B \times d_{\text{out}})} \underbrace{W^\top}_{(d_{\text{out}} \times d_{\text{in}})}, \qquad \underbrace{dW}_{(d_{\text{in}} \times d_{\text{out}})} = \underbrace{X^\top}_{(d_{\text{in}} \times B)} \underbrace{dY}_{(B \times d_{\text{out}})}$$
     </div>
 
     <p>
-      You will never solve $\det(A - \lambda I) = 0$ by hand in ML, because `torch.linalg.eigh` or `np.linalg.svd` does it in microseconds. What you <em>do</em> need is what eigenvalues and <span class="term" data-term="svd">SVD</span> mean in three places:
+      What does a matrix actually <em>do</em> geometrically? Multiplying a vector $v$ by a square matrix $A$ usually both rotates and stretches $v$. The special directions that $A$ stretches <em>without rotating</em> ($Av = \lambda v$) are its <span class="term" data-term="eigen">eigenvectors</span>, and the stretch factor $\lambda$ is the <span class="term" data-term="eigen">eigenvalue</span>. For any rectangular matrix $M \in \mathbb{R}^{m \times n}$, <span class="term" data-term="svd">Singular Value Decomposition (SVD)</span> generalizes this by factoring $M = U \Sigma V^\top = \sum_{i=1}^r \sigma_i u_i v_i^\top$ into a sum of $r$ rank-1 outer products sorted by strength $\sigma_1 \ge \sigma_2 \ge \dots \ge \sigma_r &gt; 0$.
     </p>
-    <ul>
-      <li><strong><span class="term" data-term="pca">PCA (Principal Component Analysis)</span>:</strong> The <span class="term" data-term="eigenvector">eigenvectors</span> of the feature <span class="term" data-term="covariance">covariance matrix</span> $\frac{1}{n}X^\top X$ point along the orthogonal axes of greatest spread. Each <span class="term" data-term="eigenvalue">eigenvalue</span> $\lambda_i$ equals the variance along that axis.</li>
-      <li><strong>Optimization &amp; Loss Curvature (<span class="term" data-term="hessian">Hessian $H$</span>):</strong> The largest eigenvalue $\lambda_{\max}$ of the Hessian matrix is the steepest curvature of the loss surface; gradient descent explodes if the learning rate exceeds $\eta > 2/\lambda_{\max}$.</li>
-      <li><strong><span class="term" data-term="svd">SVD (Singular Value Decomposition, $X = U \Sigma V^\top$)</span>:</strong> Eigendecomposition only applies to square matrices. <span class="term" data-term="svd">SVD</span> generalizes it to <em>any</em> rectangular matrix $X \in \mathbb{R}^{n \times d}$, factoring $X$ into an input rotation $V^\top$, axis stretch factors $\Sigma = \text{diag}(\sigma_1, \sigma_2, \dots)$, and an output rotation $U$. Keeping only the top $r$ singular values gives the mathematically best rank-$r$ approximation of $X$.</li>
-    </ul>
+    <p>
+      The number of non-zero singular values $r$ is the matrix's <strong><span class="term" data-term="rank">rank</span></strong> (the true number of independent directions it passes through). Keeping only the top $k \ll r$ singular values gives the optimal low-rank compression of a dataset (<span class="term" data-term="pca">PCA</span>), and factoring a $d \times d$ weight update directly into two rank-$r$ matrices $\Delta W = B A$ of shapes $(d \times r)$ and $(r \times d)$ is the entire mechanism behind <a href="lora.html">LoRA</a>!
+    </p>
 
-    <div class="interactive-card" id="eigen-widget">
-      <div class="widget-label">Interactive 2D Matrix &amp; Eigenvector Explorer</div>
-      <h3>Rotate Input Vector $x$ Around the Circle and Watch When $Ax$ Stops Rotating</h3>
-      <p style="margin-top:0.2rem;">
-        Drag the angle $\theta$ of unit vector $x = [\cos\theta, \sin\theta]$. When the output vector $Ax$ (thick solid arrow) lines up directly on top of $x$ (dashed arrow), you have found an <span class="term" data-term="eigenvector">eigenvector</span>, and its stretch length is the <span class="term" data-term="eigenvalue">eigenvalue $\lambda$</span>.
-      </p>
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Backprop Shape Tracking With Transposes">
+      <p>In a linear layer $Y = XW$, one mini-batch has $B = 4$ tokens, input dimension $d_{\text{in}} = 3$, and output dimension $d_{\text{out}} = 5$ (so $X$ is $4 \times 3$ and $W$ is $3 \times 5$). Given upstream gradient $dY$ of shape $(4 \times 5)$, which expression computes the weight gradient $dW$ of shape $(3 \times 5)$?</p>
+      <label class="mcq-option" data-explain="X is (4x3) and dY is (4x5); inner dimensions 3 and 4 do not match.">$X \, dY$.</label>
+      <label class="mcq-option" data-explain="dY^T X has shape (5x4)(4x3) = (5x3), which is the transpose of dW.">$dY^\top X$ of shape $(5 \times 3)$.</label>
+      <label class="mcq-option" data-explain="Correct. X^T has shape (3x4) and dY has shape (4x5); the inner batch dimension 4 cancels out, producing dW of shape (3x5) to match W.">$X^\top dY$ of shape $(3 \times 4)(4 \times 5) = (3 \times 5)$.</label>
+    </details>
 
-      <div class="control-row">
-        <span style="font-weight:bold;">Matrix $A$:</span>
-        <button class="btn btn-small active" id="eig-m0" onclick="setEigenMat(0)">Axis Stretch [[2.0, 0], [0, 0.8]]</button>
-        <button class="btn btn-small" id="eig-m1" onclick="setEigenMat(1)">Correlated PCA [[1.5, 0.7], [0.7, 1.5]]</button>
-        <button class="btn btn-small" id="eig-m2" onclick="setEigenMat(2)">Rank-1 Projection [[1, 1], [1, 1]]</button>
-      </div>
+    <details class="mcq-box" data-correct="A" data-topic="Check 3: Eigenvectors &amp; Matrix Rank">
+      <p>Suppose diagonal matrix $A = \begin{bmatrix} 3 &amp; 0 \\ 0 &amp; 0 \end{bmatrix}$ multiplies vector $v = \begin{bmatrix} 2 \\ 0 \end{bmatrix}$. What is $Av$, what is the eigenvalue $\lambda$ for eigenvector $v$, and what is the <span class="term" data-term="rank">rank</span> of $A$?</p>
+      <label class="mcq-option" data-explain="Correct. Av = [6, 0]^T = 3v (stretched by eigenvalue lambda = 3 without rotating). Because column 2 is all zeros, A maps every 2D input onto the 1D x-axis, so rank(A) = 1.">$Av = [6,\; 0]^\top = 3v$, so $\lambda = 3$, and $\text{rank}(A) = 1$ (since $A$ has only $1$ independent non-zero column).</label>
+      <label class="mcq-option" data-explain="Column 2 of A is [0, 0]^T, so A only has 1 linearly independent column (rank 1, not 2).">$Av = [6,\; 0]^\top$, $\lambda = 6$, and $\text{rank}(A) = 2$.</label>
+      <label class="mcq-option" data-explain="Row 1 is non-zero, so rank(A) is 1, not 0.">$Av = [0,\; 0]^\top$, $\lambda = 0$, and $\text{rank}(A) = 0$.</label>
+    </details>
 
-      <div class="control-row">
-        <label for="eig-angle">Input vector angle $\theta$:</label>
-        <input type="range" id="eig-angle" min="0" max="180" step="5" value="45" oninput="updateEigenWidget()">
-        <span class="val" id="eig-angle-val">45&deg;</span>
-      </div>
-
-      <div class="figure-box">
-        <svg id="eigen-svg" viewBox="0 0 320 240" width="320" height="240" role="img" aria-label="2D eigenvector transformation chart"></svg>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat"><div class="k">Unit Input x</div><div class="v" id="st-eig-x">[0.71, 0.71]</div></div>
-        <div class="stat"><div class="k">Transformed A x</div><div class="v" id="st-eig-ax">[1.41, 0.57]</div></div>
-        <div class="stat"><div class="k">Stretch ||Ax||₂</div><div class="v" id="st-eig-len">1.52</div></div>
-        <div class="stat"><div class="k">Eigenvalue Alignment</div><div class="v" id="st-eig-align">Rotated 15.5&deg;</div></div>
-      </div>
-
-      <div class="readout" id="eigen-readout"></div>
-    </div>
-
-    <!-- SECTION 5 -->
-    <h2 id="s5">5. Cheat Sheet: What to Keep vs. What to Ignore</h2>
-
+    <h2>3. Comparing Core Linear Algebra Operations in ML</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Topic</th>
-            <th>Verdict for ML</th>
-            <th>Why</th>
+            <th>Operation</th>
+            <th>Formula / Shape Rule</th>
+            <th>Geometric Meaning</th>
+            <th>Where You Use It in ML</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>Shape tracking &amp; <span class="term" data-term="transpose">transposes</span></strong></td>
-            <td><strong>Essential daily</strong></td>
-            <td>90% of PyTorch bugs are tensor shape mismatches in batched matrix multiplies or attention heads.</td>
+            <td><strong><span class="term" data-term="l2-norm">$L_2$ Norm</span> vs. <span class="term" data-term="l1-norm">$L_1$ Norm</span></strong></td>
+            <td class="num">$\|x\|_2 = \sqrt{\sum x_i^2}$<br>$\|x\|_1 = \sum |x_i|$</td>
+            <td>Straight-line distance vs. Manhattan grid sum</td>
+            <td>$L_2$ weight decay (smooth shrinkage) &amp; grad clipping vs. $L_1$ Lasso (exact $0$ sparsity)</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="dot-product">Dot products</span>, <span class="term" data-term="cosine-similarity">cosine similarity</span>, <span class="term" data-term="l1-norm">$L_1$</span>/<span class="term" data-term="l2-norm">$L_2$ norms</span></strong></td>
-            <td><strong>Essential daily</strong></td>
-            <td>Used in embeddings, retrieval, attention, weight decay, and gradient norm clipping.</td>
+            <td><strong><span class="term" data-term="dot-product">Dot Product</span> vs. <span class="term" data-term="cosine-similarity">Cosine</span></strong></td>
+            <td class="num">$a \cdot b = \|a\|_2\|b\|_2\cos\theta$<br>$\cos\theta = \frac{a \cdot b}{\|a\|_2\|b\|_2}$</td>
+            <td>Length-scaled alignment vs. pure angle alignment</td>
+            <td>Attention logits ($QK^\top$) &amp; linear layers vs. embedding retrieval / RAG search</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="rank">Rank</span>, <span class="term" data-term="low-rank">low-rank $BA$</span>, <span class="term" data-term="svd">SVD</span> &amp; <span class="term" data-term="pca">PCA</span></strong></td>
-            <td><strong>High value</strong></td>
-            <td>Explains why <span class="term" data-term="lora">LoRA</span>, embedding compression, and PCA work.</td>
+            <td><strong><span class="term" data-term="matmul">Matrix Multiply ($XW$)</span></strong></td>
+            <td class="num">$(m \times k)\cdot(k \times n) \to (m \times n)$</td>
+            <td>Grid of all row-by-column dot products</td>
+            <td>Every forward linear projection ($Y = XW$) and backward gradient ($dX = dY\,W^\top$)</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="PSD">Positive Semi-Definite (PSD)</span> &amp; <span class="term" data-term="eigenvalue">eigenvalues</span> $\ge 0$</strong></td>
-            <td><strong>Conceptual only</strong></td>
-            <td>Good to know that covariance matrices ($X^\top X$) have $\lambda_i \ge 0$ and Hessian $\lambda_{\max}$ sets max LR.</td>
-          </tr>
-          <tr>
-            <td><strong>Hand determinants, Cramer's rule, cofactor inverses, manual RREF</strong></td>
-            <td><strong>Skip completely</strong></td>
-            <td>Numerically unstable or $O(d^3)$; in code you solve $Ax=b$ with `linalg.solve` or optimize via SGD.</td>
+            <td><strong><span class="term" data-term="rank">Rank-$r$ Factorization</span> (<span class="term" data-term="svd">SVD</span>)</strong></td>
+            <td class="num">$\Delta W_{(d \times k)} = B_{(d \times r)} A_{(r \times k)}$</td>
+            <td>Projects through an $r$-dimensional bottleneck subspace</td>
+            <td><a href="lora.html">LoRA adapters</a> ($r(d+k) \ll dk$ params) and <span class="term" data-term="pca">PCA</span> dimensionality reduction</td>
           </tr>
         </tbody>
       </table>
     </div>
-
-    <!-- SECTION 6: CHECKS -->
-    <h2 id="s6">6. Quick Self-Checks</h2>
-
-    <details class="mcq-box" data-correct="B" data-topic="Dot Product vs. Cosine Similarity">
-      <p>Two embedding vectors have <span class="term" data-term="cosine-similarity">cosine similarity</span> $\cos\theta = 0.80$, with lengths $\|a\|_2 = 2$ and $\|b\|_2 = 5$. If you scale vector $b$ by $3\times$ (so $\|b'\|_2 = 15$), what happens to their <span class="term" data-term="dot-product">dot product</span> and <span class="term" data-term="cosine-similarity">cosine similarity</span>?</p>
-      <label class="mcq-option" data-explain="Cosine similarity divides by $\|b\|_2$, so multiplying $b$ by $3$ cancels out in the denominator.">Both the dot product and cosine similarity triple.</label>
-      <label class="mcq-option" data-explain="Correct. Initially $a \cdot b = 2 \times 5 \times 0.80 = 8$. Scaling $b$ by $3\times$ triples the dot product to $24$, while cosine similarity stays $0.80$ because direction did not change.">The dot product triples from $8$ to $24$, while cosine similarity stays $0.80$.</label>
-      <label class="mcq-option" data-explain="The dot product $a \cdot b = \|a\|_2 \|b\|_2 \cos\theta$ scales linearly with $\|b\|_2$.">Both stay unchanged at $8$ and $0.80$.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="A" data-topic="Backprop Shape Matching">
-      <p>In a linear layer $Y = XW$, input $X$ has shape $(32, 768)$ and weight matrix $W$ has shape $(768, 3072)$, producing $Y$ of shape $(32, 3072)$. Given upstream gradient $dY$ of shape $(32, 3072)$, which expression has the valid shape to compute the weight gradient $dW$ of shape $(768, 3072)$?</p>
-      <label class="mcq-option" data-explain="Correct. $X^\top$ has shape $(768, 32)$ and $dY$ has shape $(32, 3072)$. The batch dimension $32$ cancels, yielding $(768, 3072)$.">$X^\top dY$ &mdash; shape $(768, 32) \times (32, 3072) \to (768, 3072)$.</label>
-      <label class="mcq-option" data-explain="$(32, 768)$ times $(32, 3072)$ crashes with a dimension mismatch because $768 \ne 32$.">$X \, dY$ &mdash; shape $(32, 768) \times (32, 3072)$.</label>
-      <label class="mcq-option" data-explain="$dY\,W^\top$ has shape $(32, 3072) \times (3072, 768) \to (32, 768)$, which is the input gradient $dX$, not $dW$.">$dY \, W^\top$ &mdash; shape $(32, 3072) \times (3072, 768) \to (32, 768)$.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="C" data-topic="Low-Rank Matrix Factorization (LoRA)">
-      <p>You replace a $(2000 \times 2000)$ weight update matrix $\Delta W$ ($4{,}000{,}000$ parameters) with a <span class="term" data-term="lora">LoRA</span> product $\Delta W = B A$, where $B$ has shape $(2000, 10)$ and $A$ has shape $(10, 2000)$. How many trainable parameters does $BA$ have, and what is the maximum <span class="term" data-term="rank">rank</span> of $\Delta W$?</p>
-      <label class="mcq-option" data-explain="$2000\times 10 + 10\times 2000 = 40{,}000$ parameters, not $20{,}000$, and rank is bounded by the bottleneck $10$.">$20{,}000$ parameters; maximum rank $2000$.</label>
-      <label class="mcq-option" data-explain="Even though $BA$ has outer shape $(2000, 2000)$, every column is a linear combination of the $10$ columns of $B$, so its rank cannot exceed $10$.">$40{,}000$ parameters; maximum rank $2000$.</label>
-      <label class="mcq-option" data-explain="Correct. $B$ has $20{,}000$ parameters and $A$ has $20{,}000$ parameters ($40{,}000$ total, a $100\times$ reduction), and passing through a 10-D bottleneck limits $\text{rank}(BA) \le 10$.">$40{,}000$ parameters ($100\times$ fewer); maximum rank $10$.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="B" data-topic="Eigenvectors &amp; Zero Eigenvalues">
-      <p>Suppose a square matrix $A$ has an <span class="term" data-term="eigenvector">eigenvector</span> $v$ with <span class="term" data-term="eigenvalue">eigenvalue</span> $\lambda = 0$ (so $Av = 0$). What does that tell you about $A$?</p>
-      <label class="mcq-option" data-explain="Only the zero matrix collapses all directions to $0$; a single zero eigenvalue just means one axis collapses.">Every entry of $A$ must be zero.</label>
-      <label class="mcq-option" data-explain="Correct. $Av = 0$ means $A$ squashes the $v$ direction completely flat, so $A$ is rank-deficient (not full rank) and cannot be inverted.">$A$ squashes the direction $v$ to zero, meaning $A$ has lost a dimension (not full <span class="term" data-term="rank">rank</span>) and is non-invertible.</label>
-      <label class="mcq-option" data-explain="Orthogonality depends on whether $A$ is symmetric, not whether an eigenvalue is zero.">$A$ rotates $v$ by $90^\circ$.</label>
-    </details>
 
     <div class="score-bar"></div>
 
@@ -299,378 +128,74 @@
 
   <script>
     var GLOSSARY = {
+      'embedding': {
+        title: 'Embedding Vector ($x \\in \\mathbb{R}^d$)',
+        body: 'Learned list of $d$ real numbers representing a token, image, or user in a continuous geometric space where similar items point in similar directions.'
+      },
       'dot-product': {
-        title: 'Dot Product (Inner Product, $a \\cdot b$)',
-        body: 'Multiply matching coordinates and add them up: $a \\cdot b = \\sum_{i=1}^d a_i b_i$. Geometrically, $a \\cdot b = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$. Positive when vectors point roughly together, $0$ when <span class="term" data-term="orthogonal">orthogonal</span> ($90^\\circ$), and negative when pointing opposite.'
+        title: 'Dot Product ($a \\cdot b = a^\\top b$)',
+        body: '$\\sum_{i=1}^d a_i b_i = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$. Positive when vectors point within $90^\\circ$ of each other, $0$ when perpendicular (<span class="term" data-term="orthogonal">orthogonal</span>), and negative when pointing opposite.'
+      },
+      'l2-norm': {
+        title: '$L_2$ Norm (Euclidean Length $\\|x\\|_2$)',
+        body: '$\\sqrt{x_1^2 + x_2^2 + \\dots + x_d^2}$. As a regularization penalty ($\\|w\\|_2^2$), its derivative $2w$ shrinks smoothly toward $0$ as $w \\to 0$.'
+      },
+      'l1-norm': {
+        title: '$L_1$ Norm (Manhattan Norm $\\|x\\|_1$)',
+        body: '$|x_1| + |x_2| + \\dots + |x_d|$. As a regularization penalty, its constant derivative $\\text{sign}(w) = \\pm 1$ pushes small noisy weights all the way to exact $0$ (sparsity).'
       },
       'cosine-similarity': {
         title: 'Cosine Similarity ($\\cos\\theta$)',
-        body: 'The <span class="term" data-term="dot-product">dot product</span> of two vectors after dividing each by its <span class="term" data-term="l2-norm">$L_2$ norm</span>: $\\cos\\theta = \\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2} \\in [-1, 1]$. Unlike raw dot product, scaling a vector by $10\\times$ leaves cosine similarity completely unchanged.'
-      },
-      'l2-norm': {
-        title: '$L_2$ Norm (Euclidean Length, $\\|x\\|_2$)',
-        body: '$\\|x\\|_2 = \\sqrt{\\sum_{i=1}^d x_i^2} = \\sqrt{x^\\top x}$. Straight-line distance from the origin. Used in cosine similarity, gradient norm clipping, and $L_2$ weight decay.'
-      },
-      'l1-norm': {
-        title: '$L_1$ Norm (Manhattan Norm, $\\|x\\|_1$)',
-        body: '$\\|x\\|_1 = \\sum_{i=1}^d |x_i|$. Sum of absolute values. Used in Lasso ($L_1$) regularization because its constant $\\pm 1$ slope pushes small weights all the way to exact zero.'
+        body: '$\\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2} \\in [-1, 1]$: dot product of unit-normalized vectors, measuring pure directional alignment independent of vector length.'
       },
       'orthogonal': {
-        title: 'Orthogonal Vectors ($90^\\circ$ Perpendicular)',
-        body: 'Two non-zero vectors $a, b$ with <span class="term" data-term="dot-product">dot product</span> $a \\cdot b = 0$ ($\\cos 90^\\circ = 0$). Moving along $a$ changes nothing along $b$—they carry completely non-overlapping directional signal.'
-      },
-      'embedding': {
-        title: 'Embedding Vector',
-        body: 'A learned dense vector $x \\in \\mathbb{R}^d$ (such as $d = 768$ or $4096$) representing a token, sentence, or image so that semantic similarity corresponds to <span class="term" data-term="dot-product">dot product</span> or <span class="term" data-term="cosine-similarity">cosine similarity</span>.'
-      },
-      'attention-score': {
-        title: 'Attention Scores ($Q K^\\top$)',
-        body: 'In Transformers, multiplying query matrix $Q$ by transposed key matrix $K^\\top$ computes the <span class="term" data-term="dot-product">dot product</span> between every query token and every key token in parallel.'
+        title: 'Orthogonal Vectors ($a \\cdot b = 0$)',
+        body: 'Perpendicular vectors ($90^\\circ$ angle) sharing zero linear projection onto one another.'
       },
       'matmul': {
-        title: 'Matrix Multiplication ($C = A B$)',
-        body: 'For $A \\in \\mathbb{R}^{m \\times k}$ and $B \\in \\mathbb{R}^{k \\times n}$, entry $C_{i,j}$ is the <span class="term" data-term="dot-product">dot product</span> of row $i$ of $A$ with column $j$ of $B$. Requires the inner dimensions ($k$) to match.'
+        title: 'Matrix Multiplication ($Y = XW$)',
+        body: 'If $X$ is $(m \\times k)$ and $W$ is $(k \\times n)$, entry $Y_{i,j}$ is the <span class="term" data-term="dot-product">dot product</span> of row $i$ of $X$ with column $j$ of $W$, producing shape $(m \\times n)$.'
       },
       'transpose': {
-        title: 'Transpose ($A^\\top$)',
-        body: 'Flips a matrix across its main diagonal so rows become columns: $(A^\\top)_{i,j} = A_{j,i}$, turning shape $(m, n)$ into $(n, m)$. Key rule: $(AB)^\\top = B^\\top A^\\top$.'
+        title: 'Matrix Transpose ($W^\\top$)',
+        body: 'Flips rows and columns: $(W^\\top)_{i,j} = W_{j,i}$, turning an $(m \\times n)$ matrix into an $(n \\times m)$ matrix.'
       },
       'rank': {
         title: 'Matrix Rank',
-        body: 'The number of linearly independent rows (or columns) of a matrix—equivalently, the dimension of the space that outputs $Ax$ can reach, or the number of non-zero singular values in its <span class="term" data-term="svd">SVD</span>. For $A \\in \\mathbb{R}^{m \\times n}$, $\\text{rank}(A) \\le \\min(m, n)$.'
+        body: 'Number of linearly independent columns (or rows) in a matrix—equivalently, the dimension of the subspace its outputs span. A product $B_{(d \\times r)} A_{(r \\times k)}$ has rank at most $r$.'
       },
-      'low-rank': {
-        title: 'Low-Rank Matrix',
-        body: 'A matrix whose <span class="term" data-term="rank">rank</span> $r$ is much smaller than its height or width ($r \\ll \\min(m, n)$). Any rank-$r$ matrix of size $(m \\times n)$ can be factored into $B_{m \\times r} A_{r \\times n}$, storing $r(m+n)$ numbers instead of $mn$.'
-      },
-      'outer-product': {
-        title: 'Outer Product ($u v^\\top$)',
-        body: 'Multiplying a column vector $u \\in \\mathbb{R}^{m \\times 1}$ by a row vector $v^\\top \\in \\mathbb{R}^{1 \\times n}$ produces a full $(m \\times n)$ matrix where every column is just a scalar multiple of $u$ (<span class="term" data-term="rank">rank</span> $= 1$).'
-      },
-      'lora': {
-        title: 'LoRA (Low-Rank Adaptation)',
-        body: 'Freezes a pretrained weight matrix $W_0 \\in \\mathbb{R}^{d \\times d}$ and learns a <span class="term" data-term="low-rank">low-rank</span> update $\\Delta W = B A$ with $B \\in \\mathbb{R}^{d \\times r}$ and $A \\in \\mathbb{R}^{r \\times d}$ ($r \\ll d$, e.g. $r=8$), cutting trainable parameters by $100\\times$–$500\\times$.'
-      },
-      'eigenvector': {
-        title: 'Eigenvector ($v$)',
-        body: 'A non-zero vector $v$ whose direction is unchanged when multiplied by a square matrix $A$: $Av = \\lambda v$. It only gets stretched or flipped by its <span class="term" data-term="eigenvalue">eigenvalue $\\lambda$</span>.'
-      },
-      'eigenvalue': {
-        title: 'Eigenvalue ($\\lambda$)',
-        body: 'The scalar stretch factor $\\lambda$ in $Av = \\lambda v$. If $\\lambda > 1$, $A$ stretches along $v$; if $0 < \\lambda < 1$, $A$ shrinks along $v$; if $\\lambda = 0$, $A$ collapses $v$ flat to zero.'
+      'eigen': {
+        title: 'Eigenvector ($v$) & Eigenvalue ($\\lambda$)',
+        body: 'For a square matrix $A$, a non-zero vector $v$ satisfying $Av = \\lambda v$: multiplying by $A$ stretches $v$ by scalar $\\lambda$ without rotating its direction.'
       },
       'svd': {
-        title: 'SVD (Singular Value Decomposition, $X = U \\Sigma V^\\top$)',
-        body: 'Factors any rectangular matrix $X \\in \\mathbb{R}^{n \\times d}$ into orthogonal rotation $V^\\top$, diagonal non-negative stretch factors $\\Sigma = \\text{diag}(\\sigma_1 \\ge \\sigma_2 \\ge \\dots \\ge 0)$ (singular values), and orthogonal rotation $U$.'
+        title: 'Singular Value Decomposition (SVD)',
+        body: 'Factors any $m \\times n$ matrix into $M = U \\Sigma V^\\top = \\sum_{i=1}^r \\sigma_i u_i v_i^\\top$, where $U, V$ have orthogonal columns and $\\sigma_1 \\ge \\sigma_2 \\ge \\dots > 0$ are the singular values.'
       },
       'pca': {
-        title: 'PCA (Principal Component Analysis)',
-        body: 'Projects centered data $X$ onto the top $k$ <span class="term" data-term="eigenvector">eigenvectors</span> of the <span class="term" data-term="covariance">covariance matrix</span> $\\frac{1}{n}X^\\top X$ (or equivalently the top $k$ right singular vectors $V$ of $X$) to keep maximum variance in $k$ dimensions.'
-      },
-      'covariance': {
-        title: 'Covariance Matrix ($\\Sigma = X^\\top X / n$)',
-        body: 'For centered data $X \\in \\mathbb{R}^{n \\times d}$, the $(d \\times d)$ symmetric matrix whose $(i,j)$ entry is the covariance between feature $i$ and feature $j$. Always <span class="term" data-term="PSD">Positive Semi-Definite</span>.'
-      },
-      'hessian': {
-        title: 'Hessian Matrix ($H$)',
-        body: 'The $(d \\times d)$ symmetric matrix of second derivatives $\\frac{\\partial^2 L}{\\partial w_i \\partial w_j}$ of the loss. Its <span class="term" data-term="eigenvector">eigenvectors</span> are the principal axes of the loss bowl, and its <span class="term" data-term="eigenvalue">eigenvalues</span> measure curvature along each axis.'
-      },
-      'PSD': {
-        title: 'Positive Semi-Definite (PSD) Matrix',
-        body: 'A symmetric matrix $M$ where $x^\\top M x \\ge 0$ for every vector $x$—equivalently, all of its <span class="term" data-term="eigenvalue">eigenvalues</span> satisfy $\\lambda_i \\ge 0$. Any matrix of the form $X^\\top X$ is automatically PSD.'
+        title: 'Principal Component Analysis (PCA)',
+        body: 'Projecting centered data $X$ onto the top $k$ eigenvectors of its covariance matrix $X^\\top X$ (the top $k$ right singular vectors $V_k$ of $X$) to capture maximum variance in $k$ dimensions.'
       }
     };
 
     var SPACED_CARDS = [
-      { q: 'What is the geometric formula connecting the dot product $a \\cdot b$ to cosine similarity?', a: '$a \\cdot b = \\|a\\|_2 \\|b\\|_2 \\cos\\theta$, so cosine similarity is $\\frac{a \\cdot b}{\\|a\\|_2 \\|b\\|_2}$, which removes vector lengths and compares direction only.' },
-      { q: 'Why does $L_1$ regularization produce sparse (exact-zero) weights while $L_2$ weight decay does not?', a: 'The derivative of $w^2$ is $2w$ (which vanishes near $0$), whereas the derivative of $|w|$ is $\\pm 1$ all the way to $0$, pushing small weights to exact zero.' },
-      { q: 'If $Y = XW$ with $X$ of shape $(B, d_{\\text{in}})$ and $W$ of shape $(d_{\\text{in}}, d_{\\text{out}})$, what are the backprop shapes for $dX$ and $dW$?', a: '$dX = dY\\,W^\\top$ has shape $(B, d_{\\text{out}}) \\times (d_{\\text{out}}, d_{\\text{in}}) \\to (B, d_{\\text{in}})$, and $dW = X^\\top dY$ has shape $(d_{\\text{in}}, B) \\times (B, d_{\\text{out}}) \\to (d_{\\text{in}}, d_{\\text{out}})$.' },
-      { q: 'How many parameters and what maximum rank does a LoRA update $\\Delta W = B A$ have when $B$ is $(d, r)$ and $A$ is $(r, d)$?', a: 'It has $2dr$ parameters (instead of $d^2$) and rank at most $r$, because every input passes through an $r$-dimensional bottleneck.' },
-      { q: 'What is an eigenvector $v$ and eigenvalue $\\lambda$ of a square matrix $A$ in plain geometry?', a: 'A direction $v$ that does not rotate when multiplied by $A$ ($Av = \\lambda v$); $A$ simply stretches or shrinks $v$ by the factor $\\lambda$.' }
-    ];
-
-    /* ---------- Widget 1: Vector Dot Product & Cosine Explorer ---------- */
-    var VEC_DIRS = [
-      { base: [3, 4],   label: 'Same direction as a (0°)' },
-      { base: [4, 1],   label: 'Acute angle (~45° from a)' },
-      { base: [4, -3],  label: 'Orthogonal (90° perpendicular to a)' },
-      { base: [-3, -4], label: 'Opposite direction (180° from a)' }
-    ];
-    var activeVecDir = 0;
-
-    function setVecDir(idx) {
-      activeVecDir = idx;
-      for (var i = 0; i < 4; i++) {
-        document.getElementById('vdir-' + i).classList.toggle('active', i === idx);
-      }
-      updateVecWidget();
-    }
-
-    function updateVecWidget() {
-      var s = parseFloat(document.getElementById('vscale-slider').value);
-      document.getElementById('vscale-val').textContent = fmt(s, 1) + 'x';
-      var a = [3, 4];
-      var normA = 5;
-      var base = VEC_DIRS[activeVecDir].base;
-      var b = [base[0] * s, base[1] * s];
-      var normB2 = Math.sqrt(b[0] * b[0] + b[1] * b[1]);
-      var normB1 = Math.abs(b[0]) + Math.abs(b[1]);
-      var dot = a[0] * b[0] + a[1] * b[1];
-      var cos = dot / (normA * normB2);
-
-      document.getElementById('st-vec-b').textContent = '[' + fmt(b[0], 1) + ', ' + fmt(b[1], 1) + ']';
-      document.getElementById('st-vec-norm').textContent = fmt(normB2, 2) + ' / ' + fmt(normB1, 1);
-      document.getElementById('st-vec-dot').textContent = fmt(dot, 1);
-      document.getElementById('st-vec-cos').textContent = (cos >= 0 ? '+' : '') + fmt(cos, 2);
-
-      var ro = document.getElementById('vec-readout');
-      ro.innerHTML = '<strong>' + VEC_DIRS[activeVecDir].label + ' at scale ' + fmt(s, 1) + 'x:</strong> ' +
-        'Calculation: $a \\cdot b = (3)(' + fmt(b[0], 1) + ') + (4)(' + fmt(b[1], 1) + ') = ' + fmt(dot, 1) + '$. ' +
-        'Dividing by $\\|a\\|_2 \\|b\\|_2 = 5 \\times ' + fmt(normB2, 2) + ' = ' + fmt(5 * normB2, 2) + '$ gives $\\cos\\theta = ' + fmt(cos, 2) + '$, which never changes when you slide the length multiplier $s$.';
-      renderMathIn(ro);
-    }
-
-    /* ---------- Widget 2: Matrix Multiply & Backprop Shape Inspector ---------- */
-    var MM_X  = [[1, 2, 0], [3, -1, 2]];          /* (2 x 3) */
-    var MM_W  = [[2, -1], [1, 3], [0, 2]];        /* (3 x 2) */
-    var MM_DY = [[1, 2], [-1, 1]];                /* (2 x 2) */
-    var mmMode = 0;
-    var mmSelR = 0, mmSelC = 0;
-
-    function transposeMat(M) {
-      var R = M.length, C = M[0].length, out = [];
-      for (var c = 0; c < C; c++) {
-        var row = [];
-        for (var r = 0; r < R; r++) { row.push(M[r][c]); }
-        out.push(row);
-      }
-      return out;
-    }
-
-    function matMul(A, B) {
-      var R = A.length, K = A[0].length, C = B[0].length, out = [];
-      for (var r = 0; r < R; r++) {
-        var row = [];
-        for (var c = 0; c < C; c++) {
-          var s = 0;
-          for (var k = 0; k < K; k++) { s += A[r][k] * B[k][c]; }
-          row.push(s);
-        }
-        out.push(row);
-      }
-      return out;
-    }
-
-    function setMMMode(m) {
-      mmMode = m;
-      mmSelR = 0;
-      mmSelC = 0;
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('mm-mode-' + i).classList.toggle('active', i === m);
-      }
-      renderMMWidget();
-    }
-
-    function selectMMCell(r, c) {
-      mmSelR = r;
-      mmSelC = c;
-      renderMMWidget();
-    }
-
-    function renderSingleMatTable(title, M, hiRow, hiCol, clickable) {
-      var R = M.length, C = M[0].length;
-      var h = '<div style="flex:1; min-width:170px;">';
-      h += '<div style="font-weight:bold; font-family:var(--font-mono); font-size:0.85rem; margin-bottom:4px;">' + title + ' (' + R + '&times;' + C + ')</div>';
-      h += '<table><tbody>';
-      for (var r = 0; r < R; r++) {
-        h += '<tr>';
-        for (var c = 0; c < C; c++) {
-          var isHi = (r === hiRow) || (c === hiCol) || (hiRow === r && hiCol === c && clickable);
-          var isTarget = (clickable && r === mmSelR && c === mmSelC);
-          var style = isTarget
-            ? 'background:#000; color:#fff; font-weight:bold; cursor:pointer;'
-            : (isHi ? 'background:#e8e8e8; font-weight:bold;' + (clickable ? 'cursor:pointer;' : '') : (clickable ? 'cursor:pointer;' : ''));
-          var clickAttr = clickable ? ' onclick="selectMMCell(' + r + ',' + c + ')"' : '';
-          h += '<td style="text-align:center; font-family:var(--font-mono); ' + style + '"' + clickAttr + '>' + M[r][c] + '</td>';
-        }
-        h += '</tr>';
-      }
-      h += '</tbody></table></div>';
-      return h;
-    }
-
-    function renderMMWidget() {
-      var A, B, nameA, nameB, nameC, explainShape;
-      if (mmMode === 0) {
-        A = MM_X; B = MM_W;
-        nameA = 'X'; nameB = 'W'; nameC = 'Y = X W';
-        explainShape = 'Inner feature dimension <strong>3</strong> matches and cancels: $(2 \\times \\mathbf{3}) \\cdot (\\mathbf{3} \\times 2) \\to (2 \\times 2)$.';
-      } else if (mmMode === 1) {
-        A = MM_DY; B = transposeMat(MM_W);
-        nameA = 'dY'; nameB = 'Wᵀ'; nameC = 'dX = dY Wᵀ';
-        explainShape = 'To get $dX$ of shape $(2 \\times 3)$ from $dY$ $(2 \\times \\mathbf{2})$, we must transpose $W$ $(3 \\times 2) \\to W^\\top (\\mathbf{2} \\times 3)$ so inner dimension <strong>2</strong> cancels.';
-      } else {
-        A = transposeMat(MM_X); B = MM_DY;
-        nameA = 'Xᵀ'; nameB = 'dY'; nameC = 'dW = Xᵀ dY';
-        explainShape = 'To get $dW$ of shape $(3 \\times 2)$, we transpose $X$ $(2 \\times 3) \\to X^\\top (3 \\times \\mathbf{2})$ and multiply by $dY$ $(\\mathbf{2} \\times 2)$ so batch size <strong>2</strong> cancels.';
-      }
-      var C = matMul(A, B);
-
-      /* Cell selector buttons */
-      var btnHtml = '<span style="font-weight:bold;">Inspect result cell:</span>';
-      for (var r = 0; r < C.length; r++) {
-        for (var c = 0; c < C[0].length; c++) {
-          var act = (r === mmSelR && c === mmSelC) ? ' active' : '';
-          btnHtml += '<button class="btn btn-small' + act + '" onclick="selectMMCell(' + r + ',' + c + ')">Row ' + (r + 1) + ', Col ' + (c + 1) + '</button>';
-        }
-      }
-      document.getElementById('mm-cell-buttons').innerHTML = btnHtml;
-
-      var tablesHtml = '<div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start;">' +
-        renderSingleMatTable(nameA, A, mmSelR, -1, false) +
-        renderSingleMatTable(nameB, B, -1, mmSelC, false) +
-        renderSingleMatTable(nameC + ' (tap cell)', C, -1, -1, true) +
-        '</div>';
-      document.getElementById('mm-tables').innerHTML = tablesHtml;
-
-      var terms = [];
-      for (var k = 0; k < A[0].length; k++) {
-        terms.push('(' + A[mmSelR][k] + ')(' + B[k][mmSelC] + ')');
-      }
-      var ro = document.getElementById('mm-readout');
-      ro.innerHTML = '<p style="margin:0 0 0.4rem 0;">' + explainShape + '</p>' +
-        '<p style="margin:0;"><strong>Row ' + (mmSelR + 1) + ' of ' + nameA + ' &middot; Col ' + (mmSelC + 1) + ' of ' + nameB + ':</strong> ' +
-        '<code>' + terms.join(' + ') + ' = ' + C[mmSelR][mmSelC] + '</code></p>';
-      renderMathIn(ro);
-    }
-
-    /* ---------- Widget 3: LoRA Low-Rank Calculator ---------- */
-    var loraDim = 4096;
-
-    function setLoraDim(d) {
-      loraDim = d;
-      [1024, 4096, 8192].forEach(function (v) {
-        document.getElementById('ldim-' + v).classList.toggle('active', v === d);
-      });
-      updateLoraWidget();
-    }
-
-    function updateLoraWidget() {
-      var r = parseInt(document.getElementById('lrank-slider').value, 10);
-      document.getElementById('lrank-val').textContent = 'r = ' + r;
-      var full = loraDim * loraDim;
-      var low = 2 * loraDim * r;
-      var ratio = full / low;
-
-      document.getElementById('st-lora-full').textContent = fmtInt(full);
-      document.getElementById('st-lora-low').textContent = fmtInt(low);
-      document.getElementById('st-lora-ratio').textContent = fmt(ratio, 1) + 'x smaller';
-      document.getElementById('st-lora-rank').textContent = r + ' (of ' + fmtInt(loraDim) + ')';
-
-      var ro = document.getElementById('lora-readout');
-      ro.innerHTML = 'Instead of updating a dense $(' + loraDim + ' \\times ' + loraDim + ')$ matrix ($' + fmtInt(full) + '$ floats), ' +
-        'LoRA learns $B$ of shape $(' + loraDim + ' \\times ' + r + ')$ and $A$ of shape $(' + r + ' \\times ' + loraDim + ')$ for $2 \\times ' + loraDim + ' \\times ' + r + ' = ' + fmtInt(low) + '$ total parameters. ' +
-        'Even though $BA$ has outer shape $(' + loraDim + ' \\times ' + loraDim + ')$, every update vector lives inside an <strong>' + r + '-dimensional subspace</strong> (<span class="term" data-term="rank">rank</span> $\\le ' + r + '$).';
-      renderMathIn(ro);
-    }
-
-    /* ---------- Widget 4: 2D Eigenvector Explorer ---------- */
-    var EIG_MATS = [
       {
-        name: 'Diagonal Axis Stretch',
-        m: [[2.0, 0.0], [0.0, 0.8]],
-        note: 'Eigenvectors are the horizontal axis (0° or 180°, eigenvalue λ₁ = 2.0) and vertical axis (90°, eigenvalue λ₂ = 0.8).'
+        q: 'Let $a = [3, 4]$ and $b = [0, 2]$. What are $a \\cdot b$, $\\|a\\|_2$, $\\|b\\|_2$, and $\\cos\\theta$?',
+        a: '$a \\cdot b = 3(0) + 4(2) = 8$. $\\|a\\|_2 = \\sqrt{3^2 + 4^2} = 5$, and $\\|b\\|_2 = 2$. Therefore $\\cos\\theta = \\frac{8}{5 \\times 2} = 0.80$.'
       },
       {
-        name: 'Correlated Covariance (PCA)',
-        m: [[1.5, 0.7], [0.7, 1.5]],
-        note: 'Eigenvectors sit at 45° (principal component 1, eigenvalue λ₁ = 2.2) and 135° (principal component 2, eigenvalue λ₂ = 0.8).'
+        q: 'Why does $L_1$ regularization ($\\lambda \\|w\\|_1$) drive small weights to exact zero (sparsity), whereas $L_2$ regularization ($\\frac{\\lambda}{2}\\|w\\|_2^2$) shrinks them smoothly without hitting exact zero?',
+        a: 'The derivative of $\\frac{1}{2}w^2$ is $w$, which becomes tiny as $w \\to 0$. The derivative of $|w|$ is $\\text{sign}(w) = \\pm 1$, which pushes toward $0$ with constant force all the way down to $w = 0$.'
       },
       {
-        name: 'Rank-1 Projection [[1, 1], [1, 1]]',
-        m: [[1.0, 1.0], [1.0, 1.0]],
-        note: 'At 45° (x = [0.71, 0.71]), Ax stretches by λ₁ = 2.0. At 135° (x = [-0.71, 0.71]), Ax collapses completely to [0, 0] (eigenvalue λ₂ = 0, meaning rank = 1)!'
+        q: 'In a linear layer $Y = XW$ with $X \\in \\mathbb{R}^{B \\times d_{\\text{in}}}$, $W \\in \\mathbb{R}^{d_{\\text{in}} \\times d_{\\text{out}}}$, and upstream gradient $dY \\in \\mathbb{R}^{B \\times d_{\\text{out}}}$, what are the matrix formulas for $dX$ and $dW$?',
+        a: '$dX = dY\\,W^\\top$ of shape $(B \\times d_{\\text{out}})(d_{\\text{out}} \\times d_{\\text{in}}) = (B \\times d_{\\text{in}})$, and $dW = X^\\top dY$ of shape $(d_{\\text{in}} \\times B)(B \\times d_{\\text{out}}) = (d_{\\text{in}} \\times d_{\\text{out}})$.'
+      },
+      {
+        q: 'What does it mean geometrically for $v$ to be an eigenvector of square matrix $A$ with eigenvalue $\\lambda$, and what is the rank of a matrix?',
+        a: '$Av = \\lambda v$: multiplying $v$ by $A$ stretches $v$ by factor $\\lambda$ without rotating its direction. The rank of a matrix is its number of linearly independent columns (or non-zero singular values $\\sigma_i$).'
       }
     ];
-    var activeEigMat = 0;
-
-    function setEigenMat(idx) {
-      activeEigMat = idx;
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('eig-m' + i).classList.toggle('active', i === idx);
-      }
-      updateEigenWidget();
-    }
-
-    function updateEigenWidget() {
-      var deg = parseInt(document.getElementById('eig-angle').value, 10);
-      document.getElementById('eig-angle-val').textContent = deg + '\u00B0';
-      var rad = deg * Math.PI / 180;
-      var x0 = Math.cos(rad), x1 = Math.sin(rad);
-      var M = EIG_MATS[activeEigMat].m;
-      var y0 = M[0][0] * x0 + M[0][1] * x1;
-      var y1 = M[1][0] * x0 + M[1][1] * x1;
-      var lenY = Math.sqrt(y0 * y0 + y1 * y1);
-
-      var dot = x0 * y0 + x1 * y1;
-      var cosAng = lenY < 1e-6 ? 1 : clamp(dot / lenY, -1, 1);
-      var rotDeg = lenY < 1e-6 ? 0 : Math.acos(Math.abs(cosAng)) * 180 / Math.PI;
-
-      document.getElementById('st-eig-x').textContent = '[' + fmt(x0, 2) + ', ' + fmt(x1, 2) + ']';
-      document.getElementById('st-eig-ax').textContent = '[' + fmt(y0, 2) + ', ' + fmt(y1, 2) + ']';
-      document.getElementById('st-eig-len').textContent = fmt(lenY, 2);
-
-      var isEig = (rotDeg < 1.0);
-      document.getElementById('st-eig-align').textContent = lenY < 1e-4
-        ? 'EIGENVECTOR (\u03BB = 0)'
-        : (isEig ? 'EIGENVECTOR (\u03BB = ' + fmt(dot, 2) + ')' : 'Rotated ' + fmt(rotDeg, 1) + '\u00B0');
-
-      /* Render 2D SVG */
-      var svg = document.getElementById('eigen-svg');
-      var cx = 160, cy = 120, scale = 42;
-      var h = '';
-      h += '<line x1="20" y1="' + cy + '" x2="300" y2="' + cy + '" stroke="#ccc" stroke-width="1"/>';
-      h += '<line x1="' + cx + '" y1="15" x2="' + cx + '" y2="225" stroke="#ccc" stroke-width="1"/>';
-      h += '<circle cx="' + cx + '" cy="' + cy + '" r="' + scale + '" fill="none" stroke="#aaa" stroke-dasharray="3 3"/>';
-
-      /* Image ellipse of the unit circle under M */
-      var ellPts = [];
-      for (var a = 0; a <= 360; a += 10) {
-        var ar = a * Math.PI / 180;
-        var ex = M[0][0] * Math.cos(ar) + M[0][1] * Math.sin(ar);
-        var ey = M[1][0] * Math.cos(ar) + M[1][1] * Math.sin(ar);
-        ellPts.push(Math.round(cx + ex * scale) + ',' + Math.round(cy - ey * scale));
-      }
-      h += '<polyline points="' + ellPts.join(' ') + '" fill="none" stroke="#000" stroke-width="1"/>';
-
-      /* Input vector x (dashed) */
-      var xEndX = Math.round(cx + x0 * scale);
-      var xEndY = Math.round(cy - x1 * scale);
-      h += '<line x1="' + cx + '" y1="' + cy + '" x2="' + xEndX + '" y2="' + xEndY + '" stroke="#000" stroke-width="2" stroke-dasharray="4 3"/>';
-      h += '<circle cx="' + xEndX + '" cy="' + xEndY + '" r="4" fill="#fff" stroke="#000" stroke-width="2"/>';
-      h += '<text x="' + (xEndX + 6) + '" y="' + (xEndY - 4) + '" font-family="monospace" font-size="11" fill="#000">x</text>';
-
-      /* Output vector Ax (thick solid) */
-      var yEndX = Math.round(cx + y0 * scale);
-      var yEndY = Math.round(cy - y1 * scale);
-      h += '<line x1="' + cx + '" y1="' + cy + '" x2="' + yEndX + '" y2="' + yEndY + '" stroke="#000" stroke-width="3.5"/>';
-      h += '<circle cx="' + yEndX + '" cy="' + yEndY + '" r="5" fill="#000"/>';
-      h += '<text x="' + (yEndX + 7) + '" y="' + (yEndY + 12) + '" font-family="monospace" font-size="11" font-weight="bold" fill="#000">Ax</text>';
-
-      svg.innerHTML = h;
-
-      var ro = document.getElementById('eigen-readout');
-      ro.innerHTML = '<strong>' + EIG_MATS[activeEigMat].name + ':</strong> ' + EIG_MATS[activeEigMat].note +
-        (isEig ? ' <br><strong>Locked onto an eigenvector at ' + deg + '&deg;!</strong> Notice that $Ax$ points along the exact same line as $x$, scaled by $\\lambda = ' + fmt(lenY < 1e-4 ? 0 : dot, 2) + '$.' : '');
-      renderMathIn(ro);
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      updateVecWidget();
-      renderMMWidget();
-      updateLoraWidget();
-      updateEigenWidget();
-    });
   </script>
 </body>
 </html>

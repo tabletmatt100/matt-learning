@@ -25,256 +25,105 @@
       By comparing <span class="term" data-term="train-error">training error</span> against <span class="term" data-term="val-error">validation error</span>—and breaking expected test <span class="term" data-term="mse">MSE</span> into <span class="term" data-term="bias-sq">$\text{Bias}^2$</span> (aim error), <span class="term" data-term="variance">$\text{Variance}$</span> (sample wobble), and <span class="term" data-term="irreducible-error">irreducible noise $\sigma^2$</span>—you can tell immediately which failure mode you are in and which lever will actually move the needle.
     </p>
 
-    <div id="scaffolding-section">
-      <h2 id="s1">1. Diagnosing Underfitting vs. Overfitting From Error Gaps</h2>
+    <h2>1. Diagnosing Underfitting vs. Overfitting From Error Gaps</h2>
+    <p>
+      You can never tell whether a model is <span class="term" data-term="underfitting">underfitting</span> or <span class="term" data-term="overfitting">overfitting</span> by looking at <span class="term" data-term="val-error">validation error</span> alone—you have to compare training error against validation error (<span class="term" data-term="gen-gap">generalization gap</span> $\text{Val} - \text{Train}$).
+    </p>
+    <p>
+      Suppose you are predicting used car resale prices where irreducible negotiation noise sets a hard error floor of <span class="term" data-term="irreducible-error">$\sigma^2 = 1.0$</span>. If your model has <strong>Training MSE $= 8.8$</strong> and <strong>Validation MSE $= 9.0$</strong>, both errors are awful and the gap between them is tiny ($0.2$). Your model is <strong>underfitting</strong>: it doesn't even have enough <span class="term" data-term="capacity">capacity</span> to fit the training data you already gave it, so collecting $10\times$ more training rows will just leave both errors stuck near $9.0$.
+    </p>
+    <p>
+      Conversely, if an unpruned tree achieves <strong>Training MSE $= 0.1$</strong> (below the $1.0$ noise floor!) while its <strong>Validation MSE shoots up to $14.0$</strong>, that wide $13.9$-point <span class="term" data-term="gen-gap">generalization gap</span> proves the model memorized the training noise—classic <strong>overfitting</strong>. That is when more training rows, <span class="term" data-term="l2-reg">regularization</span>, or shallower trees actually help.
+    </p>
 
-      <div class="story-box">
-        <div class="story-label">Running Scenario: Used Car Price Curve</div>
-        <p style="margin:0;">
-          You want to predict a car's resale price <span class="term" data-term="target-y">$y$</span> (in $\$1{,}000$s) from its age <span class="term" data-term="feature-x">$x$</span> (in years). The true depreciation curve <span class="term" data-term="true-fn">$f(x)$</span> bends steeply in early years and flattens out later, while individual car sales contain random negotiation noise <span class="term" data-term="noise-eps">$\epsilon$</span> with variance <span class="term" data-term="irreducible-error">$\sigma^2 = 1$</span> ($\$1{,}000^2$).
-        </p>
-      </div>
+    <details class="mcq-box" data-correct="A" data-topic="Check 1: Diagnosing Train vs. Validation Error">
+      <p>You train a logistic regression model on a tabular dataset. Its <span class="term" data-term="train-error">training error</span> is $28\%$ and its <span class="term" data-term="val-error">validation error</span> is $29\%$ (where the Bayes noise floor is $5\%$). Which action is most likely to reduce validation error?</p>
+      <label class="mcq-option" data-explain="Correct. Both training and validation errors are high (28% vs. 5% floor) with almost zero generalization gap (1%), which is classic high-bias underfitting. You need more expressive capacity (interaction features or a non-linear model like GBDT).">Engineer non-linear <span class="term" data-term="capacity">interaction features</span> or switch to a tree ensemble (<span class="term" data-term="boosting">XGBoost</span>).</label>
+      <label class="mcq-option" data-explain="Increasing L2 penalty restricts the model even further, raising bias and making underfitting worse.">Increase the <span class="term" data-term="l2-reg">L2 regularization penalty $\lambda$</span> by $10\times$.</label>
+      <label class="mcq-option" data-explain="With only a 1% gap between train (28%) and val (29%), variance is already tiny; more rows of the same linear features will stay stuck near 28.5% error.">Double the number of training rows using the exact same linear features.</label>
+    </details>
 
-      <div class="interactive-card" id="poe-widget">
-        <div class="widget-label">Quick Prediction</div>
-        <h3>Your Model Has High Validation Error ($\text{MSE}_{\text{val}} = 9$). Will $10\times$ More Data Fix It?</h3>
-        <p>
-          Suppose your model has <strong><span class="term" data-term="train-error">Training MSE</span> $= 8.8$</strong> and <strong><span class="term" data-term="val-error">Validation MSE</span> $= 9.0$</strong> (where the noise floor is $\sigma^2 = 1.0$). Your teammate proposes spending two weeks collecting $10\times$ more training rows without changing the model. What happens if you add $10\times$ more data?
-        </p>
-        <div class="control-row">
-          <button class="btn btn-small" onclick="runPOE('A')">A) Validation MSE drops close to the noise floor (1.0)</button>
-          <button class="btn btn-small" onclick="runPOE('B')">B) Barely helps — both Train and Val MSE stay stuck near 9.0</button>
-          <button class="btn btn-small" onclick="runPOE('C')">C) Overfitting gets much worse</button>
-          <button class="btn btn-small" onclick="runPOE('skip')">Show me why</button>
-        </div>
-        <div id="poe-reveal" class="refutation" style="display:none;"></div>
-      </div>
+    <h2>2. The Bias-Variance Decomposition (and Bagging vs. Boosting)</h2>
+    <p>
+      Why can't we get zero <span class="term" data-term="bias">bias</span> and zero <span class="term" data-term="variance">variance</span> at the same time? Suppose at a fixed test input $x$, the true noise-free signal is <span class="term" data-term="true-fn">$f(x)$</span> and the observed noisy test label is $y = f(x) + \epsilon$, where random noise $\epsilon$ has mean $0$ and variance <span class="term" data-term="irreducible-error">$\sigma^2$</span>. If we repeatedly draw fresh training sets and train a model <span class="term" data-term="hat-f">$\hat{f}(x)$</span> each time (with average prediction <span class="term" data-term="avg-pred">$\bar{f}(x) = \mathbb{E}[\hat{f}(x)]$</span>), its expected test <span class="term" data-term="mse">MSE</span> splits into three non-negative pieces:
+    </p>
 
-      <p>
-        You cannot tell whether a model is <span class="term" data-term="underfitting">underfitting</span> or <span class="term" data-term="overfitting">overfitting</span> from <span class="term" data-term="val-error">validation error</span> alone—you must compare <strong><span class="term" data-term="train-error">training error</span></strong> against <strong><span class="term" data-term="val-error">validation error</span></strong>:
-      </p>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Regime</th>
-              <th><span class="term" data-term="train-error">Train Error</span></th>
-              <th><span class="term" data-term="val-error">Val Error</span></th>
-              <th><span class="term" data-term="gen-gap">Generalization Gap</span> ($\text{Val} - \text{Train}$)</th>
-              <th>Dominant Culprit</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>1. <span class="term" data-term="underfitting">Underfitting</span></strong> (e.g., Degree $d=1$)</td>
-              <td class="num"><strong>High</strong> ($9.0$)</td>
-              <td class="num"><strong>High</strong> ($10.0$)</td>
-              <td class="num">Tiny ($1.0$)</td>
-              <td>High <span class="term" data-term="bias">Bias</span> (model too rigid)</td>
-            </tr>
-            <tr>
-              <td><strong>2. Sweet Spot</strong> (e.g., Degree $d=2$)</td>
-              <td class="num"><strong>Low</strong> ($1.5$)</td>
-              <td class="num"><strong>Low</strong> ($3.0$)</td>
-              <td class="num">Small ($1.5$)</td>
-              <td>Balanced <span class="term" data-term="bias">Bias</span> &amp; <span class="term" data-term="variance">Variance</span></td>
-            </tr>
-            <tr>
-              <td><strong>3. <span class="term" data-term="overfitting">Overfitting</span></strong> (e.g., Degree $d=8$)</td>
-              <td class="num"><strong>Near $0$</strong> ($0.1$)</td>
-              <td class="num"><strong>Huge</strong> ($14.0$)</td>
-              <td class="num"><strong>Huge ($13.9$)</strong></td>
-              <td>High <span class="term" data-term="variance">Variance</span> (memorized noise)</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="interactive-card" id="stepper-widget">
-        <div class="widget-label">Side-by-Side Comparison</div>
-        <h3>Watch the Model Fit and Repeated-Sample Wobble Across 3 Complexity Regimes</h3>
-        <p style="margin-top:0.2rem;">
-          In each panel below, the <strong>dashed curve</strong> is the true signal <span class="term" data-term="true-fn">$f(x)$</span>, and the <strong>3 solid curves</strong> are models <span class="term" data-term="hat-f">$\hat{f}^{(1)}, \hat{f}^{(2)}, \hat{f}^{(3)}$</span> fit on 3 different random training samples drawn from the exact same process.
-        </p>
-        <div class="control-row">
-          <button class="btn btn-small active" id="step-btn-0" onclick="setRegimeStep(0)">1. Underfit (d=1: High Bias)</button>
-          <button class="btn btn-small" id="step-btn-1" onclick="setRegimeStep(1)">2. Sweet Spot (d=2: Balanced)</button>
-          <button class="btn btn-small" id="step-btn-2" onclick="setRegimeStep(2)">3. Overfit (d=8: High Variance)</button>
-        </div>
-        <div class="small-multiples" id="regime-sm"></div>
-        <div class="readout" id="regime-explain"></div>
-      </div>
-
-      <!-- SECTION 2 -->
-      <h2 id="s2">2. The Bias-Variance Tradeoff Equation (With Real Numbers)</h2>
-      <p>
-        Why can't we get zero <span class="term" data-term="bias">bias</span> and zero <span class="term" data-term="variance">variance</span> at the same time? Suppose at a fixed test input <span class="term" data-term="feature-x">$x$</span>, the true noise-free target is <span class="term" data-term="true-fn">$f(x)$</span> and the observed test label is $y = f(x) + \epsilon$, where the random noise <span class="term" data-term="noise-eps">$\epsilon$</span> has mean $0$ and variance <span class="term" data-term="irreducible-error">$\sigma^2$</span>.
-      </p>
-      <p>
-        If we repeatedly draw fresh training datasets of size $N$ and train a fresh model <span class="term" data-term="hat-f">$\hat{f}(x)$</span> each time, its expected <span class="term" data-term="mse">Mean Squared Error</span> on an unseen test point $(x, y)$ decomposes into three clean terms:
-      </p>
-
-      <div class="math-block">
-        $$\underbrace{\mathbb{E}\big[(y - \hat{f}(x))^2\big]}_{\text{Expected Test MSE}} = \underbrace{\big(\bar{f}(x) - f(x)\big)^2}_{\text{Bias}^2\text{ (Aim Error)}} + \underbrace{\mathbb{E}\Big[\big(\hat{f}(x) - \bar{f}(x)\big)^2\Big]}_{\text{Variance (Sample Wobble)}} + \underbrace{\sigma^2}_{\text{Irreducible Noise}}$$
-        <div class="math-hint">Click any symbol: <span class="term" data-term="target-y">$y$</span> = noisy test label, <span class="term" data-term="true-fn">$f(x)$</span> = true signal, <span class="term" data-term="hat-f">$\hat{f}(x)$</span> = prediction from one training sample, <span class="term" data-term="avg-pred">$\bar{f}(x) = \mathbb{E}[\hat{f}(x)]$</span> = average prediction across training samples, <span class="term" data-term="irreducible-error">$\sigma^2$</span> = label noise variance.</div>
-      </div>
-
-      <details>
-        <summary>Optional 4-Line Proof: Why Do the Cross-Terms Cancel Out?</summary>
-        <div class="details-body">
-          <p>Add and subtract <span class="term" data-term="true-fn">$f(x)$</span> and <span class="term" data-term="avg-pred">$\bar{f}(x)$</span> inside $y - \hat{f}(x)$:</p>
-          <p>
-            1. Write $y - \hat{f}(x) = \underbrace{(y - f(x))}_{\epsilon} + \underbrace{(f(x) - \bar{f}(x))}_{-\text{Bias}} + \underbrace{(\bar{f}(x) - \hat{f}(x))}_{\text{Deviation from mean}}$.<br>
-            2. Because test noise $\epsilon$ has mean $0$ and is independent of the training sample, all cross-terms with $\epsilon$ have expectation $0$, leaving $\mathbb{E}[\epsilon^2] = \sigma^2$.<br>
-            3. Because $(f(x) - \bar{f}(x))$ is a fixed constant and $\mathbb{E}[\bar{f}(x) - \hat{f}(x)] = \bar{f}(x) - \bar{f}(x) = 0$, the middle cross-term also vanishes!<br>
-            4. That leaves the sum of the three squared pieces: $\text{Bias}^2 + \text{Variance} + \sigma^2$.
-          </p>
-        </div>
-      </details>
-
-      <div class="worked">
-        <p><strong>Worked numerical trace (3 models trained on 3 independent samples):</strong></p>
-        <p>
-          Fix a test car age $x = 5$, where the true noise-free price is <strong><span class="term" data-term="true-fn">$f(5) = 10$</span></strong> ($\$10\text{k}$) and irreducible market noise is <strong><span class="term" data-term="irreducible-error">$\sigma^2 = 1$</span></strong>. We train a rigid linear model ($A$) and an unregularized deep tree ($B$) on $3$ separate training sets:
-        </p>
-        <p>
-          &bull; <strong>Model A (Underfit Linear Model) predicts $\hat{f}_A = [6, \, 7, \, 8]$ across the 3 samples:</strong><br>
-          1. <em>Average prediction:</em> <span class="term" data-term="avg-pred">$\bar{f}_A$</span> $= \frac{6 + 7 + 8}{3} = \mathbf{7}$.<br>
-          2. <em>Squared Bias:</em> <span class="term" data-term="bias-sq">$\text{Bias}^2$</span> $= (\bar{f}_A - f(5))^2 = (7 - 10)^2 = (-3)^2 = \mathbf{9}$ (consistently aims $\$3\text{k}$ too low).<br>
-          3. <em>Variance:</em> Deviations from $\bar{f}_A = 7$ are $[-1, \, 0, \, +1]$, so <span class="term" data-term="variance">$\text{Var}$</span> $= \frac{(-1)^2 + 0^2 + 1^2}{3} = \mathbf{\frac{2}{3}} \approx 0.67$ (very stable across samples).<br>
-          4. <em>Total Expected Test MSE:</em> $9 + \frac{2}{3} + 1 = \mathbf{10.67}$.
-        </p>
-        <p style="margin-bottom:0;">
-          &bull; <strong>Model B (Overfit Deep Tree) predicts $\hat{f}_B = [6, \, 10, \, 14]$ across the 3 samples:</strong><br>
-          1. <em>Average prediction:</em> <span class="term" data-term="avg-pred">$\bar{f}_B$</span> $= \frac{6 + 10 + 14}{3} = \mathbf{10}$.<br>
-          2. <em>Squared Bias:</em> <span class="term" data-term="bias-sq">$\text{Bias}^2$</span> $= (10 - 10)^2 = \mathbf{0}$ (on average, centered right on the bullseye!).<br>
-          3. <em>Variance:</em> Deviations from $\bar{f}_B = 10$ are $[-4, \, 0, \, +4]$, so <span class="term" data-term="variance">$\text{Var}$</span> $= \frac{(-4)^2 + 0^2 + 4^2}{3} = \mathbf{\frac{32}{3}} \approx 10.67$ (wild swings from sample to sample).<br>
-          4. <em>Total Expected Test MSE:</em> $0 + \frac{32}{3} + 1 = \mathbf{11.67}$.
-        </p>
-      </div>
-
-      <div class="interactive-card" id="tradeoff-widget">
-        <div class="widget-label">Interactive Bias-Variance Decomposition Explorer</div>
-        <h3>Explore the U-Shaped Test Error Curve Across Model Complexity $d$</h3>
-        <p style="margin-top:0.2rem;">
-          Step through polynomial degree / tree depth $d \in [1, 8]$ to inspect how <span class="term" data-term="bias-sq">$\text{Bias}^2$</span> (falling curve) and <span class="term" data-term="variance">$\text{Variance}$</span> (rising curve) combine with <span class="term" data-term="irreducible-error">$\sigma^2 = 1.0$</span> to create a U-shaped Total Test <span class="term" data-term="mse">MSE</span> minimum at $d = 3$.
-        </p>
-        <div class="control-row">
-          <label for="comp-slider">Model Complexity $d$</label>
-          <input type="range" id="comp-slider" min="1" max="8" step="1" value="3" oninput="updateTradeoffWidget()">
-          <span class="val" id="comp-val">d = 3</span>
-        </div>
-        <div class="figure-box">
-          <svg id="bv-svg" viewBox="0 0 460 205" width="460" height="205" role="img" aria-label="Bias-variance U-curve chart"></svg>
-        </div>
-        <div class="stat-grid">
-          <div class="stat"><div class="k"><span class="term" data-term="bias-sq">$\text{Bias}^2$</span></div><div class="v" id="stat-bias">1.0</div></div>
-          <div class="stat"><div class="k"><span class="term" data-term="variance">Variance</span></div><div class="v" id="stat-var">1.0</div></div>
-          <div class="stat"><div class="k"><span class="term" data-term="irreducible-error">Noise $\sigma^2$</span></div><div class="v" id="stat-noise">1.0</div></div>
-          <div class="stat"><div class="k">Total Test <span class="term" data-term="mse">MSE</span></div><div class="v" id="stat-mse">3.0</div></div>
-        </div>
-        <div class="readout" id="bv-readout"></div>
-      </div>
+    <div class="math-block">
+      $$\underbrace{\mathbb{E}\big[(y - \hat{f}(x))^2\big]}_{\text{Expected Test MSE}} = \underbrace{\big(\bar{f}(x) - f(x)\big)^2}_{\text{Bias}^2\text{ (Aim Error)}} + \underbrace{\mathbb{E}\Big[\big(\hat{f}(x) - \bar{f}(x)\big)^2\Big]}_{\text{Variance (Sample Wobble)}} + \underbrace{\sigma^2}_{\text{Irreducible Noise}}$$
     </div>
 
-    <h2 id="s3">3. Hands-On Practice</h2>
-
-    <div class="interactive-card" id="faded-widget">
-      <div class="widget-label">Try It By Hand</div>
-      <h3>Compute the Total Expected Test MSE for Model C</h3>
+    <div class="worked">
+      <p><strong>Worked Example (Tracing $\text{Bias}^2$ and Variance across 3 training samples):</strong></p>
       <p>
-        At test point $x = 5$, the true target is <span class="term" data-term="true-fn">$f(5) = 10$</span> and irreducible noise is <span class="term" data-term="irreducible-error">$\sigma^2 = 1$</span>. A regularized tree (Model C) trained on $3$ datasets predicts $\hat{f}_C = [8, \, 9, \, 10]$:
+        At test car age $x = 5$, the true price is <span class="term" data-term="true-fn">$f(5) = 10$</span> and irreducible noise is <span class="term" data-term="irreducible-error">$\sigma^2 = 1$</span>.<br>
+        &bull; <strong>Model A (Underfit Linear Line)</strong> trained on 3 separate datasets predicts $\hat{f}_A = [6,\; 7,\; 8]$. Its mean prediction is $\bar{f}_A = \mathbf{7}$, so its <span class="term" data-term="bias-sq">$\text{Bias}^2$</span> is $(7 - 10)^2 = \mathbf{9}$ (aims $3$ units too low), while its <span class="term" data-term="variance">Variance</span> around $7$ is $\frac{(-1)^2 + 0^2 + 1^2}{3} = \mathbf{\frac{2}{3}} \approx 0.67$. Total Test MSE $= 9 + 0.67 + 1 = \mathbf{10.67}$.<br>
+        &bull; <strong>Model B (Overfit Deep Tree)</strong> predicts $\hat{f}_B = [6,\; 10,\; 14]$. Its mean prediction is $\bar{f}_B = \mathbf{10}$, so its $\text{Bias}^2 = (10 - 10)^2 = \mathbf{0}$ (centered on the bullseye!), but its Variance around $10$ is $\frac{(-4)^2 + 0^2 + 4^2}{3} = \mathbf{\frac{32}{3}} \approx 10.67$. Total Test MSE $= 0 + 10.67 + 1 = \mathbf{11.67}$.
       </p>
-      <p>
-        <strong>Step 1 (Average prediction):</strong> $\bar{f}_C = \frac{8 + 9 + 10}{3} = 9$.<br>
-        <strong>Step 2 (Squared Bias &amp; Variance):</strong><br>
-        &bull; $\text{Bias}^2 = (\bar{f}_C - f(5))^2 = (9 - 10)^2 = \mathbf{1}$.<br>
-        &bull; Deviations from $\bar{f}_C = 9$ are $[-1, \, 0, \, +1]$, and suppose across the full population of training sets its variance rounds cleanly to $\text{Var} = \mathbf{1}$.<br>
-        <strong>Step 3 (Your turn &mdash; combine all three pieces):</strong> With $\text{Bias}^2 = 1$, $\text{Var} = 1$, and $\sigma^2 = 1$, what is the Total Expected Test <span class="term" data-term="mse">MSE</span>?
-      </p>
-      <div class="control-row">
-        <label for="fade-input">Total Test MSE =</label>
-        <input type="number" id="fade-input" step="1" placeholder="?" style="width:7rem;">
-        <button class="btn btn-small" onclick="checkFaded()">Check</button>
-      </div>
-      <div id="fade-feedback" class="readout" style="display:none;"></div>
     </div>
 
     <p>
-      Notice how this decomposition immediately explains a classic ensemble mystery: why <span class="term" data-term="bagging">Random Forests (Bagging)</span> are built out of deep, unpruned trees, whereas <span class="term" data-term="boosting">Gradient Boosting (XGBoost)</span> is built out of shallow depth-4 stumps. Averaging $B$ independent models divides their <strong>variance</strong> by up to $B$ without changing their mean (<span class="term" data-term="bias">bias</span>)—so Random Forests start with deep, low-bias/high-variance trees and average away the wobble. By contrast, Boosting chains trees sequentially to fix earlier mistakes, which attacks <strong>bias</strong>—so it starts with shallow, high-bias/low-variance trees to keep variance from exploding.
+      Notice how this equation explains why <span class="term" data-term="bagging">Random Forests (Bagging)</span> are built out of deep, unpruned trees, whereas <span class="term" data-term="boosting">Gradient Boosting (XGBoost)</span> is built out of shallow depth-4 trees. Averaging $B$ independent models divides their <strong>variance</strong> without changing their mean (<span class="term" data-term="bias">bias</span>)—so Random Forests start with deep, low-bias/high-variance trees (like Model B) and average away the wobble. By contrast, Boosting chains trees sequentially to correct prior errors, which attacks <strong>bias</strong>—so it starts with shallow, high-bias/low-variance trees to keep variance from blowing up.
     </p>
 
-    <h2 id="s4">4. Action Cheat Sheet: How Every Lever Moves Bias &amp; Variance</h2>
+    <details class="mcq-box" data-correct="B" data-topic="Check 2: Mental-Math Bias-Variance Decomposition">
+      <p>At $x = 3$, the true target is <span class="term" data-term="true-fn">$f(3) = 20$</span> and irreducible label noise has variance <span class="term" data-term="irreducible-error">$\sigma^2 = 2$</span>. Across repeated training sets, your model's average prediction is <span class="term" data-term="avg-pred">$\bar{f}(3) = 17$</span> and its prediction variance is <span class="term" data-term="variance">$\text{Var} = 4$</span>. What is its expected test <span class="term" data-term="mse">MSE</span>?</p>
+      <label class="mcq-option" data-explain="You forgot to square the bias: Bias = 17 - 20 = -3, so Bias^2 = (-3)^2 = 9, not 3.">$\text{MSE} = 3 + 4 + 2 = 9$.</label>
+      <label class="mcq-option" data-explain="Correct. Bias^2 = (17 - 20)^2 = 9. Adding Variance (4) and irreducible noise (2) gives 9 + 4 + 2 = 15.">$\text{MSE} = 9 + 4 + 2 = \mathbf{15}$.</label>
+      <label class="mcq-option" data-explain="Variance (4) and sigma^2 (2) are already in squared units; do not square them again.">$\text{MSE} = 9 + 16 + 4 = 29$.</label>
+    </details>
 
+    <details class="mcq-box" data-correct="C" data-topic="Check 3: Bagging vs. Boosting">
+      <p>What happens if you build a <span class="term" data-term="bagging">bagged ensemble</span> by averaging $1{,}000$ 1-split decision stumps (where each stump has high bias $\text{Bias}^2 = 16$ and low variance $\text{Var} = 1$)?</p>
+      <label class="mcq-option" data-explain="Averaging independent models only reduces variance; the average of 1,000 high-bias predictions still has the exact same mean and therefore the exact same Bias^2 = 16.">Both $\text{Bias}^2$ and $\text{Variance}$ drop near $0$.</label>
+      <label class="mcq-option" data-explain="Averaging reduces variance, not bias. Only sequential boosting reduces bias.">$\text{Bias}^2$ drops near $0$, while $\text{Variance}$ stays at $1$.</label>
+      <label class="mcq-option" data-explain="Correct. Averaging shrinks Variance toward 0, but leaves the average prediction unchanged—so Bias^2 stays stuck at 16 and the ensemble still underfits.">$\text{Variance}$ drops near $0$, but $\text{Bias}^2$ stays stuck at $16$ (the ensemble still underfits).</label>
+    </details>
+
+    <h2>3. Comparing Model Levers on Bias &amp; Variance</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Intervention / Knob</th>
-            <th>Effect on <span class="term" data-term="bias">$\text{Bias}^2$</span></th>
+            <th>Effect on <span class="term" data-term="bias-sq">$\text{Bias}^2$</span></th>
             <th>Effect on <span class="term" data-term="variance">Variance</span></th>
-            <th>Use It When You See...</th>
+            <th>When to Use</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>Increase <span class="term" data-term="l2-reg">L2 / L1 Penalty $\lambda$</span></strong> (or <span class="term" data-term="dropout">Dropout</span>)</td>
+            <td><strong>Increase <span class="term" data-term="l2-reg">L2 / L1 Penalty $\lambda$</span> (or Dropout)</strong></td>
             <td>Rises slightly (shrinks weights toward $0$)</td>
-            <td><strong>Drops sharply</strong> (blocks wild weights)</td>
+            <td>Drops sharply (blocks wild weights)</td>
             <td><span class="term" data-term="overfitting">Overfitting</span> (low train error, high val error)</td>
           </tr>
           <tr>
             <td><strong>Collect More Training Rows ($N \uparrow$)</strong></td>
             <td>Roughly unchanged (cannot bend a straight line)</td>
-            <td><strong>Drops as $\sim 1/N$</strong> (harder to memorize noise)</td>
+            <td>Drops as $\sim 1/N$ (harder to memorize noise)</td>
             <td><span class="term" data-term="overfitting">Overfitting</span> (wide gap between train &amp; val)</td>
           </tr>
           <tr>
-            <td><strong>Increase <span class="term" data-term="capacity">Model Capacity</span></strong> (depth, layers, interactions)</td>
-            <td><strong>Drops sharply</strong> (fits curved signals)</td>
+            <td><strong>Increase <span class="term" data-term="capacity">Model Capacity</span> (depth, layers, interactions)</strong></td>
+            <td>Drops sharply (fits curved signals)</td>
             <td>Rises (more parameters to wobble)</td>
             <td><span class="term" data-term="underfitting">Underfitting</span> (both train &amp; val error are high)</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="bagging">Bagging / Random Forest</span></strong> (average $B$ deep trees)</td>
-            <td>Unchanged (mean of trees = 1 tree's mean)</td>
-            <td><strong>Drops</strong> ($\text{Var}$ of average $\le$ single tree)</td>
+            <td><strong><span class="term" data-term="bagging">Bagging / Random Forest</span> (average $B$ deep trees)</strong></td>
+            <td>Unchanged (mean of trees $=$ 1 tree's mean)</td>
+            <td>Drops ($\text{Var}$ of average $\le$ single tree)</td>
             <td>Unstable deep decision trees with high variance</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="boosting">Boosting</span></strong> (add sequential residual trees)</td>
-            <td><strong>Drops sharply</strong> (corrects systematic errors)</td>
-            <td>Rises if too many rounds without <span class="term" data-term="early-stopping">early stopping</span></td>
+            <td><strong><span class="term" data-term="boosting">Boosting</span> (add sequential residual trees)</strong></td>
+            <td>Drops sharply (corrects systematic errors)</td>
+            <td>Rises if too many rounds without early stopping</td>
             <td>Shallow trees that underfit complex tabular patterns</td>
           </tr>
         </tbody>
       </table>
     </div>
-
-    <!-- SECTION 5: INTERLEAVED CHECKS & SPACED CARDS -->
-    <h2 id="s5">5. Interleaved Diagnostic Checks &amp; Spaced Recall</h2>
-
-    <details class="mcq-box" data-correct="B" data-topic="Mental Math: Bias-Variance Decomposition">
-      <p>At $x = 3$, the true target is <span class="term" data-term="true-fn">$f(3) = 20$</span> and irreducible label noise has variance <span class="term" data-term="irreducible-error">$\sigma^2 = 2$</span>. Across repeated training sets, your model's average prediction is <span class="term" data-term="avg-pred">$\bar{f}(3) = 17$</span> and its prediction variance is <span class="term" data-term="variance">$\text{Var} = 4$</span>. What is its expected test <span class="term" data-term="mse">MSE</span>?</p>
-      <label class="mcq-option" data-explain="You forgot to square the bias: $\text{Bias} = 17 - 20 = -3$, so $\text{Bias}^2 = (-3)^2 = 9$, not $3$.">$\text{MSE} = 3 + 4 + 2 = 9$</label>
-      <label class="mcq-option" data-explain="Correct. $\text{Bias}^2 = (17 - 20)^2 = 9$. Adding Variance ($4$) and irreducible noise ($2$) gives $9 + 4 + 2 = 15$.">$\text{MSE} = 9 + 4 + 2 = 15$</label>
-      <label class="mcq-option" data-explain="Never square the variance or noise variance—Variance ($4$) and $\sigma^2$ ($2$) are already in squared-error units.">$\text{MSE} = 9 + 16 + 4 = 29$</label>
-    </details>
-
-    <details class="mcq-box" data-correct="A" data-topic="Diagnosing Train vs. Validation Error">
-      <p>You train a logistic regression model on a tabular dataset. Its training error is $28\%$ and its validation error is $29\%$ (human/Bayes floor is $5\%$). Which action is most likely to reduce validation error?</p>
-      <label class="mcq-option" data-explain="Correct. Both training and validation errors are high ($28\%$ vs $5\%$ floor) with almost zero generalization gap ($1\%$), which is classic high-bias underfitting. You need more expressive power (interaction features or a non-linear model like GBDT).">Engineer non-linear <span class="term" data-term="capacity">interaction features</span> or switch to a tree ensemble (<span class="term" data-term="boosting">XGBoost</span>).</label>
-      <label class="mcq-option" data-explain="Increasing L2 penalty restricts the model even further, raising bias and making underfitting worse.">Increase the <span class="term" data-term="l2-reg">L2 regularization penalty $\lambda$</span> by $10\times$.</label>
-      <label class="mcq-option" data-explain="With only a $1\%$ gap between train ($28\%$) and val ($29\%$), variance is already negligible; more rows of the same features will just converge tightly around $\sim 28.5\%$ error.">Double the number of training rows using the exact same linear features.</label>
-    </details>
-
-    <details class="mcq-box" data-correct="C" data-topic="Bagging vs. Boosting">
-      <p>What happens if you build a <span class="term" data-term="bagging">bagged ensemble</span> by averaging $1{,}000$ 1-split decision stumps (each stump has high <span class="term" data-term="bias">bias</span> $\text{Bias}^2 = 16$ and low <span class="term" data-term="variance">variance</span> $\text{Var} = 1$)?</p>
-      <label class="mcq-option" data-explain="Averaging independent models only reduces variance; the average of $1{,}000$ high-bias predictions still has the exact same mean $\bar{f}(x)$ and therefore the exact same $\text{Bias}^2 = 16$.">Both $\text{Bias}^2$ and $\text{Variance}$ drop near $0$.</label>
-      <label class="mcq-option" data-explain="Averaging reduces variance, not bias. Only sequential boosting reduces bias.">$\text{Bias}^2$ drops near $0$, while $\text{Variance}$ stays at $1$.</label>
-      <label class="mcq-option" data-explain="Correct. Averaging shrinks Variance toward $0$, but leaves the average prediction $\bar{f}(x)$ unchanged—so $\text{Bias}^2$ stays stuck at $16$ and the ensemble still underfits!">$\text{Variance}$ drops near $0$, but $\text{Bias}^2$ stays stuck at $16$ (the ensemble still underfits).</label>
-    </details>
 
     <div class="score-bar"></div>
 
@@ -289,353 +138,88 @@
       },
       'overfitting': {
         title: 'Overfitting (High Variance)',
-        body: 'Occurs when a flexible model memorizes random quirks and noise <span class="term" data-term="noise-eps">$\\epsilon$</span> in the training sample. Diagnosed by <strong>low <span class="term" data-term="train-error">training error</span> but high <span class="term" data-term="val-error">validation error</span></strong> (a wide <span class="term" data-term="gen-gap">generalization gap</span>).'
+        body: 'Occurs when a flexible model memorizes random quirks and noise in the training sample. Diagnosed by <strong>low <span class="term" data-term="train-error">training error</span> but high <span class="term" data-term="val-error">validation error</span></strong> (a wide <span class="term" data-term="gen-gap">generalization gap</span>).'
       },
       'bias': {
         title: 'Bias: $\\bar{f}(x) - f(x)$',
-        body: 'Systematic aim error: the difference between the model\'s average prediction <span class="term" data-term="avg-pred">$\\bar{f}(x)$</span> across repeated training samples and the true signal <span class="term" data-term="true-fn">$f(x)$</span>. High bias causes <span class="term" data-term="underfitting">underfitting</span>.'
+        body: 'Systematic aim error: the difference between the model\'s average prediction <span class="term" data-term="avg-pred">$\\bar{f}(x)$</span> across repeated training samples and the true signal <span class="term" data-term="true-fn">$f(x)$</span>.'
       },
       'bias-sq': {
         title: 'Squared Bias: $(\\bar{f}(x) - f(x))^2$',
-        body: 'The non-negative penalty in expected test <span class="term" data-term="mse">MSE</span> caused by systematic <span class="term" data-term="bias">bias</span>. If a model averages $7$ when the true answer is $10$, its squared bias is $(7 - 10)^2 = 9$.'
+        body: 'The non-negative penalty in expected test <span class="term" data-term="mse">MSE</span> caused by systematic <span class="term" data-term="bias">bias</span>.'
       },
       'variance': {
         title: 'Variance: $\\mathbb{E}[(\\hat{f}(x) - \\bar{f}(x))^2]$',
-        body: 'Sample sensitivity: how much the model\'s prediction <span class="term" data-term="hat-f">$\\hat{f}(x)$</span> fluctuates around its own mean <span class="term" data-term="avg-pred">$\\bar{f}(x)$</span> when trained on different random datasets. High variance causes <span class="term" data-term="overfitting">overfitting</span>.'
-      },
-      'bias-variance': {
-        title: 'Bias-Variance Tradeoff',
-        body: 'The fundamental tension where increasing model <span class="term" data-term="capacity">capacity</span> reduces systematic aim error (<span class="term" data-term="bias-sq">$\\text{Bias}^2$</span>) but increases sensitivity to sample noise (<span class="term" data-term="variance">$\\text{Variance}$</span>), forming a U-shaped test error curve.'
+        body: 'Sample sensitivity: how much the model\'s prediction <span class="term" data-term="hat-f">$\\hat{f}(x)$</span> fluctuates around its own mean <span class="term" data-term="avg-pred">$\\bar{f}(x)$</span> when trained on different random datasets.'
       },
       'irreducible-error': {
         title: 'Irreducible Noise ($\\sigma^2$)',
-        body: 'The variance $\\sigma^2 = \\mathbb{E}[\\epsilon^2]$ of inherent randomness in the target <span class="term" data-term="target-y">$y$</span> given features <span class="term" data-term="feature-x">$x$</span> (e.g., unmeasured buyer mood). No model can ever achieve expected test <span class="term" data-term="mse">MSE</span> below $\\sigma^2$.'
-      },
-      'noise-eps': {
-        title: 'Random Label Noise ($\\epsilon$)',
-        body: 'Zero-mean random shock $\\epsilon = y - f(x)$ with variance <span class="term" data-term="irreducible-error">$\\sigma^2$</span>. Overfit models mistake training $\\epsilon_i$ values for real signal.'
+        body: 'The variance $\\sigma^2 = \\mathbb{E}[\\epsilon^2]$ of inherent randomness in the target $y$ given features $x$. No model can ever achieve expected test <span class="term" data-term="mse">MSE</span> below $\\sigma^2$.'
       },
       'true-fn': {
         title: 'True Signal Function $f(x)$',
-        body: 'The ideal noise-free conditional expectation $f(x) = \\mathbb{E}[y \\mid x]$ that generated the data before random noise <span class="term" data-term="noise-eps">$\\epsilon$</span> was added.'
+        body: 'The ideal noise-free conditional expectation $f(x) = \\mathbb{E}[y \\mid x]$ that generated the data before random noise $\\epsilon$ was added.'
       },
       'hat-f': {
         title: 'Trained Model Prediction $\\hat{f}(x)$',
-        body: 'The prediction produced at input $x$ by a model trained on one specific training sample $D$. Because $D$ is random, $\\hat{f}(x)$ is a random variable.'
+        body: 'The prediction produced at input $x$ by a model trained on one specific training sample $D$.'
       },
       'avg-pred': {
-        title: 'Expected / Average Prediction $\\bar{f}(x)$',
-        body: '$\\bar{f}(x) = \\mathbb{E}_D[\\hat{f}(x)]$: the average prediction at $x$ if you trained the same model architecture on infinitely many independent training datasets $D$.'
+        title: 'Average Prediction $\\bar{f}(x)$',
+        body: '$\\bar{f}(x) = \\mathbb{E}_D[\\hat{f}(x)]$: the average prediction at $x$ if you trained the same model architecture on many independent training datasets $D$.'
       },
       'train-error': {
         title: 'Training Error',
-        body: 'Average loss (such as <span class="term" data-term="mse">MSE</span>) evaluated on the exact same rows used to fit the model parameters. Consistently underestimates true test error.'
+        body: 'Average loss evaluated on the exact same rows used to fit the model weights.'
       },
       'val-error': {
-        title: 'Validation / Test Error',
-        body: 'Average loss evaluated on held-out rows never seen during training. Measures how well the model generalizes to new data.'
+        title: 'Validation Error',
+        body: 'Average loss evaluated on held-out rows the model did not see during training.'
       },
       'gen-gap': {
-        title: 'Generalization Gap',
-        body: '$\\text{Error}_{\\text{val}} - \\text{Error}_{\\text{train}}$. A small gap with high errors indicates <span class="term" data-term="underfitting">underfitting</span>; a huge gap with low training error indicates <span class="term" data-term="overfitting">overfitting</span>.'
+        title: 'Generalization Gap ($\\text{Val Error} - \\text{Train Error}$)',
+        body: 'The gap between validation loss and training loss. A huge gap indicates high <span class="term" data-term="variance">variance</span> (<span class="term" data-term="overfitting">overfitting</span>).'
       },
       'mse': {
         title: 'Mean Squared Error (MSE)',
-        body: 'Average squared difference between actual labels $y$ and predictions $\\hat{f}(x)$: $\\frac{1}{N}\\sum (y_i - \\hat{f}(x_i))^2$. Decomposes cleanly into $\\text{Bias}^2 + \\text{Variance} + \\sigma^2$.'
+        body: '$\\frac{1}{N}\\sum_{i=1}^N (y_i - \\hat{f}(x_i))^2$. Decomposes into $\\text{Bias}^2 + \\text{Variance} + \\sigma^2$.'
       },
       'capacity': {
         title: 'Model Capacity (Complexity)',
-        body: 'The flexibility of functions a model family can represent—controlled by polynomial degree $d$, tree max-depth, number of neural network parameters, or engineered interaction terms.'
-      },
-      'regularization': {
-        title: 'Regularization',
-        body: 'Any constraint that penalizes model complexity (such as <span class="term" data-term="l2-reg">L2 weight decay</span>, tree depth limits, <span class="term" data-term="dropout">dropout</span>, or <span class="term" data-term="early-stopping">early stopping</span>) to trade a small increase in <span class="term" data-term="bias">bias</span> for a large drop in <span class="term" data-term="variance">variance</span>.'
+        body: 'The flexibility of a model family to fit complex functions (e.g., polynomial degree $d$, tree depth, or neural network width/depth).'
       },
       'l2-reg': {
-        title: 'L2 Regularization (Ridge / Weight Decay)',
-        body: 'Adds $\\lambda \\sum_j w_j^2$ to the training loss. Shrinks weights toward zero so the fitted curve cannot swing wildly through noisy outliers.'
-      },
-      'dropout': {
-        title: 'Dropout',
-        body: 'Randomly zeroes out a fraction of neural network activations during each training step, preventing co-adaptation and reducing <span class="term" data-term="variance">variance</span>.'
-      },
-      'early-stopping': {
-        title: 'Early Stopping',
-        body: 'Halting iterative training (gradient descent or <span class="term" data-term="boosting">boosting</span>) as soon as <span class="term" data-term="val-error">validation error</span> stops improving, before the model memorizes training noise.'
+        title: 'L2 Regularization (Weight Decay)',
+        body: 'Adding $\\lambda \\sum_j w_j^2$ to the training objective to penalize large weights, trading a slight increase in bias for a large drop in variance.'
       },
       'bagging': {
         title: 'Bagging (Bootstrap Aggregating / Random Forest)',
-        body: 'Trains $B$ deep, low-bias trees in parallel on bootstrapped data subsets and averages their predictions. Shrinks <span class="term" data-term="variance">variance</span> without increasing <span class="term" data-term="bias">bias</span>.'
+        body: 'Training $B$ deep, low-bias trees independently on bootstrap samples and averaging their predictions to divide <span class="term" data-term="variance">variance</span>.'
       },
       'boosting': {
         title: 'Gradient Boosting (XGBoost / LightGBM)',
-        body: 'Trains shallow, high-bias trees sequentially where each tree predicts the residual error of the ensemble so far. Primarily reduces <span class="term" data-term="bias">bias</span>.'
-      },
-      'feature-x': {
-        title: 'Input Feature (x)',
-        body: 'The predictor variable fed into the model (e.g., car age in years).'
-      },
-      'target-y': {
-        title: 'Target Variable (y)',
-        body: 'The observed outcome $y = f(x) + \\epsilon$ we want to predict (e.g., car sale price).'
+        body: 'Training shallow, low-variance trees sequentially where each new tree fits the residual errors of the ensemble, reducing <span class="term" data-term="bias">bias</span>.'
       }
     };
 
     var SPACED_CARDS = [
       {
-        q: 'Write the 3-term Bias-Variance decomposition of Expected Test MSE at input $x$.',
-        a: '$\\mathbb{E}[(y - \\hat{f}(x))^2] = \\text{Bias}^2 + \\text{Variance} + \\sigma^2$, where $\\text{Bias}^2 = (\\bar{f}(x) - f(x))^2$, $\\text{Variance} = \\mathbb{E}[(\\hat{f}(x) - \\bar{f}(x))^2]$, and $\\sigma^2$ is irreducible noise.'
+        q: 'Write the Bias-Variance Decomposition of expected test MSE at input $x$ and define each of the three terms.',
+        a: '$\\mathbb{E}[(y - \\hat{f}(x))^2] = (\\bar{f}(x) - f(x))^2 + \\mathbb{E}[(\\hat{f}(x) - \\bar{f}(x))^2] + \\sigma^2$, which is $\\text{Bias}^2$ (systematic aim error) $+ \\text{Variance}$ (wobble across different training samples) $+ \\sigma^2$ (irreducible label noise floor).'
       },
       {
-        q: 'How do you distinguish Underfitting from Overfitting using Training Error and Validation Error?',
-        a: 'Underfitting (high bias): BOTH training and validation errors are high (tiny gap). Overfitting (high variance): training error is very low while validation error is high (wide generalization gap).'
+        q: 'How do you distinguish underfitting (high bias) from overfitting (high variance) using training error and validation error?',
+        a: 'Underfitting has high training error AND high validation error (tiny gap). Overfitting has low training error near $0$ but high validation error (wide generalization gap).'
       },
       {
-        q: 'Why does adding $10\\times$ more training rows fail to fix an underfit (high-bias) model?',
-        a: 'More rows only reduce Variance ($\\sim 1/N$) so the model estimates its best straight line more precisely, but a rigid model still cannot bend to match a curved true signal $f(x)$.'
+        q: 'Why does adding $10\\times$ more training data fail to fix an underfit model?',
+        a: 'An underfit model lacks the capacity to bend around the signal even on the existing training rows; more rows just help estimate the same rigid line slightly more tightly (reducing variance, not bias).'
       },
       {
-        q: 'Across repeated training sets, a model predicts an average of $7$ for a true target of $10$, with prediction variance $2$ and noise variance $1$. What is its Expected Test MSE?',
-        a: '$\\text{Bias}^2 = (7 - 10)^2 = 9$. Expected Test MSE $= 9\\ (\\text{Bias}^2) + 2\\ (\\text{Variance}) + 1\\ (\\text{Noise}) = 12$.'
-      },
-      {
-        q: 'Why do Random Forests (bagging) use deep trees while Gradient Boosting uses shallow trees?',
-        a: 'Averaging independent trees cuts Variance but leaves Bias unchanged, so Random Forests must start with low-bias deep trees. Boosting sequentially fixes errors to cut Bias, so it starts with low-variance shallow trees.'
+        q: 'Why do Random Forests (Bagging) use deep unpruned trees while Gradient Boosting uses shallow trees?',
+        a: 'Averaging independent models reduces variance without changing bias, so Random Forests start with deep low-bias/high-variance trees; Boosting adds trees sequentially to reduce bias, so it starts with shallow high-bias/low-variance trees to prevent overfitting.'
       }
     ];
-
-    /* ---------- Fast-Forward Check ---------- */
-    function checkFastForward() {
-      var raw = document.getElementById('ff-input').value.trim();
-      var fb = document.getElementById('ff-feedback');
-      fb.style.display = 'block';
-      if (raw === '8' || raw === '8.0') {
-        fb.innerHTML = '<strong>Verified.</strong> $\\text{Bias}^2 = (8 - 10)^2 = 4$, plus $\\text{Var} = 3$ and $\\sigma^2 = 1$ gives $\\text{MSE} = 8$. Sections 1&ndash;2 collapsed below. <button class="btn btn-small" onclick="toggleScaffolding(true)">Show Sections 1&ndash;2</button>';
-        renderMathIn(fb);
-        toggleScaffolding(false);
-      } else {
-        fb.innerHTML = 'Not quite: $\\text{Bias}^2 = (8 - 10)^2 = 4$. Add $\\text{Var} = 3$ and $\\sigma^2 = 1$ to get $4 + 3 + 1 = 8$. Work through Sections 1&ndash;2 below.';
-        renderMathIn(fb);
-      }
-    }
-
-    function toggleScaffolding(show) {
-      document.getElementById('scaffolding-section').style.display = show ? 'block' : 'none';
-    }
-
-    /* ---------- Stage 1 & 2: POE ---------- */
-    function runPOE(choice) {
-      var rev = document.getElementById('poe-reveal');
-      rev.style.display = 'block';
-      var intro = '';
-      if (choice === 'B') {
-        intro = '<strong>Exactly right.</strong> ';
-      } else if (choice === 'A') {
-        intro = '<strong>Watch out for the "more data fixes everything" trap!</strong> Most people guess A because more data usually helps machine learning. ';
-      } else if (choice === 'C') {
-        intro = '<strong>Not quite.</strong> Adding more data actually reduces overfitting, never worsens it. ';
-      }
-      rev.innerHTML = '<div class="refutation-title">Why More Data Cannot Bend a Straight Line</div>' +
-        '<p style="margin:0;">' + intro +
-        'Look at the two numbers together: <span class="term" data-term="train-error">Training MSE</span> ($8.8$) and <span class="term" data-term="val-error">Validation MSE</span> ($9.0$) are <strong>both</strong> far above the noise floor ($1.0$), and the gap between them is only $0.2$. That means <span class="term" data-term="variance">variance</span> is already tiny ($0.2$) and almost all of the error is <span class="term" data-term="bias-sq">$\\text{Bias}^2 \\approx 7.8$</span> (<span class="term" data-term="underfitting">underfitting</span>). Pouring $10\\times$ more rows into a straight-line model just makes it estimate the exact same wrong straight line with slightly less wobble ($\\text{MSE} \\approx 8.9$).</p>';
-      renderMathIn(rev);
-    }
-
-    /* ---------- Section 1: Small Multiples Stepper ---------- */
-    var REGIME_PRESETS = [
-      {
-        title: '1. Underfit (d=1)',
-        sub: 'Train MSE = 9.0 | Val MSE = 10.0',
-        explain: 'Degree $d = 1$ (straight line): All $3$ training samples produce nearly the exact same line (low $\\text{Variance} = 1.0$), but every single one misses the curved depreciation trajectory (high $\\text{Bias}^2 = 8.0$).'
-      },
-      {
-        title: '2. Sweet Spot (d=2)',
-        sub: 'Train MSE = 1.5 | Val MSE = 3.0',
-        explain: 'Degree $d = 2$ (quadratic curve): Captures the true bend closely (low $\\text{Bias}^2 = 1.0$) while the $3$ sample curves still stay tightly bundled together (low $\\text{Variance} = 1.0$). Total Test MSE hits its minimum ($3.0$).'
-      },
-      {
-        title: '3. Overfit (d=8)',
-        sub: 'Train MSE = 0.1 | Val MSE = 14.0',
-        explain: 'Degree $d = 8$ (wiggly polynomial): Passes through almost every noisy dot in its training sample ($\\text{Train MSE} = 0.1, \\text{Bias}^2 = 0.2$), so the $3$ sample curves whip wildly in opposite directions (huge $\\text{Variance} = 12.8$).'
-      }
-    ];
-
-    function setRegimeStep(idx) {
-      for (var i = 0; i < 3; i++) {
-        var btn = document.getElementById('step-btn-' + i);
-        if (btn) { btn.classList.toggle('active', i === idx); }
-      }
-      renderRegimeMultiples(idx);
-      var exp = document.getElementById('regime-explain');
-      if (exp) {
-        exp.innerHTML = REGIME_PRESETS[idx].explain;
-        renderMathIn(exp);
-      }
-    }
-
-    function renderRegimeMultiples(activeIdx) {
-      var grid = document.getElementById('regime-sm');
-      if (!grid) { return; }
-      var html = '';
-      /* True curve f(x): from (15, 22) curving down to (185, 88) */
-      var truePath = 'M 15 22 Q 75 78 185 88';
-      var samplePaths = [
-        /* d=1: three close straight lines that miss the bend */
-        [
-          'M 15 34 L 185 82',
-          'M 15 38 L 185 86',
-          'M 15 31 L 185 79'
-        ],
-        /* d=2: three tight quadratics matching the true curve */
-        [
-          'M 15 20 Q 75 75 185 86',
-          'M 15 25 Q 78 81 185 90',
-          'M 15 22 Q 72 79 185 87'
-        ],
-        /* d=8: three wild oscillating curves across samples */
-        [
-          'M 15 18 C 45 95, 75 10, 110 85 C 140 110, 165 30, 185 95',
-          'M 15 35 C 45 5, 75 105, 110 40 C 140 20, 165 110, 185 72',
-          'M 15 12 C 45 65, 75 45, 110 105 C 140 45, 165 95, 185 60'
-        ]
-      ];
-
-      REGIME_PRESETS.forEach(function (preset, idx) {
-        var cls = 'sm-panel' + (idx === activeIdx ? ' sm-active' : '');
-        html += '<div class="' + cls + '" onclick="setRegimeStep(' + idx + ')" style="cursor:pointer;">';
-        html += '<div style="font-weight:bold; font-size:0.85em;">' + preset.title + '</div>';
-        html += '<div style="font-family:monospace; font-size:0.75em; margin-bottom:4px;">' + preset.sub + '</div>';
-        html += '<svg viewBox="0 0 200 110" width="200" height="110" role="img" aria-label="' + preset.title + '">';
-        html += '<rect x="8" y="8" width="184" height="94" fill="#fff" stroke="#000" stroke-width="1"/>';
-        /* Sample curves */
-        var paths = samplePaths[idx];
-        for (var s = 0; s < paths.length; s++) {
-          html += '<path d="' + paths[s] + '" fill="none" stroke="#000" stroke-width="1.4"/>';
-        }
-        /* True curve dashed on top */
-        html += '<path d="' + truePath + '" fill="none" stroke="#000" stroke-width="2.2" stroke-dasharray="4 3"/>';
-        html += '<text x="14" y="97" font-family="sans-serif" font-size="9.5" fill="#000">Dashed: f(x) | Solid: 3 samples</text>';
-        html += '</svg></div>';
-      });
-      grid.innerHTML = html;
-    }
-
-    /* ---------- Section 2: Interactive Bias-Variance Decomposition Curve ---------- */
-    /* Clean mental-math table for degrees d = 1..8 */
-    var BV_DATA = [
-      { d: 1, bias2: 8.0, variance: 1.0, noise: 1.0, train: 9.0, label: 'Severe Underfitting (High Bias)' },
-      { d: 2, bias2: 2.5, variance: 1.0, noise: 1.0, train: 2.8, label: 'Mild Underfitting' },
-      { d: 3, bias2: 1.0, variance: 1.0, noise: 1.0, train: 1.5, label: 'Sweet Spot (Minimum Test MSE = 3.0)' },
-      { d: 4, bias2: 0.6, variance: 1.9, noise: 1.0, train: 1.1, label: 'Slightly Flexible' },
-      { d: 5, bias2: 0.4, variance: 3.6, noise: 1.0, train: 0.7, label: 'Moderate Overfitting' },
-      { d: 6, bias2: 0.3, variance: 6.2, noise: 1.0, train: 0.4, label: 'Overfitting (Variance Dominates)' },
-      { d: 7, bias2: 0.2, variance: 9.3, noise: 1.0, train: 0.2, label: 'Heavy Overfitting' },
-      { d: 8, bias2: 0.2, variance: 12.8, noise: 1.0, train: 0.1, label: 'Extreme Overfitting (Memorized Noise)' }
-    ];
-
-    function updateTradeoffWidget() {
-      var slider = document.getElementById('comp-slider');
-      if (!slider) { return; }
-      var d = parseInt(slider.value, 10);
-      var row = BV_DATA[d - 1];
-      var totalMse = row.bias2 + row.variance + row.noise;
-
-      document.getElementById('comp-val').textContent = 'd = ' + d;
-      document.getElementById('stat-bias').textContent = row.bias2.toFixed(1);
-      document.getElementById('stat-var').textContent = row.variance.toFixed(1);
-      document.getElementById('stat-noise').textContent = row.noise.toFixed(1);
-      document.getElementById('stat-mse').textContent = totalMse.toFixed(1);
-
-      var svg = document.getElementById('bv-svg');
-      var x0 = 44, y0 = 18, w = 390, h = 152;
-      var maxY = 15.0;
-
-      function px(deg) { return x0 + ((deg - 1) / 7) * w; }
-      function py(val) { return y0 + h - (Math.min(val, maxY) / maxY) * h; }
-
-      var biasPts = [], varPts = [], msePts = [];
-      BV_DATA.forEach(function (r) {
-        var x = px(r.d).toFixed(1);
-        biasPts.push(x + ',' + py(r.bias2).toFixed(1));
-        varPts.push(x + ',' + py(r.variance).toFixed(1));
-        msePts.push(x + ',' + py(r.bias2 + r.variance + r.noise).toFixed(1));
-      });
-
-      var out = '';
-      out += '<rect x="' + x0 + '" y="' + y0 + '" width="' + w + '" height="' + h + '" fill="#fff" stroke="#000" stroke-width="1.5"/>';
-
-      /* Y-axis ticks: 0, 5, 10, 15 */
-      [0, 5, 10, 15].forEach(function (tick) {
-        var y = py(tick);
-        out += '<line x1="' + x0 + '" y1="' + y + '" x2="' + (x0 + w) + '" y2="' + y + '" stroke="#e0e0e0" stroke-width="1"/>';
-        out += '<text x="' + (x0 - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-family="monospace" font-size="10" fill="#000">' + tick + '</text>';
-      });
-
-      /* Irreducible noise floor line sigma^2 = 1 */
-      var yNoise = py(1.0);
-      out += '<line x1="' + x0 + '" y1="' + yNoise + '" x2="' + (x0 + w) + '" y2="' + yNoise + '" stroke="#000" stroke-width="1" stroke-dasharray="2 3"/>';
-      out += '<text x="' + (x0 + 8) + '" y="' + (yNoise - 4) + '" font-family="sans-serif" font-size="10" fill="#000">Noise floor σ² = 1.0</text>';
-
-      /* Selected complexity vertical cursor */
-      var curX = px(d);
-      out += '<line x1="' + curX + '" y1="' + y0 + '" x2="' + curX + '" y2="' + (y0 + h) + '" stroke="#000" stroke-width="1.5" stroke-dasharray="3 2"/>';
-
-      /* Curves: Bias^2 (dashed), Variance (thin solid), Total Test MSE (thick solid) */
-      out += '<polyline points="' + biasPts.join(' ') + '" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="6 3"/>';
-      out += '<polyline points="' + varPts.join(' ') + '" fill="none" stroke="#000" stroke-width="1.8"/>';
-      out += '<polyline points="' + msePts.join(' ') + '" fill="none" stroke="#000" stroke-width="3"/>';
-
-      /* Direct inline curve labels (zero split attention) */
-      out += '<text x="' + (px(1) + 10) + '" y="' + (py(8.0) + 16) + '" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000">Bias² (falls)</text>';
-      out += '<text x="' + (px(6.1)) + '" y="' + (py(9.3) + 14) + '" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000">Variance (rises)</text>';
-      out += '<text x="' + (px(4.3)) + '" y="' + (py(9.5) - 6) + '" font-family="sans-serif" font-size="11.5" font-weight="bold" fill="#000">Total Test MSE = Bias² + Var + σ²</text>';
-
-      /* Active dots at degree d */
-      out += '<circle cx="' + curX + '" cy="' + py(row.bias2) + '" r="4.5" fill="#fff" stroke="#000" stroke-width="2"/>';
-      out += '<circle cx="' + curX + '" cy="' + py(row.variance) + '" r="4.5" fill="#fff" stroke="#000" stroke-width="2"/>';
-      out += '<circle cx="' + curX + '" cy="' + py(totalMse) + '" r="5.5" fill="#000"/>';
-
-      /* X-axis degree labels */
-      BV_DATA.forEach(function (r) {
-        var x = px(r.d);
-        out += '<text x="' + x + '" y="' + (y0 + h + 16) + '" text-anchor="middle" font-family="monospace" font-size="10.5" font-weight="' + (r.d === d ? 'bold' : 'normal') + '" fill="#000">d=' + r.d + '</text>';
-      });
-      out += '<text x="' + (x0 + w / 2) + '" y="' + (y0 + h + 31) + '" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#000">Model Complexity (Degree / Depth d)</text>';
-
-      svg.innerHTML = out;
-
-      var ro = document.getElementById('bv-readout');
-      ro.innerHTML = '<strong>d = ' + d + ' &mdash; ' + row.label + ':</strong> ' +
-        '$\\text{Test MSE} = ' + row.bias2.toFixed(1) + '\\text{ (Bias}^2\\text{)} + ' +
-        row.variance.toFixed(1) + '\\text{ (Var)} + ' +
-        row.noise.toFixed(1) + '\\text{ (}\\sigma^2\\text{)} = \\mathbf{' + totalMse.toFixed(1) + '}$ ' +
-        '(vs. Training MSE $= ' + row.train.toFixed(1) + '$, Generalization Gap $= ' + (totalMse - row.train).toFixed(1) + '$).';
-      renderMathIn(ro);
-    }
-
-    /* ---------- Section 3: Backward-Faded Check & Free Recall ---------- */
-    function checkFaded() {
-      var val = parseFloat(document.getElementById('fade-input').value);
-      var fb = document.getElementById('fade-feedback');
-      fb.style.display = 'block';
-      if (Math.abs(val - 3) < 0.05) {
-        fb.innerHTML = '<strong>Spot on ($\\text{MSE} = 3$).</strong> $\\text{Bias}^2 (1) + \\text{Var} (1) + \\sigma^2 (1) = 3$. Notice how trading a tiny bit of bias ($\\text{Bias}^2$ rose from $0$ to $1$) slashed variance from $10.67$ down to $1$, cutting Total Test MSE from $11.67$ to $3$!';
-      } else {
-        fb.innerHTML = 'Add the three non-negative pieces directly: $\\text{MSE} = \\text{Bias}^2 + \\text{Var} + \\sigma^2 = 1 + 1 + 1 = 3$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function revealRecall() {
-      var fb = document.getElementById('recall-feedback');
-      fb.style.display = 'block';
-      renderMathIn(fb);
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      setRegimeStep(0);
-      updateTradeoffWidget();
-    });
   </script>
 </body>
 </html>

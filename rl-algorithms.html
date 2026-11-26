@@ -22,286 +22,74 @@
       The moment you move from small grids to robotic joints or language generation—where a 500-token response has more possible action sequences than atoms in the universe—you can no longer loop over every possible outcome to take a $\max$. You have to train a neural network <span class="term" data-term="policy">policy $\pi_\theta(a \mid s)$</span> directly with <span class="term" data-term="policy-gradient">Policy Gradients</span>, nudging up the probability of actions that beat expectations (<span class="term" data-term="advantage">Advantage $A_t &gt; 0$</span>) while putting a speed limit on each update so a single lucky rollout doesn't destroy the network (<span class="term" data-term="ppo">PPO</span>).
     </p>
     <p>
-      And when you scale PPO up to 70-billion-parameter reasoning LLMs, keeping a second 70-billion-parameter <span class="term" data-term="critic">Critic</span> network in GPU memory just to estimate the baseline expectation becomes painfully expensive. That bottleneck is what led DeepSeek-R1 to <span class="term" data-term="grpo">GRPO (Group Relative Policy Optimization)</span>: delete the Critic network completely, sample a small group of $G$ answers to the same prompt, and score each answer against the group's own average <span class="term" data-term="group-mean">$\mu$</span>.
+      And when you scale PPO up to 70-billion-parameter reasoning LLMs, keeping a second 70-billion-parameter <span class="term" data-term="critic">Critic</span> network in GPU memory just to estimate the baseline expectation becomes painfully expensive. That bottleneck is what led DeepSeek-R1 to <span class="term" data-term="grpo">GRPO (Group Relative Policy Optimization)</span>: delete the Critic network completely, sample a small group of <span class="term" data-term="group-size">$G$</span> answers to the same prompt, and score each answer against the group's own average <span class="term" data-term="group-mean">$\mu$</span>.
     </p>
 
-    <h2 id="ch-1">1. <span class="term" data-term="q-star">$Q^*$</span> ("Q-Star"), Q-Learning, and Why Lookup Tables Break</h2>
+    <h2>1. $Q^*$ ("Q-Star"), Policy Gradients &amp; Why Advantage ($A_t$) Beats Raw Reward</h2>
     <p>
-      In <a href="reinforcement-learning.html">Part 1</a>, our warehouse robot learned a scorecard <span class="term" data-term="q-function">$Q(s, a)$</span> that estimates how many total points it will get if it takes move <span class="term" data-term="action">$a$</span> in state <span class="term" data-term="state">$s$</span> and follows its <em>current</em> habit afterward.
-    </p>
-    <p>
-      What if the robot stopped making beginner mistakes on future turns and played <strong>100% optimally</strong> from the very next step onward? That ultimate scorecard is called <span class="term" data-term="q-star">$Q^*(s, a)$</span> ("Q-star").
-    </p>
-    <p>
-      If somebody hands you <span class="term" data-term="q-star">$Q^*(s, a)$</span>, you never have to plan ahead again. At any state <span class="term" data-term="state">$s$</span>, you just look at the <span class="term" data-term="q-star">$Q^*$</span> numbers for your available moves and pick the biggest one (<span class="term" data-term="argmax">$\arg\max_a Q^*(s, a)$</span>).
+      In <a href="reinforcement-learning.html">Part 1</a>, $Q^\pi(s, a)$ estimated the return of taking move $a$ in state $s$ and following the agent's <em>current</em> habit afterward. What if the agent played <strong>$100\%$ optimally</strong> on every future step? That ultimate scorecard satisfies the Bellman Optimality Equation for <span class="term" data-term="q-star">$Q^*(s, a)$</span>:
     </p>
 
     <div class="math-block">
-      <div>
-        <span class="term" data-term="q-star">$Q^*(s, a)$</span>
-        $=$
-        <span class="term" data-term="reward">$R_{t+1}$</span>
-        $+$
-        <span class="term" data-term="discount-factor">$\gamma$</span>
-        <span class="term" data-term="max-op">$\max_{a'}$</span>
-        <span class="term" data-term="q-star">$Q^*(S_{t+1}, a')$</span>
-      </div>
-      <div class="math-hint">
-        Bellman Optimality Rule (tap any symbol): Immediate reward $R_{t+1}$ + discounted score of the BEST move $a'$ at the next state $S_{t+1}$
-      </div>
+      $$Q^*(s, a) = R_{t+1} + \gamma \max_{a'} Q^*(S_{t+1}, a')$$
     </div>
 
-    <div class="worked">
-      <p><strong>Worked Example (Tracing <span class="term" data-term="q-star">$Q^*$</span> with distinct numbers):</strong></p>
-      <p>
-        From <strong>Room 1</strong>, pressing the <strong>Blue Button</strong> gives an immediate <span class="term" data-term="reward">$R = 4$</span> points and opens <strong>Room 2</strong>. Inside Room 2, there are two levers with known optimal scores:
-      </p>
-      <ul>
-        <li>Lever A has <span class="term" data-term="q-star">$Q^*(\text{Room 2}, \text{Lever A}) = 6$</span></li>
-        <li>Lever B has <span class="term" data-term="q-star">$Q^*(\text{Room 2}, \text{Lever B}) = 10$</span></li>
-      </ul>
-      <p>
-        With discount factor <span class="term" data-term="discount-factor">$\gamma = 0.5$</span>, how much is pressing the Blue Button in Room 1 worth under <span class="term" data-term="q-star">$Q^*$</span>?<br>
-        1. Pick the best future move in Room 2: <span class="term" data-term="max-op">$\max(6, 10)$</span> $= 10$.<br>
-        2. Discount it by one step (<span class="term" data-term="discount-factor">$\gamma = 0.5$</span>): $0.5 \times 10 = 5$.<br>
-        3. Add the immediate reward (<span class="term" data-term="reward">$R = 4$</span>): <span class="term" data-term="q-star">$Q^*(\text{Room 1}, \text{Blue})$</span> $= 4 + 5 = 9$.
-      </p>
-    </div>
+    <p>
+      Why can't we just use <span class="term" data-term="q-learning">Q-Learning</span> to train an LLM's full response? Because computing $\max_{a'} Q(S_{t+1}, a')$ requires checking every possible action $a'$, and when an action is a 1000-token reasoning trace, there are $100{,}000^{1000}$ possible trajectories. Instead, <span class="term" data-term="policy-gradient">Policy Gradient</span> methods parameterize the policy <span class="term" data-term="policy">$\pi_\theta(a \mid s)$</span> directly and push up the log-probability $\ln \pi_\theta(a_t \mid s_t)$ of moves that scored well.
+    </p>
+    <p>
+      Here is the catch: if an easy math prompt has three candidate answers that score $+90$, $+95$, and $+100$ points, multiplying $\nabla_\theta \ln \pi_\theta$ by the <em>raw</em> reward pushes up the probability of all three answers—including the worst $+90$ one! In <span class="term" data-term="actor-critic">Actor-Critic</span> RL, a <span class="term" data-term="critic">Critic</span> network predicts the expected baseline score $V(s_t) = 95$, and the <span class="term" data-term="actor">Actor</span> updates using the centered <span class="term" data-term="advantage">Advantage $A_t = R - V(s_t)$</span>: now $+100$ gets a positive push ($A = +5$), while $+90$ gets pushed <em>down</em> ($A = -5$).
+    </p>
 
-    <div class="story-box">
-      <div class="story-label">Two Things People Mean by "Q*"</div>
-      <ul style="margin:0.3rem 0 0 1.2rem;">
-        <li><strong>1. In textbook RL:</strong> <span class="term" data-term="q-star">$Q^*(s, a)$</span> is the optimal action-value function above, learned by <span class="term" data-term="q-learning">Q-Learning</span> (in a table) or <span class="term" data-term="dqn">DQN (Deep Q-Network)</span> (using a neural network when states are images or continuous numbers).</li>
-        <li><strong>2. In LLM reasoning news:</strong> "Q*" also became famous as a shorthand for combining a learned step-verifier (<span class="term" data-term="q-star">$Q^*$</span>) with tree search (like <span class="term" data-term="a-star">$A^*$</span> search). Instead of generating a math proof blind token-by-token, the model scores candidate intermediate steps with a $Q^*$ value model so it can backtrack out of dead-end reasoning steps early.</li>
-      </ul>
-    </div>
-
-    <details class="mcq-box" id="mcq-qstar" data-correct="B" data-topic="Mental Math: Computing Q*(s, a)">
-      <summary class="mcq-title"></summary>
-      <p>Taking Action X in State 1 pays an immediate reward of <span class="term" data-term="reward">$R = 3$</span> and lands in State 2. State 2 has three possible moves with <span class="term" data-term="q-star">$Q^*$</span> values of $4$, $8$, and $14$. If <span class="term" data-term="discount-factor">$\gamma = 0.5$</span>, what is <span class="term" data-term="q-star">$Q^*(\text{State 1}, \text{Action X})$</span>?</p>
-      <label class="mcq-option"><input type="radio" name="qq" value="A" data-explain="That uses the lowest move ($4$) in State 2: $3 + 0.5 \times 4 = 5$. $Q^*$ always picks the maximum move in the next state.">A) $5$</label>
-      <label class="mcq-option"><input type="radio" name="qq" value="B" data-explain="Correct. The best move in State 2 is $14$. Half of $14$ is $7$, plus the immediate reward of $3$ gives $3 + 7 = 10$.">B) $10$</label>
-      <label class="mcq-option"><input type="radio" name="qq" value="C" data-explain="$17$ forgets to multiply the next state's max value ($14$) by the discount factor $\gamma = 0.5$.">C) $17$</label>
-      <button class="btn" onclick="checkMCQ('mcq-qstar')">Check answer</button>
-      <div class="mcq-feedback"></div>
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Bellman Optimality Math for Q*">
+      <p>From Room 1, pressing the Blue Button pays immediate reward $R = 4$ and opens Room 2. Inside Room 2, Lever A has optimal value <span class="term" data-term="q-star">$Q^*(\text{Room 2}, \text{A}) = 6$</span> and Lever B has <span class="term" data-term="q-star">$Q^*(\text{Room 2}, \text{B}) = 10$</span>. With discount $\gamma = 0.5$, what is $Q^*(\text{Room 1}, \text{Blue})$?</p>
+      <label class="mcq-option" data-explain="Q* takes the max over future actions (10), not the average of 6 and 10 (8).">$4 + 0.5(8) = 8$.</label>
+      <label class="mcq-option" data-explain="Correct. In Room 2, an optimal agent picks Lever B (max(6, 10) = 10). Discounting 10 by gamma = 0.5 gives 5, plus immediate reward 4 = 9.">$4 + 0.5 \times \max(6, 10) = 4 + 5 = \mathbf{9}$.</label>
+      <label class="mcq-option" data-explain="You forgot to discount the future score 10 by gamma = 0.5.">$4 + 10 = 14$.</label>
     </details>
 
-    <!-- === CHAPTER 2: POLICY GRADIENTS & ACTOR-CRITIC === -->
-    <h2 id="ch-2">2. Chapter 2: Policy Gradients &amp; Actor-Critic (Why "Advantage" Beats Raw Reward)</h2>
+    <h2>2. PPO's Speed Limit ($r_t$) &amp; How GRPO Eliminates the Critic Network</h2>
     <p>
-      If <span class="term" data-term="q-learning">Q-Learning</span> and <span class="term" data-term="dqn">DQN</span> work so well for video games, why don't we train Large Language Models (LLMs) purely with Q-Learning?
+      Even with centered <span class="term" data-term="advantage">Advantages $A_t$</span>, standard policy gradients have a fatal habit: if a batch produces a huge gradient step that triples a token's probability in one update, the LLM's language distribution can collapse into gibberish—and because the collapsed policy now generates terrible rollouts on the next batch, it never recovers.
     </p>
     <p>
-      Look at the <span class="term" data-term="max-op">$\max_{a'} Q(S_{t+1}, a')$</span> step in the equation above. In Pac-Man, there are only 4 joystick actions (Up, Down, Left, Right), so checking all 4 to find the max is instant. An LLM writing a 300-word response chooses from <strong>100,000+ vocabulary tokens</strong> at every step—you cannot loop over every possible action to compute a maximum!
+      <strong><span class="term" data-term="ppo">PPO (Proximal Policy Optimization)</span></strong> prevents policy collapse by tracking the <span class="term" data-term="prob-ratio">probability ratio</span> $r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\text{old}}(a_t \mid s_t)}$ between the new policy and the policy that collected the rollout. Whenever a positive-advantage move ($A_t &gt; 0$) tries to grow past $1 + \epsilon$ (typically $1.20$ for <span class="term" data-term="clip-eps">$\epsilon = 0.20$</span>), or a negative-advantage move ($A_t &lt; 0$) tries to shrink below $1 - \epsilon = 0.80$, PPO's clipped objective flattens the gradient to zero—acting as a hard per-step speed limit.
     </p>
     <p>
-      So for LLMs and continuous robots, we flip the design around. Instead of learning a scorecard first and taking a max, <span class="term" data-term="policy-gradient">Policy Gradient</span> methods train a neural network called the <span class="term" data-term="actor">Actor $\pi_\theta(a \mid s)$</span> that outputs action probabilities directly:
-    </p>
-    <ul>
-      <li>Sample an action (or a full response) from <span class="term" data-term="policy-theta">$\pi_\theta$</span>.</li>
-      <li>If it scored better than expected, <strong>turn up</strong> its probability.</li>
-      <li>If it scored worse than expected, <strong>turn down</strong> its probability.</li>
-    </ul>
-
-    <div class="interactive-card" id="poe-adv-widget">
-      <div class="widget-label">Guess First: The All-Positive Reward Trap</div>
-      <h3>Should We Reinforce an Answer That Scored <code>+6</code>?</h3>
-      <p>
-        Suppose you ask an LLM a very easy prompt (<em>"What is $2 + 2$?"</em>). Almost any answer scores positively: a sloppy rambling answer gets <span class="term" data-term="reward">$R = +6$</span>, while a crisp answer gets <span class="term" data-term="reward">$R = +10$</span>, and the average expected score for this easy prompt is <span class="term" data-term="value-function">$V(s) = +8$</span>. If the LLM outputs the sloppy answer and gets <code>+6</code>, what happens if we reinforce every positive reward?
-      </p>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="runAdvPOE('A')">A) It improves because +6 is positive</button>
-        <button class="btn btn-small" onclick="runAdvPOE('B')">B) It gets worse—it makes the below-average (+6 vs +8) answer MORE likely!</button>
-        <button class="btn btn-small" onclick="runAdvPOE('skip')">I have no idea &mdash; show me</button>
-      </div>
-      <div id="adv-reveal" style="display:none;">
-        <div class="refutation" id="adv-refutation"></div>
-      </div>
-    </div>
-
-    <p>
-      To avoid rewarding mediocre answers on easy prompts (or over-punishing decent answers on brutal prompts), <span class="term" data-term="actor-critic">Actor-Critic</span> algorithms subtract the prompt's expected baseline score <span class="term" data-term="value-function">$V(s)$</span> from the reward. The difference is called the <span class="term" data-term="advantage">Advantage $A_t$</span>:
+      While PPO works well, running it on a 70B LLM requires holding a separate 70B <span class="term" data-term="critic">Critic</span> network $V_\phi(s)$ (plus its AdamW optimizer states) in VRAM just to compute the baseline in $A_t = R - V_\phi(s)$. <strong><span class="term" data-term="grpo">GRPO (Group Relative Policy Optimization)</span></strong> deletes the Critic network entirely: for each prompt $x$, it samples a group of <span class="term" data-term="group-size">$G$</span> candidate responses ($y_1, \dots, y_G$), scores them with a verifier ($R_1, \dots, R_G$), and normalizes each response's reward against the group's own mean <span class="term" data-term="group-mean">$\mu$</span> and standard deviation <span class="term" data-term="group-std">$\sigma$</span>:
     </p>
 
     <div class="math-block">
-      <div>
-        <span class="term" data-term="advantage">$A_t$</span>
-        $=$
-        <span class="term" data-term="reward">$\underbrace{R}_{\text{Actual Score}}$</span>
-        $-$
-        <span class="term" data-term="value-function">$\underbrace{V(s)}_{\text{Critic's Expected Baseline}}$</span>
-      </div>
-      <div class="math-hint">
-        Tap any symbol: $A_t > 0$ means better than usual (reinforce!) | $A_t < 0$ means worse than usual (suppress!)
-      </div>
-    </div>
-
-    <p>
-      In classic <span class="term" data-term="actor-critic">Actor-Critic</span>, two neural networks train side by side:
-    </p>
-    <ul>
-      <li><strong>The <span class="term" data-term="actor">Actor $\pi_\theta$</span>:</strong> Generates the actions (or text) and updates its probabilities using <span class="term" data-term="advantage">$A_t$</span>.</li>
-      <li><strong>The <span class="term" data-term="critic">Critic $V_\phi(s)$</span>:</strong> Predicts the expected baseline score <span class="term" data-term="value-function">$V(s)$</span> for each state/prompt so the Actor knows what "average" looks like.</li>
-    </ul>
-
-    <!-- === CHAPTER 3: PPO === -->
-    <h2 id="ch-3">3. Chapter 3: <span class="term" data-term="ppo">PPO</span> — Putting a Speed Limit on Policy Updates</h2>
-    <p>
-      Even with <span class="term" data-term="advantage">Advantage $A_t$</span>, raw <span class="term" data-term="policy-gradient">Policy Gradient</span> training has a dangerous failure mode: <strong>policy collapse</strong>.
-    </p>
-    <p>
-      Suppose an LLM happens to sample one lucky response with a huge advantage (<span class="term" data-term="advantage">$A_t = +10$</span>). If you take a large gradient step to crank up those token probabilities, you can overshoot and scramble the neural network's weights. Worse yet, once an RL agent scrambles its own policy, it generates garbage trajectories on the next batch, learns from that garbage, and never recovers.
-    </p>
-    <p>
-      <span class="term" data-term="ppo">PPO (Proximal Policy Optimization)</span>—the default RL algorithm behind classic <span class="term" data-term="rlhf">RLHF</span> in ChatGPT—fixes this by putting a strict speed limit on how far the new policy <span class="term" data-term="policy-theta">$\pi_{\text{new}}$</span> is allowed to drift from the old policy <span class="term" data-term="policy-old">$\pi_{\text{old}}$</span> in a single update.
-    </p>
-    <p>
-      First, PPO computes the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span>:
-    </p>
-
-    <div class="math-block">
-      <div>
-        <span class="term" data-term="prob-ratio">$r_t$</span>
-        $=$
-        $\dfrac{\text{New Probability}}{\text{Old Probability}}$
-        $=$
-        $\dfrac{\pi_{\text{new}}(a \mid s)}{\pi_{\text{old}}(a \mid s)}$
-      </div>
-      <div class="math-hint">
-        Example: If old probability was $10\%$ and new probability is $15\%$, then $r_t = 15 / 10 = 1.5$.
-      </div>
-    </div>
-
-    <p>
-      Next, PPO <strong>clips</strong> <span class="term" data-term="prob-ratio">$r_t$</span> inside a narrow safety corridor <span class="term" data-term="clip-eps">$[1 - \epsilon, 1 + \epsilon]$</span>. With the standard <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span>, the ratio is fenced between <strong>$0.8$ and $1.2$</strong> ($\pm 20\%$):
-    </p>
-    <ul>
-      <li>If <span class="term" data-term="advantage">$A_t > 0$</span> (good move), PPO stops rewarding you for pushing <span class="term" data-term="prob-ratio">$r_t$</span> above <strong>$1.2$</strong>.</li>
-      <li>If <span class="term" data-term="advantage">$A_t < 0$</span> (bad move), PPO stops rewarding you for pushing <span class="term" data-term="prob-ratio">$r_t$</span> below <strong>$0.8$</strong>.</li>
-    </ul>
-
-    <div class="interactive-card" id="ppo-widget">
-      <div class="widget-label">Interactive Simulator: How PPO's $\pm 20\%$ Speed Limit Works</div>
-      <h3>Test Three Policy Changes at <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span> (Safe Window: $0.8$ to $1.2$)</h3>
-      <div class="control-row">
-        <button class="btn btn-small active" id="ppo-btn-0" onclick="setPPOCase(0)">Case 1: Gentle Step ($r_t = 1.1, A_t = +4$)</button>
-        <button class="btn btn-small" id="ppo-btn-1" onclick="setPPOCase(1)">Case 2: Aggressive Jump ($r_t = 1.5, A_t = +4$)</button>
-        <button class="btn btn-small" id="ppo-btn-2" onclick="setPPOCase(2)">Case 3: Big Drop ($r_t = 0.5, A_t = -4$)</button>
-      </div>
-      <div class="stat-grid">
-        <div class="stat"><div class="k">Raw Ratio $r_t$</div><div class="v" id="ppo-raw-r">1.1</div></div>
-        <div class="stat"><div class="k">Clipped Ratio</div><div class="v" id="ppo-clip-r">1.1</div></div>
-        <div class="stat"><div class="k">Unclipped $r_t \times A_t$</div><div class="v" id="ppo-unclip-obj">4.4</div></div>
-        <div class="stat"><div class="k">PPO Final Score</div><div class="v" id="ppo-final-obj">4.4</div></div>
-      </div>
-      <div class="readout" id="ppo-explain"></div>
-    </div>
-
-    <!-- === CHAPTER 4: GRPO === -->
-    <h2 id="ch-4">4. Chapter 4: <span class="term" data-term="grpo">GRPO</span> — How DeepSeek Eliminated the Critic Network</h2>
-    <p>
-      <span class="term" data-term="ppo">PPO</span> is stable, so why did LLM researchers look for a replacement when training massive reasoning models like <strong>DeepSeekMath</strong> and <strong>DeepSeek-R1</strong>?
-    </p>
-    <p>
-      Count the neural networks sitting in GPU memory during PPO:
-    </p>
-    <ol>
-      <li>The <span class="term" data-term="actor">Actor</span> LLM being trained (say, 70 billion parameters).</li>
-      <li>And the <span class="term" data-term="critic">Critic</span> value network <span class="term" data-term="value-function">$V_\phi(s)$</span> (<strong>another 70 billion parameters!</strong>) whose entire job is just predicting the baseline score so we can compute <span class="term" data-term="advantage">Advantage $A_t = R - V(s)$</span>.</li>
-    </ol>
-    <p>
-      Keeping and training that second 70-billion-parameter <span class="term" data-term="critic">Critic</span> network nearly doubles memory and compute cost. Even worse, when an LLM writes a 2,000-token chain-of-thought math proof and only gets a score at the very last token (right or wrong answer), training a Critic to accurately guess the value of token #437 is slow and noisy.
-    </p>
-
-    <div class="story-box">
-      <div class="story-label">The GRPO Breakthrough (Group Relative Policy Optimization)</div>
-      <p style="margin:0.3rem 0;">
-        Ask yourself: why did we need the <span class="term" data-term="critic">Critic</span> in the first place? Only to answer one question: <strong>"What is the average baseline score for this prompt?"</strong>
-      </p>
-      <p style="margin:0.4rem 0 0 0;">
-        <span class="term" data-term="grpo">GRPO</span> replaces the entire Critic neural network with a simple group average: for a given prompt, generate a small group of <span class="term" data-term="group-size">$G$</span> candidate responses (for example, $4$ responses), score all $4$, and <strong>use the average of those $4$ scores (<span class="term" data-term="group-mean">$\mu$</span>) as your baseline!</strong>
-      </p>
-    </div>
-
-    <div class="math-block">
-      <div>
-        <span class="term" data-term="advantage">$A_i$</span>
-        $=$
-        $\dfrac{\text{Answer } i \text{'s Score} - \text{Group Average}}{\text{Group Spread}}$
-        $=$
-        $\dfrac{R_i - \mu}{\sigma}$
-      </div>
-      <div class="math-hint">
-        Tap any symbol: $R_i$ = reward of response $i$ | $\mu$ = mean of the $G$ responses | $\sigma$ = standard deviation (spread) of the $G$ responses
-      </div>
+      $$r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\text{old}}(a_t \mid s_t)}, \qquad A_i^{\text{GRPO}} = \frac{R_i - \mu}{\sigma}, \quad \text{where } \mu = \frac{1}{G}\sum_{j=1}^G R_j$$
     </div>
 
     <div class="worked">
-      <p><strong>Worked Example (Tracing <span class="term" data-term="grpo">GRPO</span> across <span class="term" data-term="group-size">$G = 4$</span> distinct answers—zero calculator needed):</strong></p>
+      <p><strong>Worked Example (Computing GRPO group-relative advantages by hand for $G = 3$ responses):</strong></p>
       <p>
-        We give one math prompt to our LLM and sample <span class="term" data-term="group-size">$G = 4$</span> candidate responses. The verifier scores them with four distinct numbers:
-      </p>
-      <p style="font-family:var(--font-mono); font-weight:bold;">
-        Response 1: $R_1 = 2$ &nbsp;|&nbsp; Response 2: $R_2 = 4$ &nbsp;|&nbsp; Response 3: $R_3 = 6$ &nbsp;|&nbsp; Response 4: $R_4 = 12$
-      </p>
-      <p>
-        <strong>Step 1 (Group Average <span class="term" data-term="group-mean">$\mu$</span>):</strong> Add the 4 scores and divide by 4:<br>
-        $\mu = (2 + 4 + 6 + 12) \div 4 = 24 \div 4 = 6$.
-      </p>
-      <p>
-        <strong>Step 2 (Subtract the Baseline <span class="term" data-term="group-mean">$\mu = 6$</span> from each score):</strong><br>
-        &bull; Response 1: $2 - 6 = -4$ (well below group average &rarr; suppress)<br>
-        &bull; Response 2: $4 - 6 = -2$ (slightly below average &rarr; suppress)<br>
-        &bull; Response 3: $6 - 6 = 0$ (exactly average &rarr; neutral)<br>
-        &bull; Response 4: $12 - 6 = +6$ (beat the group average &rarr; reinforce!)
-      </p>
-      <p>
-        <strong>Step 3 (Scale by spread, say <span class="term" data-term="group-std">$\sigma = 2$</span>):</strong> Divide each difference by $2$:<br>
-        <span class="term" data-term="advantage">$A_1 = -2$</span>, &nbsp;<span class="term" data-term="advantage">$A_2 = -1$</span>, &nbsp;<span class="term" data-term="advantage">$A_3 = 0$</span>, &nbsp;<span class="term" data-term="advantage">$A_4 = +3$</span>.
+        For one coding prompt, GRPO samples $G = 3$ candidate programs that receive rewards $R_1 = 1,\; R_2 = 4,\; R_3 = 10$ (with group spread $\sigma = 3$):<br>
+        1. <strong>Group Mean ($\mu$):</strong> $\mu = \frac{1 + 4 + 10}{3} = \frac{15}{3} = \mathbf{5}$ (replaces the Critic network's baseline!).<br>
+        2. <strong>Group-Relative Advantages ($A_i = (R_i - \mu)/\sigma$):</strong><br>
+        &bull; Response 1: $A_1 = \frac{1 - 5}{3} = \mathbf{-\frac{4}{3}}$ (below group average $\to$ probability pushed down).<br>
+        &bull; Response 2: $A_2 = \frac{4 - 5}{3} = \mathbf{-\frac{1}{3}}$ (slightly below average $\to$ nudged down).<br>
+        &bull; Response 3: $A_3 = \frac{10 - 5}{3} = \mathbf{+\frac{5}{3}}$ (beat the group average $\to$ reinforced!).
       </p>
     </div>
 
-    <div class="interactive-card" id="grpo-widget">
-      <div class="widget-label">Interactive GRPO Group Simulator</div>
-      <h3>Compare <span class="term" data-term="ppo">PPO</span> vs. <span class="term" data-term="grpo">GRPO</span> on Different Prompt Difficulties</h3>
-      <p>Switch between three prompt scenarios to see how <span class="term" data-term="grpo">GRPO</span> automatically adapts its baseline <span class="term" data-term="group-mean">$\mu$</span> without a <span class="term" data-term="critic">Critic</span> network:</p>
-      <div class="control-row">
-        <button class="btn btn-small active" id="grpo-btn-0" onclick="setGRPOCase(0)">Scenario 1: Mixed Scores [2, 4, 6, 12]</button>
-        <button class="btn btn-small" id="grpo-btn-1" onclick="setGRPOCase(1)">Scenario 2: Easy Prompt [7, 8, 9, 12]</button>
-        <button class="btn btn-small" id="grpo-btn-2" onclick="setGRPOCase(2)">Scenario 3: Binary Math Verifier [0, 0, 0, 4]</button>
-      </div>
-      <div class="figure-box">
-        <svg id="grpo-svg" viewBox="0 0 480 150" width="480" height="150" role="img" aria-label="GRPO group scores vs group mean"></svg>
-      </div>
-      <div class="readout" id="grpo-explain"></div>
-    </div>
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: PPO Probability Ratio &amp; Clipping">
+      <p>During a <span class="term" data-term="ppo">PPO</span> update with clip range <span class="term" data-term="clip-eps">$\epsilon = 0.20$</span> (so the allowed ratio band is $[0.80, 1.20]$), an action with positive advantage $A_t = +5$ had old probability $\pi_{\text{old}} = 0.10$ and has already risen to new probability $\pi_\theta = 0.15$. What is its ratio <span class="term" data-term="prob-ratio">$r_t$</span>, and what does PPO do?</p>
+      <label class="mcq-option" data-explain="r_t is the ratio 0.15 / 0.10 = 1.50, not the difference 0.05.">$r_t = 0.05$, so PPO continues pushing $\pi_\theta$ upward.</label>
+      <label class="mcq-option" data-explain="1.50 exceeds 1 + epsilon = 1.20, so the clipped objective caps it at 1.20.">$r_t = 1.50$, so PPO multiplies the gradient by $1.50$.</label>
+      <label class="mcq-option" data-explain="Correct. r_t = 0.15 / 0.10 = 1.50, which exceeds the upper speed limit 1 + epsilon = 1.20. For A_t > 0, min(r_t A_t, 1.20 A_t) flattens at 1.20 A_t, setting the gradient on that token to zero.">$r_t = \frac{0.15}{0.10} = \mathbf{1.50} &gt; 1.20$, so PPO clips the objective at $1.20\,A_t$ (stopping further updates on that token for this batch).</label>
+    </details>
 
-    <div class="interactive-card" id="faded-grpo-widget">
-      <div class="widget-label">Your Turn: Compute a GRPO Advantage in Your Head</div>
-      <h3>Find the Advantage <span class="term" data-term="advantage">$A_3$</span> for Response 3</h3>
-      <p>
-        For one coding prompt, <span class="term" data-term="grpo">GRPO</span> samples <span class="term" data-term="group-size">$G = 3$</span> candidate programs that score distinct rewards:
-        <span class="term" data-term="reward">$R_1 = 1$</span>, <span class="term" data-term="reward">$R_2 = 4$</span>, and <span class="term" data-term="reward">$R_3 = 10$</span> (with group spread <span class="term" data-term="group-std">$\sigma = 5$</span>).<br>
-        <strong>Step 1 (Group Mean <span class="term" data-term="group-mean">$\mu$</span>):</strong> $(1 + 4 + 10) \div 3 = 15 \div 3 = 5$.<br>
-        <strong>Step 2 (Response 3 minus Mean):</strong> $R_3 - \mu = 10 - 5 = +5$.<br>
-        <strong>Step 3 (Your turn):</strong> Divide by <span class="term" data-term="group-std">$\sigma = 5$</span> to get <span class="term" data-term="advantage">$A_3 = (10 - 5) \div 5$</span>:
-      </p>
-      <div class="control-row">
-        <label for="grpo-fade-input"><span class="term" data-term="advantage">$A_3$</span> $=$</label>
-        <input type="number" id="grpo-fade-input" step="1" placeholder="e.g. 1" style="width:8rem;">
-        <button class="btn btn-small" onclick="checkGRPOFaded()">Check Step 3</button>
-      </div>
-      <div id="grpo-fade-feedback" class="readout" style="display:none;"></div>
-    </div>
+    <details class="mcq-box" data-correct="A" data-topic="Check 3: How GRPO Cuts PPO Memory in Half">
+      <p>How does <span class="term" data-term="grpo">GRPO</span> (used in DeepSeek-R1) eliminate the need for a value <span class="term" data-term="critic">Critic</span> network while still centering rewards into advantages?</p>
+      <label class="mcq-option" data-explain="Correct. Instead of training a second LLM-sized Critic V_phi(s) to predict the baseline reward of a prompt, GRPO samples G responses to the same prompt and uses their empirical mean mu and standard deviation sigma to compute A_i = (R_i - mu) / sigma.">It samples a group of $G$ responses to the same prompt and uses their empirical group mean $\mu$ and standard deviation $\sigma$ as the baseline: $A_i = (R_i - \mu)/\sigma$.</label>
+      <label class="mcq-option" data-explain="Using uncentered raw rewards causes high variance and pushes up bad responses whenever all rewards are positive.">It uses raw uncentered rewards $A_i = R_i$ without any baseline.</label>
+      <label class="mcq-option" data-explain="DPO is offline preference optimization on static pairs; GRPO is online RL with group rollouts.">It replaces online rollouts with offline supervised fine-tuning.</label>
+    </details>
 
-    <h2 id="ch-5">5. The Algorithm Map (<span class="term" data-term="q-star">$Q^*$</span>, <span class="term" data-term="ppo">PPO</span>, <span class="term" data-term="dpo">DPO</span>, <span class="term" data-term="grpo">GRPO</span>) &amp; Checks</h2>
-    <p>
-      You will often see one more acronym alongside <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span> in LLM papers: <span class="term" data-term="dpo">DPO (Direct Preference Optimization)</span>.
-    </p>
-    <p>
-      Where does <span class="term" data-term="dpo">DPO</span> fit? Unlike PPO and GRPO—which are <strong>online RL</strong> methods that actively generate new responses during training and score them—<span class="term" data-term="dpo">DPO</span> is an <strong>offline</strong> shortcut. If you already have a static dataset of human preference pairs <code>(winning answer, losing answer)</code>, DPO directly nudges the LLM to raise the probability of the winning answer and lower the losing one without generating new rollouts. That makes DPO cheap and simple for style alignment, whereas online RL (<span class="term" data-term="grpo">GRPO</span> / <span class="term" data-term="ppo">PPO</span>) shines when an LLM needs to practice and discover new multi-step math or code solutions.
-    </p>
-
+    <h2>3. Comparing RL &amp; LLM Post-Training Algorithms</h2>
     <div class="table-wrap">
       <table>
         <thead>
@@ -309,264 +97,134 @@
             <th>Algorithm</th>
             <th>Core Mechanism</th>
             <th>Needs a Critic Network?</th>
+            <th>Online Rollouts?</th>
             <th>Best Use Case</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong><span class="term" data-term="q-learning">Q-Learning</span> / <span class="term" data-term="dqn">DQN</span> (<span class="term" data-term="q-star">$Q^*$</span>)</strong></td>
-            <td>Learns optimal action scorecard <span class="term" data-term="q-star">$Q^*(s,a)$</span> via <span class="term" data-term="max-op">$\max_{a'} Q$</span></td>
-            <td>Only a Q-network (no separate Actor)</td>
-            <td>Games, robotics grids, or scoring discrete steps in a search tree</td>
+            <td><strong><span class="term" data-term="q-learning">Q-Learning / DQN</span></strong></td>
+            <td>Learns <span class="term" data-term="q-star">$Q^*(s,a)$</span> via $R + \gamma \max_{a'} Q(s', a')$</td>
+            <td>Is a value network</td>
+            <td>Yes (replay buffer)</td>
+            <td>Small discrete action spaces (games, grid control)</td>
           </tr>
           <tr>
-            <td><strong><span class="term" data-term="ppo">PPO</span></strong></td>
-            <td>Clips policy ratio <span class="term" data-term="prob-ratio">$r_t \in [1-\epsilon, 1+\epsilon]$</span> using learned baseline <span class="term" data-term="value-function">$V(s)$</span></td>
-            <td><strong>Yes</strong> (full-size <span class="term" data-term="critic">Critic</span> network)</td>
-            <td>Continuous robot control &amp; general <span class="term" data-term="rlhf">RLHF</span> when memory is plentiful</td>
-          </tr>
-          <tr>
-            <td><strong><span class="term" data-term="dpo">DPO</span></strong></td>
-            <td>Trains directly on offline <code>(chosen, rejected)</code> pairs; no live rollouts</td>
-            <td><strong>No</strong> (no Critic, no online rollouts)</td>
-            <td>Fast, low-cost chat style &amp; preference tuning on static datasets</td>
+            <td><strong><span class="term" data-term="ppo">PPO</span> (Actor-Critic)</strong></td>
+            <td>Clipped ratio $\min(r_t A_t, \text{clip}(r_t) A_t)$ with learned Critic baseline $V_\phi(s)$</td>
+            <td>Yes (full LLM-sized Critic)</td>
+            <td>Yes</td>
+            <td>Robotics, continuous control, classic RLHF with dense per-token value estimates</td>
           </tr>
           <tr>
             <td><strong><span class="term" data-term="grpo">GRPO</span></strong></td>
-            <td>Samples <span class="term" data-term="group-size">$G$</span> answers per prompt; uses group mean <span class="term" data-term="group-mean">$\mu$</span> as baseline + PPO clipping</td>
-            <td><strong>No</strong> (group mean replaces Critic!)</td>
-            <td>Training reasoning LLMs (math, code, logic) with verifiable rewards</td>
+            <td>PPO clipped ratio + group-normalized advantage $A_i = (R_i - \mu)/\sigma$ over $G$ rollouts</td>
+            <td><strong>No</strong> (saves $\sim 50\%$ memory)</td>
+            <td>Yes ($G$ rollouts/prompt)</td>
+            <td>LLM math, code, and reasoning RL with verifiable rewards (DeepSeek-R1)</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="dpo">DPO</span></strong></td>
+            <td>Directly optimizes log-ratio on static $(y_{\text{win}}, y_{\text{lose}})$ preference pairs</td>
+            <td><strong>No</strong></td>
+            <td>No (offline dataset)</td>
+            <td>Fast, low-compute chat style &amp; preference alignment on pre-collected pairs</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <details class="mcq-box" id="mcq-1" data-correct="C" data-topic="PPO vs GRPO: Memory & Architecture">
-      <summary class="mcq-title"></summary>
-      <p>Why does <span class="term" data-term="grpo">GRPO</span> use roughly half as much trainable GPU memory as <span class="term" data-term="ppo">PPO</span> when fine-tuning a 70B-parameter LLM?</p>
-      <label class="mcq-option"><input type="radio" name="q1" value="A" data-explain="Both PPO and GRPO use the exact same clipping ratio $r_t$ and KL penalty.">A) Because GRPO removes the probability ratio <span class="term" data-term="prob-ratio">$r_t$</span> clipping step.</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="B" data-explain="GRPO actually generates multiple responses (a group of $G$ answers) per prompt during online training.">B) Because GRPO never generates new answers during training.</label>
-      <label class="mcq-option"><input type="radio" name="q1" value="C" data-explain="Correct. PPO trains both a 70B Actor and a 70B Critic value network; GRPO drops the 70B Critic and uses the average score $\mu$ of $G$ sampled responses instead.">C) Because GRPO eliminates the 70B <span class="term" data-term="critic">Critic</span> value network and computes the baseline from a group of <span class="term" data-term="group-size">$G$</span> sampled answers.</label>
-      <button class="btn" onclick="checkMCQ('mcq-1')">Check answer</button>
-      <div class="mcq-feedback"></div>
-    </details>
+    <div class="score-bar"></div>
 
-    <details class="mcq-box" id="mcq-2" data-correct="A" data-topic="Mental Math: PPO Clipping">
-      <summary class="mcq-title"></summary>
-      <p>In <span class="term" data-term="ppo">PPO</span> with clip range <span class="term" data-term="clip-eps">$\epsilon = 0.2$</span> (so the safe window is $[0.8, 1.2]$), an action has a positive advantage <span class="term" data-term="advantage">$A_t = +5$</span>. The policy update pushes its probability from $10\%$ to $20\%$, giving a raw ratio <span class="term" data-term="prob-ratio">$r_t = 20 / 10 = 2.0$</span>. What clipped ratio does PPO use?</p>
-      <label class="mcq-option"><input type="radio" name="q2" value="A" data-explain="Correct. Because $2.0$ exceeds the upper speed limit $1 + 0.2 = 1.2$, PPO caps the effective ratio at $1.2$ (giving a capped objective of $1.2 \times 5 = 6.0$ instead of $10.0$).">A) $1.2$ (capped at the upper boundary $1 + \epsilon$)</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="B" data-explain="$0.8$ is the lower boundary ($1 - \epsilon$), used when a ratio drops below $0.8$.">B) $0.8$ (the lower boundary $1 - \epsilon$)</label>
-      <label class="mcq-option"><input type="radio" name="q2" value="C" data-explain="PPO never lets a positive-advantage update benefit from a ratio above $1 + \epsilon$.">C) $2.0$ (unclipped)</label>
-      <button class="btn" onclick="checkMCQ('mcq-2')">Check answer</button>
-      <div class="mcq-feedback"></div>
-    </details>
-
-    <details class="mcq-box" id="mcq-3" data-correct="B" data-topic="Mental Math: GRPO Group Advantage Sign">
-      <summary class="mcq-title"></summary>
-      <p>For an easy trivia prompt, <span class="term" data-term="grpo">GRPO</span> samples <span class="term" data-term="group-size">$G = 4$</span> answers that receive scores of <code>[6, 8, 10, 12]</code> (so the group average is <span class="term" data-term="group-mean">$\mu = 9$</span>). What happens to the answer that scored <code>+8</code>?</p>
-      <label class="mcq-option"><input type="radio" name="q3" value="A" data-explain="Even though $+8$ is positive, it is below the group average of $9$ ($8 - 9 = -1$).">A) Its probability is increased because $+8$ is a positive score.</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="B" data-explain="Correct. Its raw difference from the group mean is $8 - 9 = -1 < 0$, so it gets a negative advantage and is suppressed in favor of the $+10$ and $+12$ answers.">B) Its probability is decreased because $8$ is below the group average of $9$ (<span class="term" data-term="advantage">$A_i &lt; 0$</span>).</label>
-      <label class="mcq-option"><input type="radio" name="q3" value="C" data-explain="Only an answer scoring exactly the group mean ($9$) gets zero advantage.">C) Its advantage is $0$ because $8$ is close to $9$.</label>
-      <button class="btn" onclick="checkMCQ('mcq-3')">Check answer</button>
-      <div class="mcq-feedback"></div>
-    </details>
-
-    <details class="mcq-box" id="mcq-4" data-correct="C" data-topic="Choosing an Algorithm: DPO vs GRPO vs Q-Learning">
-      <summary class="mcq-title"></summary>
-      <p>You want to train an LLM to solve multi-step algebra puzzles where an automated Python script checks whether the final number is right ($+1$) or wrong ($0$), and you want to fit training on half the GPUs that PPO would require. Which algorithm fits best?</p>
-      <label class="mcq-option"><input type="radio" name="q4" value="A" data-explain="Tabular Q-learning cannot search over a 100,000-token vocabulary across hundreds of reasoning tokens.">A) Tabular <span class="term" data-term="q-learning">Q-Learning</span></label>
-      <label class="mcq-option"><input type="radio" name="q4" value="B" data-explain="DPO trains on a fixed offline preference dataset and does not actively sample and verify new multi-step reasoning traces online.">B) <span class="term" data-term="dpo">DPO</span> on a fixed static dataset</label>
-      <label class="mcq-option"><input type="radio" name="q4" value="C" data-explain="Correct. GRPO runs online rollouts against the algebra verifier while skipping PPO's expensive Critic network.">C) <span class="term" data-term="grpo">GRPO</span> (samples groups of reasoning chains online and uses the group average instead of a Critic)</label>
-      <button class="btn" onclick="checkMCQ('mcq-4')">Check answer</button>
-      <div class="mcq-feedback"></div>
-    </details>
-
-    <div class="score-bar">
-      <span id="mcq-score">Checks answered: 0 of 5.</span>
-      <button class="btn btn-small" onclick="resetMCQs()">Reset checks</button>
-    </div>
-
-    <div class="interactive-card" id="spaced-widget">
-      <div class="widget-label">Spaced Recall Flashcards</div>
-      <h3>5 Quick Review Cards</h3>
-      <p>Tap any card to test your recall of $Q^*$, Advantage, PPO, and GRPO.</p>
-      <div id="spaced-list"></div>
-      <div class="control-row">
-        <button class="btn btn-small" onclick="copySpacedCards()">Copy Q&amp;A Cards</button>
-        <span id="copy-status" style="font-family:var(--font-mono); font-size:0.9em;"></span>
-      </div>
-    </div>
-
-    <footer class="article-footer">
-      <a href="reinforcement-learning.html">&larr; Part 1: RL From Scratch</a>
-      <a href="index.html">All Articles</a>
-      <a href="#top">&uarr; Back to top</a>
-    </footer>
+    <div class="interactive-card" id="spaced-widget"></div>
   </main>
 
   <script>
     var GLOSSARY = {
-      'q-star': { title: 'Optimal Action-Value $Q^*(s, a)$ ("Q-Star")', body: 'The maximum expected discounted return achievable if you take <span class="term" data-term="action">action $a$</span> in <span class="term" data-term="state">state $s$</span> and play $100\\%$ optimally on every step after that: $Q^*(s,a) = R_{t+1} + \\gamma \\max_{a\'} Q^*(S_{t+1}, a\')$.' },
-      'q-function': { title: 'Action-Value Scorecard $Q(s, a)$', body: 'Expected discounted return from taking move <span class="term" data-term="action">$a$</span> in <span class="term" data-term="state">state $s$</span> under the current policy.' },
-      'q-learning': { title: 'Q-Learning', body: 'An off-policy algorithm that learns <span class="term" data-term="q-star">$Q^*(s, a)$</span> in a table by always bootstrapping off the best possible move in the next state ($\\max_{a\'} Q(S_{t+1}, a\')$).' },
-      'dqn': { title: 'DQN (Deep Q-Network)', body: 'DeepMind\'s algorithm that replaces Q-Learning\'s lookup table with a deep neural network so <span class="term" data-term="q-star">$Q^*(s, a)$</span> works on high-dimensional inputs like video game pixels.' },
-      'a-star': { title: '$A^*$ Search', body: 'A classic pathfinding algorithm that explores the most promising branch first by adding the cost so far to an estimated future score (heuristic). In reasoning LLMs, a learned <span class="term" data-term="q-star">$Q^*$</span> verifier can guide tree search over reasoning steps.' },
-      'argmax': { title: '$\\arg\\max_a Q^*(s, a)$', body: 'Math shorthand for "pick whichever action $a$ has the highest <span class="term" data-term="q-star">$Q^*$</span> score."' },
-      'max-op': { title: '$\\max_{a\'} Q^*(S_{t+1}, a\')$', body: 'The score of the single highest-rated move $a\'$ available at the next state $S_{t+1}$.' },
-      'state': { title: 'State ($s$ or $S_t$)', body: 'The current situation or prompt context (e.g., the room a robot is in, or the prompt + tokens generated so far by an LLM).' },
-      'action': { title: 'Action ($a$)', body: 'A single decision made by the agent (e.g., pressing a button, or choosing the next token in an LLM response).' },
-      'reward': { title: 'Reward ($R$ or $R_{t+1}$)', body: 'The score assigned to an action or completed response (e.g., $+10$ for a correct math solution).' },
-      'discount-factor': { title: 'Discount Factor ($\\gamma$)', body: 'Multiplier $\\gamma \\in [0, 1]$ applied to each step of delay. At $\\gamma = 0.5$, waiting one step cuts a future value in half.' },
-      'value-function': { title: 'State Baseline Scorecard $V(s)$', body: 'The average score we expect from state/prompt $s$. Subtracting $V(s)$ from the actual reward gives the <span class="term" data-term="advantage">Advantage $A_t$</span>.' },
-      'policy-gradient': { title: 'Policy Gradient (REINFORCE)', body: 'Instead of learning a <span class="term" data-term="q-function">$Q(s,a)$</span> table, policy gradient algorithms directly tune the neural network weights <span class="term" data-term="theta">$\\theta$</span> of the <span class="term" data-term="actor">Actor $\\pi_\\theta(a \\mid s)$</span> to make high-scoring actions more likely.' },
-      'policy-theta': { title: 'Parameterized Policy $\\pi_\\theta(a \\mid s)$', body: 'The <span class="term" data-term="actor">Actor</span> neural network (with trainable weights <span class="term" data-term="theta">$\\theta$</span>) that outputs the probability of choosing action $a$ in state $s$.' },
-      'policy-old': { title: 'Old Policy $\\pi_{\\text{old}}(a \\mid s)$', body: 'A frozen snapshot of the <span class="term" data-term="actor">Actor</span>\'s probabilities from right before the current training update, used as the denominator in <span class="term" data-term="prob-ratio">$r_t = \\pi_{\\text{new}} / \\pi_{\\text{old}}$</span>.' },
-      'theta': { title: 'Parameters ($\\theta$)', body: 'The trainable weights $\\theta$ inside the <span class="term" data-term="actor">Actor</span> neural network.' },
-      'actor': { title: 'Actor Network ($\\pi_\\theta$)', body: 'The policy neural network that actually generates actions or text tokens.' },
-      'critic': { title: 'Critic Network ($V_\\phi$)', body: 'A second neural network used in <span class="term" data-term="actor-critic">Actor-Critic</span> and <span class="term" data-term="ppo">PPO</span> to predict the expected baseline score <span class="term" data-term="value-function">$V(s)$</span>. Eliminated in <span class="term" data-term="grpo">GRPO</span>.' },
-      'actor-critic': { title: 'Actor-Critic Architecture', body: 'An RL setup pairing an <span class="term" data-term="actor">Actor</span> (which picks actions) with a <span class="term" data-term="critic">Critic</span> (which predicts the baseline score <span class="term" data-term="value-function">$V(s)$</span> so the Actor can learn from <span class="term" data-term="advantage">Advantage $A_t$</span>).' },
-      'advantage': { title: 'Advantage ($A_t$ or $A_i$)', body: 'How much better (or worse) an action scored compared to the baseline expectation for that state/prompt: $A_t = R - V(s)$ in PPO, or $A_i = (R_i - \\mu)/\\sigma$ in <span class="term" data-term="grpo">GRPO</span>.' },
-      'ppo': { title: 'PPO (Proximal Policy Optimization)', body: 'An <span class="term" data-term="actor-critic">Actor-Critic</span> algorithm that prevents destructive policy updates by clipping the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> inside $[1 - \\epsilon, 1 + \\epsilon]$ (typically $[0.8, 1.2]$).' },
-      'prob-ratio': { title: 'Probability Ratio ($r_t$)', body: 'The ratio $r_t = \\frac{\\pi_{\\text{new}}(a \\mid s)}{\\pi_{\\text{old}}(a \\mid s)}$. If $r_t = 1.5$, the action is now $1.5\\times$ ($50\\%$) more likely than before the update.' },
-      'clip-eps': { title: 'Clipping Epsilon ($\\epsilon$)', body: 'The speed-limit margin in <span class="term" data-term="ppo">PPO</span> and <span class="term" data-term="grpo">GRPO</span>, usually $\\epsilon = 0.2$, which fences the <span class="term" data-term="prob-ratio">probability ratio $r_t$</span> between $1 - 0.2 = 0.8$ and $1 + 0.2 = 1.2$.' },
-      'rlhf': { title: 'RLHF (Reinforcement Learning from Human Feedback)', body: 'Training a reward model on human rankings of answers, then using <span class="term" data-term="ppo">PPO</span> (or <span class="term" data-term="grpo">GRPO</span>) to tune an LLM to maximize that reward.' },
-      'grpo': { title: 'GRPO (Group Relative Policy Optimization)', body: 'Introduced in DeepSeekMath and used in DeepSeek-R1: drops PPO\'s expensive <span class="term" data-term="critic">Critic</span> network by sampling a group of <span class="term" data-term="group-size">$G$</span> responses to the same prompt and using their group mean <span class="term" data-term="group-mean">$\\mu$</span> as the baseline.' },
-      'group-size': { title: 'Group Size ($G$)', body: 'The number of candidate responses sampled from the LLM for the exact same prompt in <span class="term" data-term="grpo">GRPO</span> (e.g., $G = 4$ or $G = 8$ responses compared side by side).' },
-      'group-mean': { title: 'Group Mean Score ($\\mu$)', body: 'The average reward $\\mu = \\frac{1}{G}\\sum_{i=1}^G R_i$ across the <span class="term" data-term="group-size">$G$</span> candidate responses for one prompt in <span class="term" data-term="grpo">GRPO</span>. Serves as the Critic-free baseline.' },
-      'group-std': { title: 'Group Spread / Standard Deviation ($\\sigma$)', body: 'Measures how spread out the <span class="term" data-term="group-size">$G$</span> scores are around the <span class="term" data-term="group-mean">group mean $\\mu$</span>. Dividing $(R_i - \\mu)$ by $\\sigma$ keeps <span class="term" data-term="grpo">GRPO</span> advantages on a consistent scale.' },
-      'dpo': { title: 'DPO (Direct Preference Optimization)', body: 'An offline alternative to <span class="term" data-term="rlhf">RLHF</span> that skips live RL generation and trains the LLM directly on pre-collected <code>(chosen, rejected)</code> answer pairs.' }
+      'q-star': {
+        title: 'Optimal Action-Value Function $Q^*(s, a)$',
+        body: 'Expected discounted return if you take action $a$ in state $s$ and play 100% optimally on every step afterward: $Q^*(s, a) = R_{t+1} + \\gamma \\max_{a\'} Q^*(S_{t+1}, a\')$.'
+      },
+      'q-learning': {
+        title: 'Q-Learning',
+        body: 'Off-policy value-based RL algorithm that updates $Q(s, a)$ toward the Bellman optimality target $R_{t+1} + \\gamma \\max_{a\'} Q(S_{t+1}, a\')$.'
+      },
+      'policy': {
+        title: 'Policy $\\pi_\\theta(a \\mid s)$',
+        body: 'Probability distribution over actions $a$ given state $s$, parameterized by neural network weights $\\theta$.'
+      },
+      'policy-gradient': {
+        title: 'Policy Gradient',
+        body: 'Updating policy weights $\\theta$ directly via $\\nabla_\\theta J \\approx \\mathbb{E}[A_t \\nabla_\\theta \\ln \\pi_\\theta(a_t \\mid s_t)]$, pushing up log-probabilities of positive-advantage actions.'
+      },
+      'actor-critic': {
+        title: 'Actor-Critic Architecture',
+        body: 'Pairs an <span class="term" data-term="actor">Actor</span> policy $\\pi_\\theta(a \\mid s)$ (which chooses actions) with a <span class="term" data-term="critic">Critic</span> value network $V_\\phi(s)$ (which supplies the baseline expectation for computing <span class="term" data-term="advantage">Advantage</span>).'
+      },
+      'actor': {
+        title: 'Actor ($\\pi_\\theta$)',
+        body: 'The policy network that generates actions or tokens.'
+      },
+      'critic': {
+        title: 'Critic ($V_\\phi(s)$)',
+        body: 'Value network trained to predict expected return $V_\\phi(s)$ so raw rewards can be centered into low-variance <span class="term" data-term="advantage">Advantages</span> $A_t = G_t - V_\\phi(s_t)$.'
+      },
+      'advantage': {
+        title: 'Advantage ($A_t$)',
+        body: '$A_t = Q(s_t, a_t) - V(s_t)$ (or $R - \\text{baseline}$): how much better or worse a specific action performed compared to the baseline expectation for that state/prompt.'
+      },
+      'ppo': {
+        title: 'PPO (Proximal Policy Optimization)',
+        body: 'Actor-Critic algorithm (Schulman et al., 2017) that clips the <span class="term" data-term="prob-ratio">probability ratio</span> $r_t(\\theta)$ to $[1-\\epsilon, 1+\\epsilon]$ so no single batch update moves the policy too far from $\\pi_{\\text{old}}$.'
+      },
+      'prob-ratio': {
+        title: 'Probability Ratio $r_t(\\theta)$',
+        body: '$r_t(\\theta) = \\frac{\\pi_\\theta(a_t \\mid s_t)}{\\pi_{\\text{old}}(a_t \\mid s_t)}$. Equals $1.0$ on the first pass over a rollout batch and drifts away from $1.0$ as $\\theta$ updates.'
+      },
+      'clip-eps': {
+        title: 'PPO Clipping Epsilon ($\\epsilon$)',
+        body: 'Speed-limit half-width (typically $\\epsilon = 0.20$), restricting effective policy ratio incentives to $[1 - \\epsilon, 1 + \\epsilon] = [0.80, 1.20]$.'
+      },
+      'grpo': {
+        title: 'GRPO (Group Relative Policy Optimization)',
+        body: 'Critic-free RL algorithm (Shao et al., 2024; DeepSeek-R1) that samples $G$ responses per prompt and computes advantage $A_i = (R_i - \\mu)/\\sigma$ using the group\'s own mean and standard deviation.'
+      },
+      'group-size': {
+        title: 'GRPO Group Size ($G$)',
+        body: 'Number of parallel candidate responses sampled for the same prompt $x$ (e.g. $G = 8, 16,$ or $64$) to estimate the group baseline.'
+      },
+      'group-mean': {
+        title: 'Group Mean Reward ($\\mu$)',
+        body: '$\\mu = \\frac{1}{G}\\sum_{j=1}^G R_j$: average reward across the $G$ sampled responses for a prompt, replacing PPO\'s learned Critic network.'
+      },
+      'group-std': {
+        title: 'Group Reward Standard Deviation ($\\sigma$)',
+        body: 'Spread of rewards across the $G$ responses for a prompt, used to normalize $A_i = (R_i - \\mu) / \\sigma$.'
+      },
+      'dpo': {
+        title: 'DPO (Direct Preference Optimization)',
+        body: 'Offline alignment method (Rafailov et al., 2023) that trains directly on static $(y_{\\text{win}}, y_{\\text{lose}})$ preference pairs without online rollouts or a separate reward model.'
+      }
     };
 
-    /* ---------- Chapter 2: Advantage POE ---------- */
-    function runAdvPOE(choice) {
-      document.getElementById('adv-reveal').style.display = 'block';
-      var ref = document.getElementById('adv-refutation');
-      ref.innerHTML = '<div class="refutation-title">Why Raw Positive Rewards Mislead Policy Gradients</div>' +
-        '<p style="margin:0;">If you reward every positive score on an easy prompt, a below-average <code>+6</code> answer gets reinforced and steals probability away from the <code>+10</code> answer! ' +
-        'Subtracting the baseline $V(s) = 8$ gives an <strong>Advantage</strong> of $A_t = 6 - 8 = -2$, immediately telling the Actor: <em>"For this easy prompt, +6 is worse than usual—turn its probability down."</em></p>';
-      renderMathIn(ref);
-    }
-
-    /* ---------- Chapter 3: PPO Clipping Widget ---------- */
-    var PPO_CASES = [
-      {
-        r: '1.1',
-        clipR: '1.1 (inside [0.8, 1.2])',
-        unclipObj: '4.4',
-        finalObj: '4.4',
-        note: 'Case 1 (Gentle update): New probability is only $10\\%$ higher than old ($r_t = 1.1$). Since $1.1$ is inside the $[0.8, 1.2]$ speed limit, PPO does not clip it: $1.1 \\times 4 = 4.4$.'
-      },
-      {
-        r: '1.5',
-        clipR: '1.2 (capped at 1 + 0.2)',
-        unclipObj: '6.0',
-        finalObj: '4.8',
-        note: 'Case 2 (Aggressive jump): The update tries to boost probability by $+50\\%$ ($r_t = 1.5$) on a good action ($A_t = +4$). PPO clips $1.5$ down to $1.2$ so the score caps at $1.2 \\times 4 = 4.8$ instead of $6.0$, removing any incentive to overshoot.'
-      },
-      {
-        r: '0.5',
-        clipR: '0.8 (floored at 1 - 0.2)',
-        unclipObj: '-2.0',
-        finalObj: '-3.2',
-        note: 'Case 3 (Aggressive drop): On a bad action ($A_t = -4$), the update tries to slash the probability in half ($r_t = 0.5$). PPO clips $0.5$ at the lower limit $0.8$ so the model does not over-correct in a single step.'
-      }
-    ];
-
-    function setPPOCase(idx) {
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('ppo-btn-' + i).classList.toggle('active', i === idx);
-      }
-      var c = PPO_CASES[idx];
-      document.getElementById('ppo-raw-r').textContent = c.r;
-      document.getElementById('ppo-clip-r').textContent = c.clipR;
-      document.getElementById('ppo-unclip-obj').textContent = c.unclipObj;
-      document.getElementById('ppo-final-obj').textContent = c.finalObj;
-      var exp = document.getElementById('ppo-explain');
-      exp.innerHTML = c.note;
-      renderMathIn(exp);
-    }
-
-    /* ---------- Chapter 4: GRPO Group Simulator ---------- */
-    var GRPO_CASES = [
-      {
-        scores: [2, 4, 6, 12],
-        mean: 6,
-        diffs: ['-4 (Suppress)', '-2 (Suppress)', '0 (Neutral)', '+6 (Reinforce!)'],
-        note: 'Scenario 1: The $4$ answers score $[2, 4, 6, 12]$. Sum $= 24$, so Group Mean $\\mu = 24 / 4 = 6$. Answers 1 and 2 fall below $6$ ($A_i < 0$); Answer 3 equals the mean ($A_3 = 0$); Answer 4 beats the mean by $+6$ ($A_4 > 0$) and gets reinforced.'
-      },
-      {
-        scores: [7, 8, 9, 12],
-        mean: 9,
-        diffs: ['-2 (Suppress)', '-1 (Suppress)', '0 (Neutral)', '+3 (Reinforce!)'],
-        note: 'Scenario 2 (Easy prompt): Even though all $4$ answers got positive raw scores $[7, 8, 9, 12]$, their Group Mean is $\\mu = 36 / 4 = 9$. GRPO automatically suppresses the mediocre $7$ and $8$ answers ($-2$ and $-1$) and only reinforces the $12$ answer ($+3$)!'
-      },
-      {
-        scores: [0, 0, 0, 4],
-        mean: 1,
-        diffs: ['-1 (Suppress)', '-1 (Suppress)', '-1 (Suppress)', '+3 (Reinforce!)'],
-        note: 'Scenario 3 (Hard math prompt with a right/wrong verifier): $3$ answers fail ($0$) and $1$ answer solves the puzzle ($+4$). Group Mean is $\\mu = 4 / 4 = 1$. The single right answer gets $+3$ above mean while the $3$ wrong attempts get $-1$.'
-      }
-    ];
-
-    function setGRPOCase(idx) {
-      for (var i = 0; i < 3; i++) {
-        document.getElementById('grpo-btn-' + i).classList.toggle('active', i === idx);
-      }
-      var c = GRPO_CASES[idx];
-      var svg = document.getElementById('grpo-svg');
-      var html = '';
-      html += '<text x="10" y="20" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">Group Mean Base (\u03BC) = ' + c.mean + ' (dashed vertical line)</text>';
-      var scale = 18; // max score 12 * 18 = 216px
-      var baseX = 125;
-      var meanX = baseX + c.mean * scale;
-
-      for (var k = 0; k < 4; k++) {
-        var y = 32 + k * 28;
-        var s = c.scores[k];
-        var w = Math.max(4, s * scale);
-        var isPos = s > c.mean;
-        html += '<text x="10" y="' + (y + 15) + '" font-family="sans-serif" font-size="12" font-weight="bold" fill="#000">Answer ' + (k + 1) + ' (R=' + s + ')</text>';
-        html += '<rect x="' + baseX + '" y="' + y + '" width="' + w + '" height="20" fill="' + (isPos ? '#000' : '#e8e8e8') + '" stroke="#000" stroke-width="1.5"/>';
-        html += '<text x="' + (baseX + w + 10) + '" y="' + (y + 15) + '" font-family="monospace" font-size="12" font-weight="bold" fill="#000">R - \u03BC = ' + c.diffs[k] + '</text>';
-      }
-      html += '<line x1="' + meanX + '" y1="26" x2="' + meanX + '" y2="144" stroke="#000" stroke-width="2" stroke-dasharray="4,3"/>';
-      svg.innerHTML = html;
-      var exp = document.getElementById('grpo-explain');
-      exp.innerHTML = c.note;
-      renderMathIn(exp);
-    }
-
-    /* ---------- Chapter 4: Faded Step & Recall ---------- */
-    function checkGRPOFaded() {
-      var val = parseFloat(document.getElementById('grpo-fade-input').value);
-      var fb = document.getElementById('grpo-fade-feedback');
-      fb.style.display = 'block';
-      if (!isNaN(val) && Math.abs(val - 1) <= 0.05) {
-        fb.innerHTML = '<strong>Correct ($+1$).</strong> Response 3 beat the group mean of $5$ by $+5$, and dividing by the spread $\\sigma = 5$ gives $A_3 = 5 \\div 5 = +1$.';
-      } else {
-        fb.innerHTML = 'Not quite. Compute $(10 - 5) \\div 5 = 5 \\div 5 = 1$.';
-      }
-      renderMathIn(fb);
-    }
-
-    function revealGRPORecall() {
-      var fb = document.getElementById('recall-grpo-feedback');
-      fb.style.display = 'block';
-      renderMathIn(fb);
-    }
-
     var SPACED_CARDS = [
-      { q: 'What does $Q^*(s, a)$ ("Q-star") mean in plain English?', a: 'The expected discounted return of taking action $a$ in state $s$, assuming you play $100\\%$ optimally on every step after that.' },
-      { q: 'Why do Actor-Critic algorithms use Advantage ($A_t = R - V(s)$) instead of raw reward $R$?', a: 'So they only reinforce actions that scored better than the expected baseline $V(s)$ for that state/prompt, rather than rewarding below-average answers on easy prompts.' },
-      { q: 'What problem does PPO\'s clipping range $[1 - \\epsilon, 1 + \\epsilon]$ solve?', a: 'It puts a speed limit (e.g. $\\pm 20\\%$) on how far the new policy probabilities can move from the old policy in a single update, preventing policy collapse.' },
-      { q: 'How does GRPO compute Advantage without a Critic neural network?', a: 'It samples a group of $G$ answers for the same prompt, computes their average reward $\\mu$, and scores each answer relative to that group average: $A_i = (R_i - \\mu) / \\sigma$.' },
-      { q: 'When should you pick DPO vs. GRPO for an LLM?', a: 'Use DPO for fast offline tuning on fixed (chosen, rejected) preference pairs; use GRPO when the model needs online practice and verification (like solving math or code problems).' }
+      {
+        q: 'Write the Bellman Optimality Equation for $Q^*(s, a)$ and explain why Q-Learning breaks down on full-response LLM generation.',
+        a: '$Q^*(s, a) = R_{t+1} + \\gamma \\max_{a\'} Q^*(S_{t+1}, a\')$. Taking $\\max_{a\'}$ requires evaluating all possible actions, which is intractable when the action space is an exponentially large space of token sequences.'
+      },
+      {
+        q: 'Why do Policy Gradient methods multiply $\\nabla_\\theta \\ln \\pi_\\theta(a_t \\mid s_t)$ by the Advantage $A_t = R - V(s_t)$ instead of the raw reward $R$?',
+        a: 'If all candidate rewards on a prompt are positive (e.g. $+90, +95, +100$), raw rewards push up the probability of even the worst $+90$ response. Subtracting the baseline $V(s_t) = 95$ centers the signal ($-5, 0, +5$) and slashes gradient variance.'
+      },
+      {
+        q: 'In PPO, what is the probability ratio $r_t(\\theta)$, and what does clipping $r_t(\\theta)$ to $[1-\\epsilon, 1+\\epsilon]$ prevent?',
+        a: '$r_t(\\theta) = \\frac{\\pi_\\theta(a_t \\mid s_t)}{\\pi_{\\text{old}}(a_t \\mid s_t)}$. Clipping zeroes out the gradient once a positive-advantage action grows past $1+\\epsilon$ (or a negative-advantage action drops below $1-\\epsilon$), preventing violent policy updates that collapse the LLM.'
+      },
+      {
+        q: 'How does GRPO compute advantages without a Critic value network?',
+        a: 'For each prompt, GRPO samples a group of $G$ responses $(y_1, \\dots, y_G)$ with rewards $(R_1, \\dots, R_G)$ and normalizes each reward against the group\'s empirical mean $\\mu$ and standard deviation $\\sigma$: $A_i = \\frac{R_i - \\mu}{\\sigma}$.'
+      }
     ];
-
-    document.addEventListener('DOMContentLoaded', function () {
-      setPPOCase(0);
-      setGRPOCase(0);
-    });
   </script>
 </body>
 </html>
