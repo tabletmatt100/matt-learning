@@ -41,7 +41,7 @@ var katexOptions = {
     { left: '\\(', right: '\\)', display: false },
     { left: '\\[', right: '\\]', display: true }
   ],
-  ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option', 'svg'],
+  ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option', 'svg', 'g', 'path', 'rect', 'circle', 'line', 'text', 'defs', 'marker'],
   throwOnError: false
 };
 

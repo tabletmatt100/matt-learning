@@ -34,8 +34,8 @@
     </p>
 
     <div class="math-block">
-      $$\text{PSM:}\quad \texttt{&lt;PRE&gt;}\;\circ\; P \;\circ\; \texttt{&lt;SUF&gt;}\;\circ\; S \;\circ\; \texttt{&lt;MID&gt;}\;\circ\; M \;\circ\; \texttt{&lt;EOT&gt;}$$
-      $$\text{SPM:}\quad \texttt{&lt;PRE&gt;}\;\circ\; \texttt{&lt;SUF&gt;}\;\circ\; S \;\circ\; \texttt{&lt;MID&gt;}\;\circ\; P \;\circ\; M \;\circ\; \texttt{&lt;EOT&gt;}$$
+      $$\text{PSM:}\quad \texttt{\textless PRE\textgreater}\;\circ\; P \;\circ\; \texttt{\textless SUF\textgreater}\;\circ\; S \;\circ\; \texttt{\textless MID\textgreater}\;\circ\; M \;\circ\; \texttt{\textless EOT\textgreater}$$
+      $$\text{SPM:}\quad \texttt{\textless PRE\textgreater}\;\circ\; \texttt{\textless SUF\textgreater}\;\circ\; S \;\circ\; \texttt{\textless MID\textgreater}\;\circ\; P \;\circ\; M \;\circ\; \texttt{\textless EOT\textgreater}$$
     </div>
 
     <div class="figure-box">
@@ -153,7 +153,7 @@
     </div>
 
     <p>
-      Wait—look closely at the <span class="term" data-term="spm-mode">SPM</span> formula above. Why does <code>&lt;MID&gt;</code> come <em>before</em> the prefix $P$ instead of between $P$ and $M$? If you didn't put a sentinel between $P$ and $M$, how would the model know where the prefix ended? During training, it doesn't need to! From the model's perspective after <code>&lt;MID&gt;</code>, it is simply generating the combined text $P \circ M$ conditioned on the suffix $S$. And at inference time in an IDE, this gives SPM two huge practical advantages over PSM: first, there is no artificial sentinel token interrupting the natural token flow between the end of the user's cursor prefix $P$ and the first generated token of $M$; second, as the user types another character onto $P$ while the suffix $S$ stays fixed, the server can keep its <span class="term" data-term="kv-cache">KV-cache</span> for $\texttt{&lt;PRE&gt;}\;\texttt{&lt;SUF&gt;}\;S\;\texttt{&lt;MID&gt;}\;P$ and just append the newly typed token!
+      Wait—look closely at the <span class="term" data-term="spm-mode">SPM</span> formula above. Why does <code>&lt;MID&gt;</code> come <em>before</em> the prefix $P$ instead of between $P$ and $M$? If you didn't put a sentinel between $P$ and $M$, how would the model know where the prefix ended? During training, it doesn't need to! From the model's perspective after <code>&lt;MID&gt;</code>, it is simply generating the combined text $P \circ M$ conditioned on the suffix $S$. And at inference time in an IDE, this gives SPM two huge practical advantages over PSM: first, there is no artificial sentinel token interrupting the natural token flow between the end of the user's cursor prefix $P$ and the first generated token of $M$; second, as the user types another character onto $P$ while the suffix $S$ stays fixed, the server can keep its <span class="term" data-term="kv-cache">KV-cache</span> for <code>&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P</code> and just append the newly typed token!
     </p>
     <p>
       In practice, modern code models like CodeLlama and StarCoder train on a $50/50$ mix of <span class="term" data-term="psm-mode">PSM</span> and <span class="term" data-term="spm-mode">SPM</span> so the model supports both formats at inference time. And notice how the model knows when to <em>stop</em> filling in the middle: during training, an end-of-text sentinel <span class="term" data-term="eot-token"><code>&lt;EOT&gt;</code></span> is placed right after $M$. When the model generates <code>&lt;EOT&gt;</code> at inference time, the IDE stops sampling immediately—signaling that the generated middle has cleanly connected into the first line of the suffix $S$.
@@ -310,11 +310,11 @@
       },
       'psm-mode': {
         title: 'PSM (Prefix–Suffix–Middle) Mode',
-        body: 'FIM ordering $\\texttt{<PRE>}\\;P\\;\\texttt{<SUF>}\\;S\\;\\texttt{<MID>}\\;M\\;\\texttt{<EOT>}$. Places the prefix first and the suffix second before generating $M$.'
+        body: 'FIM ordering <code>&lt;PRE&gt; P &lt;SUF&gt; S &lt;MID&gt; M &lt;EOT&gt;</code>. Places the prefix first and the suffix second before generating $M$.'
       },
       'spm-mode': {
         title: 'SPM (Suffix–Prefix–Middle) Mode',
-        body: 'FIM ordering $\\texttt{<PRE>}\\;\\texttt{<SUF>}\\;S\\;\\texttt{<MID>}\\;P\\;M\\;\\texttt{<EOT>}$. Places the suffix $S$ at the front so that $P$ flows continuously into $M$ without an intervening sentinel token, allowing fast <span class="term" data-term="kv-cache">KV-cache</span> reuse as the user types onto $P$.'
+        body: 'FIM ordering <code>&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P M &lt;EOT&gt;</code>. Places the suffix $S$ at the front so that $P$ flows continuously into $M$ without an intervening sentinel token, allowing fast <span class="term" data-term="kv-cache">KV-cache</span> reuse as the user types onto $P$.'
       },
       'kv-cache': {
         title: 'Key-Value (KV) Cache',
