@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fill-in-the-Middle (FIM): Teaching Causal LLMs to Read the Future Without Changing a Single Weight</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Fill-in-the-Middle (FIM): Teaching Causal LLMs to Read the Future Without Changing a Single Weight</h1>
+
+    <p>
+      Think about how you actually write code in an editor. Almost never do you start on line 1 and type straight through to the bottom of the file without looking back. Usually your cursor sits in the middle of an existing function: you have imports and a function header above your cursor (the <span class="term" data-term="sym-p">prefix $P$</span>), a return statement and closing braces below your cursor (the <span class="term" data-term="sym-s">suffix $S$</span>), and you want an AI assistant to fill in the missing logic right where your cursor is (the <span class="term" data-term="sym-m">middle $M$</span>).
+    </p>
+    <p>
+      A standard <span class="term" data-term="causal-ar">left-to-right autoregressive LLM</span> has a structural blind spot here. Because its <span class="term" data-term="causal-mask">causal attention mask</span> blocks every token from looking to the right, a normal GPT model generating at your cursor can only see the prefix $P$ above it. It has no idea that three lines below your cursor, the function returns <code>total_tax</code>—so it might invent a completely different variable name or re-type the return statement a second time.
+    </p>
+    <p>
+      In 2022, Mohammad Bavarian and colleagues at OpenAI showed that you don't need a bidirectional encoder-decoder to fix this. Their technique, <span class="term" data-term="fim">Fill-in-the-Middle (FIM)</span>, is a pure data transformation: during training, you take a fraction of your documents, slice each one into three pieces $(P, M, S)$, and move the middle span $M$ to the <em>very end</em> of the sequence using three special <span class="term" data-term="sentinel-tokens">sentinel tokens</span>. Because $P$ and $S$ now sit to the left of $M$, a completely standard causal Transformer can attend to both the prefix and the suffix while generating the middle token by token.
+    </p>
+
+    <h2>1. The Permute-and-Sentinel Trick: PSM vs. SPM</h2>
+    <p>
+      How do you rearrange a document <span class="term" data-term="sym-d">$D = (P, M, S)$</span> so a left-to-right model knows where the cut happened and where the suffix begins? Before tokenizing—or at the token level after choosing random cut points—you split the document into three contiguous spans and glue them back together with three dedicated sentinel tokens: <span class="term" data-term="sentinel-tokens"><code>&lt;PRE&gt;</code></span> (prefix starts), <span class="term" data-term="sentinel-tokens"><code>&lt;SUF&gt;</code></span> (suffix starts), and <span class="term" data-term="sentinel-tokens"><code>&lt;MID&gt;</code></span> (middle starts).
+    </p>
+    <p>
+      There are two ways to order the prefix and suffix before generating the middle. In <span class="term" data-term="psm-mode">PSM (Prefix–Suffix–Middle)</span> mode, the prefix comes first, followed by the suffix, and then the middle. In <span class="term" data-term="spm-mode">SPM (Suffix–Prefix–Middle)</span> mode, you put the suffix out front so that the prefix <span class="term" data-term="sym-p">$P$</span> flows directly into the middle <span class="term" data-term="sym-m">$M$</span>:
+    </p>
+
+    <div class="math-block">
+      $$\text{PSM:}\quad \texttt{&lt;PRE&gt;}\;\circ\; P \;\circ\; \texttt{&lt;SUF&gt;}\;\circ\; S \;\circ\; \texttt{&lt;MID&gt;}\;\circ\; M \;\circ\; \texttt{&lt;EOT&gt;}$$
+      $$\text{SPM:}\quad \texttt{&lt;PRE&gt;}\;\circ\; \texttt{&lt;SUF&gt;}\;\circ\; S \;\circ\; \texttt{&lt;MID&gt;}\;\circ\; P \;\circ\; M \;\circ\; \texttt{&lt;EOT&gt;}$$
+    </div>
+
+    <div class="figure-box">
+      <svg viewBox="0 0 600 325" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram showing how Fill-in-the-Middle rearranges Prefix, Middle, and Suffix into PSM and SPM sequences for causal left-to-right generation">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#000"/>
+          </marker>
+        </defs>
+
+        <!-- STEP 1: ORIGINAL DOCUMENT IN EDITOR -->
+        <text x="16" y="20" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">1. Original Code File: Split into Prefix (P), Middle (M), and Suffix (S)</text>
+
+        <g font-family="monospace" font-size="12.5" text-anchor="middle">
+          <!-- Prefix P -->
+          <rect x="20" y="32" width="180" height="44" fill="#fff" stroke="#000" stroke-width="2"/>
+          <text x="110" y="50" font-weight="bold">Prefix P (above cursor)</text>
+          <text x="110" y="67" font-size="11.5">def square(x):</text>
+
+          <!-- Middle M (shaded/highlighted) -->
+          <rect x="206" y="32" width="188" height="44" fill="#e8e8e8" stroke="#000" stroke-width="2" stroke-dasharray="4,2"/>
+          <text x="300" y="50" font-weight="bold">Middle M (at cursor)</text>
+          <text x="300" y="67" font-size="11.5">    ans = x * x</text>
+
+          <!-- Suffix S -->
+          <rect x="400" y="32" width="180" height="44" fill="#fff" stroke="#000" stroke-width="2"/>
+          <text x="490" y="50" font-weight="bold">Suffix S (below cursor)</text>
+          <text x="490" y="67" font-size="11.5">    return ans</text>
+        </g>
+
+        <!-- Arrows moving S left and M to the right end -->
+        <path d="M 110 76 L 160 118" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+        <path d="M 490 76 C 490 100, 325 96, 325 118" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arr)"/>
+        <path d="M 300 76 C 300 106, 495 96, 495 118" fill="none" stroke="#000" stroke-width="1.8" stroke-dasharray="3,2" marker-end="url(#arr)"/>
+        <text x="418" y="96" font-family="sans-serif" font-size="10.5" font-weight="bold">Move M to the end!</text>
+
+        <!-- STEP 2: PSM REARRANGED SEQUENCE -->
+        <text x="16" y="114" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">2. PSM Mode (Prefix–Suffix–Middle): Causal Mask Now Sees Both P and S</text>
+
+        <g font-family="monospace" font-size="11.5" text-anchor="middle">
+          <!-- <PRE> -->
+          <rect x="18" y="122" width="54" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="45" y="143" fill="#fff" font-weight="bold">&lt;PRE&gt;</text>
+
+          <!-- P -->
+          <rect x="76" y="122" width="122" height="34" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="137" y="138" font-weight="bold">Prefix P</text>
+          <text x="137" y="151" font-size="10">def square(x):</text>
+
+          <!-- <SUF> -->
+          <rect x="202" y="122" width="54" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="229" y="143" fill="#fff" font-weight="bold">&lt;SUF&gt;</text>
+
+          <!-- S -->
+          <rect x="260" y="122" width="114" height="34" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="317" y="138" font-weight="bold">Suffix S</text>
+          <text x="317" y="151" font-size="10">return ans</text>
+
+          <!-- <MID> -->
+          <rect x="378" y="122" width="54" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="405" y="143" fill="#fff" font-weight="bold">&lt;MID&gt;</text>
+
+          <!-- M -->
+          <rect x="436" y="122" width="96" height="34" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="484" y="138" font-weight="bold">Middle M</text>
+          <text x="484" y="151" font-size="10">ans = x * x</text>
+
+          <!-- <EOT> -->
+          <rect x="536" y="122" width="48" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="560" y="143" fill="#fff" font-weight="bold">&lt;EOT&gt;</text>
+        </g>
+
+        <!-- Causal attention arcs from M back to S and P -->
+        <path d="M 484 156 Q 400 192 317 158" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+        <path d="M 484 156 Q 310 206 137 158" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+        <text x="300" y="198" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">Standard left-to-right causal attention from M sees both Prefix P and Suffix S ("return ans")</text>
+
+        <line x1="14" y1="210" x2="586" y2="210" stroke="#000" stroke-width="1.2" stroke-dasharray="3,3"/>
+
+        <!-- STEP 3: SPM MODE & KV-CACHE ADVANTAGE -->
+        <text x="16" y="230" font-family="sans-serif" font-size="13" font-weight="bold" fill="#000">3. SPM Mode (Suffix–Prefix–Middle): Prefix P Flows Continuously Into Middle M</text>
+
+        <g font-family="monospace" font-size="11.5" text-anchor="middle">
+          <rect x="18" y="240" width="54" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="45" y="261" fill="#fff" font-weight="bold">&lt;PRE&gt;</text>
+
+          <rect x="76" y="240" width="54" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="103" y="261" fill="#fff" font-weight="bold">&lt;SUF&gt;</text>
+
+          <rect x="134" y="240" width="114" height="34" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="191" y="256" font-weight="bold">Suffix S</text>
+          <text x="191" y="269" font-size="10">return ans</text>
+
+          <rect x="252" y="240" width="54" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="279" y="261" fill="#fff" font-weight="bold">&lt;MID&gt;</text>
+
+          <!-- Continuous P + M block -->
+          <rect x="310" y="236" width="222" height="42" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="4,2" rx="3"/>
+          <rect x="314" y="240" width="116" height="34" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="372" y="256" font-weight="bold">Prefix P</text>
+          <text x="372" y="269" font-size="10">def square(x):</text>
+
+          <rect x="432" y="240" width="96" height="34" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="480" y="256" font-weight="bold">Middle M</text>
+          <text x="480" y="269" font-size="10">ans = x * x</text>
+
+          <rect x="536" y="240" width="48" height="34" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="560" y="261" fill="#fff" font-weight="bold">&lt;EOT&gt;</text>
+        </g>
+
+        <text x="421" y="298" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">No sentinel token between P and M!</text>
+        <text x="300" y="315" font-family="sans-serif" font-size="10.5" text-anchor="middle">As the user types more characters onto P in the IDE, the KV-cache for [&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P] just appends.</text>
+      </svg>
+      <div class="figure-caption"><strong>Figure 1:</strong> Moving the middle span $M$ to the end lets a causal decoder condition on both $P$ and $S$. In <strong>PSM</strong>, a sentinel <code>&lt;MID&gt;</code> separates the prompt from $M$. In <strong>SPM</strong>, the prefix $P$ sits right after <code>&lt;MID&gt;</code> so $P$ and $M$ form one unbroken span—making IDE <span class="term" data-term="kv-cache">KV-cache</span> reuse seamless as the programmer keeps typing.</div>
+    </div>
+
+    <p>
+      Wait—look closely at the <span class="term" data-term="spm-mode">SPM</span> formula above. Why does <code>&lt;MID&gt;</code> come <em>before</em> the prefix $P$ instead of between $P$ and $M$? If you didn't put a sentinel between $P$ and $M$, how would the model know where the prefix ended? During training, it doesn't need to! From the model's perspective after <code>&lt;MID&gt;</code>, it is simply generating the combined text $P \circ M$ conditioned on the suffix $S$. And at inference time in an IDE, this gives SPM two huge practical advantages over PSM: first, there is no artificial sentinel token interrupting the natural token flow between the end of the user's cursor prefix $P$ and the first generated token of $M$; second, as the user types another character onto $P$ while the suffix $S$ stays fixed, the server can keep its <span class="term" data-term="kv-cache">KV-cache</span> for $\texttt{&lt;PRE&gt;}\;\texttt{&lt;SUF&gt;}\;S\;\texttt{&lt;MID&gt;}\;P$ and just append the newly typed token!
+    </p>
+    <p>
+      In practice, modern code models like CodeLlama and StarCoder train on a $50/50$ mix of <span class="term" data-term="psm-mode">PSM</span> and <span class="term" data-term="spm-mode">SPM</span> so the model supports both formats at inference time. And notice how the model knows when to <em>stop</em> filling in the middle: during training, an end-of-text sentinel <span class="term" data-term="eot-token"><code>&lt;EOT&gt;</code></span> is placed right after $M$. When the model generates <code>&lt;EOT&gt;</code> at inference time, the IDE stops sampling immediately—signaling that the generated middle has cleanly connected into the first line of the suffix $S$.
+    </p>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Why FIM Needs Zero Architecture Changes">
+      <p>How does a standard causal (decoder-only) LLM attend to the future <span class="term" data-term="sym-s">suffix $S$</span> when predicting the <span class="term" data-term="sym-m">middle span $M$</span> under <span class="term" data-term="fim">Fill-in-the-Middle</span>?</p>
+      <label class="mcq-option" data-explain="FIM does not alter the lower-triangular causal attention mask; every token still only attends to tokens to its left.">By disabling the causal attention mask on suffix tokens so queries can look to the right.</label>
+      <label class="mcq-option" data-explain="Correct. Moving S to the left of M in the token sequence places both P and S inside M's standard left-hand causal history.">By permuting the sequence so both $P$ and $S$ sit to the left of $M$, placing the suffix inside $M$'s normal left-to-right causal history.</label>
+      <label class="mcq-option" data-explain="FIM uses a single decoder-only Transformer with zero extra encoder layers.">By encoding the suffix $S$ with a separate bidirectional BERT encoder and cross-attending to it.</label>
+    </details>
+
+    <h2>2. The "FIM-for-Free" Property &amp; Character-Level Splitting</h2>
+    <p>
+      Here is the question that worried everyone before the OpenAI FIM paper came out: if you turn $50\%$ or $90\%$ of your pre-training documents into scrambled $(P, S, M)$ puzzles, doesn't that hurt the model's normal left-to-right autoregressive generation quality?
+    </p>
+    <p>
+      Surprisingly, no. Bavarian et al. proved what they call the <span class="term" data-term="fim-for-free">FIM-for-free property</span>: training a causal language model from scratch with a <span class="term" data-term="sym-pfim">FIM transformation rate $p_{\text{FIM}} = 0.5$</span> (and even up to $0.9$) yields the <em>exact same</em> left-to-right test loss and HumanEval pass@1 score as a $100\%$ left-to-right model trained for the same number of tokens, while adding full infilling capability at zero extra FLOP cost.
+    </p>
+    <p>
+      Why doesn't FIM waste training capacity? Because unlike BERT's masked language modeling—which computes loss only on the $15\%$ masked tokens—FIM still computes standard <span class="term" data-term="ce-loss">next-token cross-entropy loss</span> across <em>all</em> three spans ($P$, $S$, and $M$) in every training step! On a document with $|P| + |M| + |S| = N$ content tokens plus $4$ sentinel tokens, the total sequence length is $N + 4$:
+    </p>
+
+    <div class="math-block">
+      $$\mathcal{L}_{\text{FIM}} = -\sum_{t \in P \cup S \cup M \cup \text{sentinels}} \log P_\theta\!\left(x_t \;\middle|\; x_{&lt;t}\right)$$
+    </div>
+
+    <p>
+      While the model scans across $P$, it is doing pure left-to-right language modeling. While it scans across $S$, it is still doing left-to-right language modeling (with a sudden jump at the cut). And while it scans across $M$, it gets the harder and more informative task of bridging $P$ into $S$.
+    </p>
+
+    <div class="worked">
+      <p><strong>Worked Example (Tracing token positions &amp; causal context on a 9-token document):</strong></p>
+      <p>
+        Suppose a document has $N = 9$ content tokens split into $|P| = 4$ tokens, $|M| = 2$ tokens, and $|S| = 3$ tokens.<br>
+        1. <strong>PSM sequence length:</strong> Wrapping $(P, S, M)$ with the $4$ sentinels (<code>&lt;PRE&gt;</code>, <code>&lt;SUF&gt;</code>, <code>&lt;MID&gt;</code>, <code>&lt;EOT&gt;</code>) produces a sequence of length $4 + 3 + 2 + 4 = \mathbf{13\text{ tokens}}$.<br>
+        2. <strong>Context seen when predicting the first token of $M$:</strong> Right after <code>&lt;MID&gt;</code>, how many preceding tokens sit in the causal window? The sentinel <code>&lt;PRE&gt;</code> ($1$), the prefix $P$ ($4$), the sentinel <code>&lt;SUF&gt;</code> ($1$), the suffix $S$ ($3$), and <code>&lt;MID&gt;</code> ($1$) $\implies 1 + 4 + 1 + 3 + 1 = \mathbf{10\text{ tokens}}$ (all $4$ prefix tokens and all $3$ suffix tokens).<br>
+        3. <strong>Token overhead:</strong> Adding $4$ sentinels to a $2{,}048$-token training chunk adds only $4 / 2048 \approx \mathbf{0.2\%}$ extra tokens.
+      </p>
+    </div>
+
+    <p>
+      There is one subtle trap that breaks FIM in real editors if you get it wrong during data preparation: <strong>always split documents in raw character space before running <span class="term" data-term="bpe-split">BPE tokenization</span>, never in token space</strong> (or decode and re-encode the three spans after splitting). Why? Imagine the user's cursor sits in the middle of the identifier <code>calculate_tax</code>: the prefix ends with <code>"def calc"</code> and the suffix starts with <code>"ax(price):"</code>, so the missing middle is <code>"ulate_t"</code>. In the original unsplit file, the BPE tokenizer merged <code>"calculate"</code> into a single token ID. If you only ever split training examples along existing BPE token boundaries, the model never sees sub-word fragments at the edges of $P$, $M$, and $S$—and fails miserably whenever a programmer's cursor sits mid-word! Splitting at random character indices and tokenizing $P$, $M$, and $S$ separately teaches the model to stitch sub-word BPE fragments together cleanly.
+    </p>
+
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: Counting Causal Context in PSM">
+      <p>A training chunk of $N = 20$ content tokens is split into a prefix of $|P| = 8$ tokens, a middle of $|M| = 5$ tokens, and a suffix of $|S| = 7$ tokens, then formatted in <span class="term" data-term="psm-mode">PSM</span> mode: <code>&lt;PRE&gt; P &lt;SUF&gt; S &lt;MID&gt; M &lt;EOT&gt;</code>. When the model is predicting the <strong>first token of $M$</strong> (immediately after <code>&lt;MID&gt;</code>), how many content tokens and sentinel tokens are in its left-hand causal context?</p>
+      <label class="mcq-option" data-explain="That would be standard left-to-right decoding without the suffix S.">$8$ content tokens ($P$ only) and $1$ sentinel token.</label>
+      <label class="mcq-option" data-explain="M has not been generated yet when predicting the very first token of M.">$20$ content tokens ($P, M, S$) and $4$ sentinel tokens.</label>
+      <label class="mcq-option" data-explain="Correct. Before the first token of M sit <PRE> (1) + P (8) + <SUF> (1) + S (7) + <MID> (1) = 15 content tokens (all of P and S) plus 3 sentinel tokens.">$15$ content tokens ($8$ from $P$ + $7$ from $S$) and $3$ sentinel tokens (<code>&lt;PRE&gt;</code>, <code>&lt;SUF&gt;</code>, <code>&lt;MID&gt;</code>), totaling $18$ tokens.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="A" data-topic="Check 3: Character-Level vs. Token-Level Splitting">
+      <p>Why must FIM training split documents into $(P, M, S)$ at <strong>character</strong> boundaries (and then tokenize each span separately) rather than splitting an already-tokenized BPE array?</p>
+      <label class="mcq-option" data-explain="Correct. At inference time, a user's cursor often sits mid-word or mid-token, so P, M, and S are tokenized independently; character-level splitting during training exposes the model to the exact same split-token boundary artifacts.">Because at inference time a user's cursor can split a word in half, causing $P$, $M$, and $S$ to be BPE-tokenized separately into sub-tokens that never occur if you only split on whole-token boundaries.</label>
+      <label class="mcq-option" data-explain="Tokenizing three substrings takes nearly the same CPU time as tokenizing one string.">Because BPE tokenizers crash if given more than 1,000 tokens at once.</label>
+      <label class="mcq-option" data-explain="Sentinel tokens are added as dedicated special vocabulary IDs that are never split by BPE.">Because token-level splitting corrupts the sentinel tokens <code>&lt;PRE&gt;</code> and <code>&lt;SUF&gt;</code>.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 4: SPM Mode & KV-Cache Reuse">
+      <p>Suppose you are building a low-latency IDE autocomplete server where the user is typing character by character at the end of <span class="term" data-term="sym-p">prefix $P$</span> while the <span class="term" data-term="sym-s">suffix $S$</span> below the cursor stays unchanged. Why is <span class="term" data-term="spm-mode">SPM</span> (<code>&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P M</code>) faster for <span class="term" data-term="kv-cache">KV-cache</span> reuse than <span class="term" data-term="psm-mode">PSM</span> (<code>&lt;PRE&gt; P &lt;SUF&gt; S &lt;MID&gt; M</code>)?</p>
+      <label class="mcq-option" data-explain="Both PSM and SPM contain the exact same total number of content tokens.">Because SPM deletes the suffix $S$ to make the prompt shorter.</label>
+      <label class="mcq-option" data-explain="Correct. In PSM, P comes before S, so adding 1 token to P shifts the positions of all of S and invalidates S's KV-cache. In SPM, S sits at the front before P, so typing onto P simply appends to the end of the cached prompt.">In SPM, the unchanging suffix $S$ comes <em>before</em> the growing prefix $P$, so appending new keystrokes to $P$ extends the end of the cached prompt without invalidating the KV-cache of $S$.</label>
+      <label class="mcq-option" data-explain="SPM still uses the sentinel tokens at the front of the prompt.">Because SPM requires zero sentinel tokens.</label>
+    </details>
+
+    <h2>3. Comparing Infilling &amp; Pre-Training Objectives</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Objective / Mode</th>
+            <th>Sequence Layout</th>
+            <th>Causal Context for $M$</th>
+            <th>Tradeoff / Failure Mode</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Standard Left-to-Right (<span class="term" data-term="causal-ar">AR</span>)</strong></td>
+            <td>$P \;\circ\; M \;\circ\; S$</td>
+            <td>Sees $P$ only ($0\%$ of $S$)</td>
+            <td>Blind to code below the cursor; duplicates return statements or mismatches variable names in $S$</td>
+            <td>Appending new code at the very bottom of a file or chat generation</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="psm-mode">FIM — PSM Mode</span></strong></td>
+            <td><code>&lt;PRE&gt;</code> $P$ <code>&lt;SUF&gt;</code> $S$ <code>&lt;MID&gt;</code> $M$ <code>&lt;EOT&gt;</code></td>
+            <td>Sees all of $P$ and $S$</td>
+            <td>Typing onto $P$ shifts $S$'s positions, invalidating $S$'s <span class="term" data-term="kv-cache">KV-cache</span>; sentinel <code>&lt;MID&gt;</code> sits between $P$ and $M$</td>
+            <td>Single-shot multi-line infilling where $P$ and $S$ are clearly separated</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="spm-mode">FIM — SPM Mode</span></strong></td>
+            <td><code>&lt;PRE&gt;</code> <code>&lt;SUF&gt;</code> $S$ <code>&lt;MID&gt;</code> $P \circ M$ <code>&lt;EOT&gt;</code></td>
+            <td>Sees all of $S$ and $P$ ($P$ flows straight into $M$)</td>
+            <td>Slightly less intuitive to inspect manually because $P$ and $M$ share one span after <code>&lt;MID&gt;</code></td>
+            <td>Real-time IDE autocomplete as the user types onto $P$ with a fixed suffix $S$</td>
+          </tr>
+          <tr>
+            <td><strong>Encoder-Decoder Span Corruption (T5)</strong></td>
+            <td>Encoder: $P$ <code>&lt;X&gt;</code> $S$<br>Decoder: <code>&lt;X&gt;</code> $M$</td>
+            <td>Bidirectional on $P, S$; causal on $M$</td>
+            <td>Computes loss <em>only</em> on masked spans ($15\%$ of tokens); poor general left-to-right chat/code generator</td>
+            <td>Dedicated sequence-to-sequence tasks where full-document generation isn't needed</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'fim': {
+        title: 'Fill-in-the-Middle (FIM)',
+        body: 'Data transformation (Bavarian et al., 2022) that splits a training document into <span class="term" data-term="sym-p">Prefix $P$</span>, <span class="term" data-term="sym-m">Middle $M$</span>, and <span class="term" data-term="sym-s">Suffix $S$</span>, and moves $M$ to the end with <span class="term" data-term="sentinel-tokens">sentinel tokens</span> so a standard left-to-right causal LLM can infill missing text conditioned on both $P$ and $S$.'
+      },
+      'sym-d': {
+        title: 'Original Document $D = (P, M, S)$',
+        body: 'A training text or source-code file sliced at two random cut points into three contiguous spans: Prefix $P$, Middle $M$, and Suffix $S$.'
+      },
+      'sym-p': {
+        title: 'Prefix Span ($P$)',
+        body: 'All text or code appearing <em>before</em> (above) the cursor or missing span.'
+      },
+      'sym-m': {
+        title: 'Middle Span ($M$)',
+        body: 'The missing span at the cursor that the model must generate so that $P \\circ M \\circ S$ forms a coherent program or document.'
+      },
+      'sym-s': {
+        title: 'Suffix Span ($S$)',
+        body: 'All text or code appearing <em>after</em> (below) the cursor or missing span. Moving $S$ ahead of $M$ lets a causal model condition on future lines.'
+      },
+      'causal-ar': {
+        title: 'Autoregressive (AR) Causal LLM',
+        body: 'A decoder-only Transformer (like GPT, Llama, or StarCoder) trained to predict each token $x_t$ using only the preceding left-hand tokens $x_{<t}$.'
+      },
+      'causal-mask': {
+        title: 'Causal Attention Mask',
+        body: 'Lower-triangular attention mask ($M_{ij} = -\\infty$ for $j > i$) that prevents position $i$ from attending to any position to its right.'
+      },
+      'sentinel-tokens': {
+        title: 'FIM Sentinel Tokens (<code>&lt;PRE&gt;</code>, <code>&lt;SUF&gt;</code>, <code>&lt;MID&gt;</code>)',
+        body: 'Dedicated special tokens added to the vocabulary to mark the start of the prefix, suffix, and middle spans in a permuted FIM sequence.'
+      },
+      'eot-token': {
+        title: 'End-of-Text / Infill Stop Token (<code>&lt;EOT&gt;</code>)',
+        body: 'Special token placed immediately after the middle span $M$ during training. At inference time, generating <code>&lt;EOT&gt;</code> tells the IDE that $M$ is complete and has connected cleanly into the start of $S$.'
+      },
+      'psm-mode': {
+        title: 'PSM (Prefix–Suffix–Middle) Mode',
+        body: 'FIM ordering $\\texttt{<PRE>}\\;P\\;\\texttt{<SUF>}\\;S\\;\\texttt{<MID>}\\;M\\;\\texttt{<EOT>}$. Places the prefix first and the suffix second before generating $M$.'
+      },
+      'spm-mode': {
+        title: 'SPM (Suffix–Prefix–Middle) Mode',
+        body: 'FIM ordering $\\texttt{<PRE>}\\;\\texttt{<SUF>}\\;S\\;\\texttt{<MID>}\\;P\\;M\\;\\texttt{<EOT>}$. Places the suffix $S$ at the front so that $P$ flows continuously into $M$ without an intervening sentinel token, allowing fast <span class="term" data-term="kv-cache">KV-cache</span> reuse as the user types onto $P$.'
+      },
+      'kv-cache': {
+        title: 'Key-Value (KV) Cache',
+        body: 'Stored attention key and value tensors for prompt tokens that have already been processed. If new tokens are appended to the end of a prompt (as in <span class="term" data-term="spm-mode">SPM</span> when typing onto $P$), the existing KV-cache can be reused without recomputing earlier tokens.'
+      },
+      'fim-for-free': {
+        title: 'FIM-for-Free Property',
+        body: 'Key empirical finding of Bavarian et al. (2022): applying FIM to $50\\%$–$90\\%$ of pre-training data gives full infilling capability with <strong>zero</strong> degradation in standard left-to-right generation loss or benchmark accuracy.'
+      },
+      'sym-pfim': {
+        title: 'FIM Rate ($p_{\\text{FIM}}$)',
+        body: 'Probability that a training document is transformed into a FIM sequence (typically $p_{\\text{FIM}} = 0.5$ to $0.9$, with the remaining $1 - p_{\\text{FIM}}$ kept as standard left-to-right text).'
+      },
+      'ce-loss': {
+        title: 'Full-Sequence Next-Token Cross-Entropy Loss',
+        body: 'Unlike Masked Language Modeling (which only scores masked spans), FIM computes standard next-token log-loss across every token in $P$, $S$, and $M$, so $100\\%$ of content tokens still provide gradient signal.'
+      },
+      'bpe-split': {
+        title: 'Character-Level Splitting Before BPE Tokenization',
+        body: 'Splitting $(P, M, S)$ at raw character indices and running the Byte-Pair Encoding (BPE) tokenizer separately on $P$, $M$, and $S$. Essential so the model learns to handle mid-word cursor cuts.'
+      }
+    };
+
+    var SPACED_CARDS = [
+      {
+        q: 'How does Fill-in-the-Middle (FIM) let a strictly left-to-right causal LLM condition on both the prefix $P$ and future suffix $S$ without modifying the causal attention mask?',
+        a: 'It slices a document into $(P, M, S)$ and moves the middle span $M$ to the end using sentinel tokens (either PSM: <code>&lt;PRE&gt; P &lt;SUF&gt; S &lt;MID&gt; M &lt;EOT&gt;</code> or SPM: <code>&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P M &lt;EOT&gt;</code>), placing both $P$ and $S$ inside $M$\'s left-hand causal context.'
+      },
+      {
+        q: 'What is the difference between PSM and SPM mode in FIM, and why is SPM better for real-time IDE autocomplete KV-caching?',
+        a: 'PSM orders spans as <code>&lt;PRE&gt; P &lt;SUF&gt; S &lt;MID&gt; M</code>, whereas SPM puts the suffix first: <code>&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P M</code>. In SPM, $P$ flows directly into $M$ with no sentinel between them, and as the user types more characters onto $P$ while $S$ stays fixed, the KV-cache for <code>&lt;PRE&gt; &lt;SUF&gt; S &lt;MID&gt; P</code> simply appends at the end.'
+      },
+      {
+        q: 'What is the "FIM-for-free" property (Bavarian et al., 2022), and why doesn\'t FIM waste pre-training tokens like 15% Masked Language Modeling?',
+        a: 'Pre-training with a FIM rate of $p_{\\text{FIM}} = 0.5$ (up to $0.9$) gives full infilling capability with zero drop in normal left-to-right generation quality, because FIM still computes next-token cross-entropy loss across $100\\%$ of the tokens in $P$, $S$, and $M$.'
+      },
+      {
+        q: 'Why must FIM training split documents into $(P, M, S)$ in raw character space before BPE tokenization rather than splitting an already-tokenized sequence?',
+        a: 'At inference time, a programmer\'s cursor often sits mid-word, so $P$ and $S$ are BPE-tokenized separately into partial sub-word tokens. Splitting in character space before tokenizing exposes the model to those exact split-token boundary fragments during training.'
+      }
+    ];
+  </script>
+</body>
+</html>
