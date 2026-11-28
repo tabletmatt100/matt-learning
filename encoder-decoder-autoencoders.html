@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Encoder-Decoder Architectures &amp; Autoencoders: Bottlenecks, Latents &amp; Cross-Attention</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Encoder-Decoder Architectures &amp; Autoencoders: Bottlenecks, Latents &amp; Cross-Attention</h1>
+
+    <p>
+      In deep learning, the phrase "encoder-decoder" gets used for two architectures that look almost identical on a whiteboard but solve opposite problems. Both split a neural network into two halves: an <strong>encoder</strong> that reads the raw input and builds an internal representation, and a <strong>decoder</strong> that turns that representation into an output.
+    </p>
+    <p>
+      In an <span class="term" data-term="autoencoder">autoencoder</span>, the target output is the input itself (<span class="term" data-term="sym-xhat">$\hat{x} \approx x$</span>). Why train a network just to copy its input? Because if you force a 1,000-dimensional input through a narrow 10-number <span class="term" data-term="sym-z">latent bottleneck $z$</span> in the middle, the network doesn't have enough bandwidth to memorize raw pixel or token noise. It has to discover the underlying coordinates of the data—compression by starvation.
+    </p>
+    <p>
+      In a <span class="term" data-term="seq2seq">Sequence-to-Sequence (Seq2Seq) encoder-decoder</span> (like T5 for text or Whisper for speech-to-text), the output is a completely different sequence <span class="term" data-term="sym-y">$y_{1:T}$</span> from the input <span class="term" data-term="sym-x">$x_{1:S}$</span>. Here, squeezing a 100-word paragraph into one tiny vector $z$ is actually a bug, not a feature: the decoder forgets the start of the sentence before it finishes translating. Modern Transformer encoder-decoders keep the two-stage split—a <span class="term" data-term="bidirectional-enc">bidirectional encoder</span> for reading and a <span class="term" data-term="causal-dec">causal decoder</span> for writing—but replace the single-vector bottleneck with <span class="term" data-term="cross-attention">cross-attention</span> over every encoded input token.
+    </p>
+
+    <div class="figure-box">
+      <svg viewBox="0 0 600 265" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram comparing an Autoencoder hourglass bottleneck (x to z to x-hat) against a Seq2Seq Encoder-Decoder with Cross-Attention">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#000"/>
+          </marker>
+        </defs>
+
+        <!-- TOP: AUTOENCODER HOURGLASS -->
+        <text x="14" y="20" font-family="sans-serif" font-size="12.5" font-weight="bold" fill="#000">1. Autoencoder Hourglass: Force Compression Through a Narrow Bottleneck (d &ll; D)</text>
+
+        <g font-family="monospace" font-size="11" text-anchor="middle">
+          <!-- Input x -->
+          <rect x="20" y="30" width="90" height="66" fill="#fff" stroke="#000" stroke-width="2"/>
+          <text x="65" y="58" font-weight="bold">Input x</text>
+          <text x="65" y="74" font-size="10">(D dims)</text>
+
+          <!-- Encoder trapezoid -->
+          <polygon points="122,30 226,46 226,80 122,96" fill="#e8e8e8" stroke="#000" stroke-width="1.8"/>
+          <text x="174" y="61" font-weight="bold">Encoder f_&phi;</text>
+          <text x="174" y="75" font-size="9.5">compress</text>
+
+          <!-- Bottleneck z -->
+          <rect x="240" y="46" width="110" height="34" fill="#000" stroke="#000" stroke-width="1.8"/>
+          <text x="295" y="61" fill="#fff" font-weight="bold">Latent z</text>
+          <text x="295" y="74" fill="#fff" font-size="9.5">(d dims, d &ll; D)</text>
+
+          <!-- Decoder trapezoid -->
+          <polygon points="364,46 468,30 468,96 364,80" fill="#e8e8e8" stroke="#000" stroke-width="1.8"/>
+          <text x="416" y="61" font-weight="bold">Decoder g_&theta;</text>
+          <text x="416" y="75" font-size="9.5">reconstruct</text>
+
+          <!-- Output x-hat -->
+          <rect x="480" y="30" width="104" height="66" fill="#fff" stroke="#000" stroke-width="2"/>
+          <text x="532" y="58" font-weight="bold">Output x&#770; &approx; x</text>
+          <text x="532" y="74" font-size="10">Loss ||x &minus; x&#770;||&sup2;</text>
+        </g>
+
+        <line x1="14" y1="112" x2="586" y2="112" stroke="#000" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- BOTTOM: SEQ2SEQ ENCODER-DECODER WITH CROSS-ATTENTION -->
+        <text x="14" y="131" font-family="sans-serif" font-size="12.5" font-weight="bold" fill="#000">2. Seq2Seq Encoder-Decoder (T5 / Whisper): Cross-Attention Eliminates the Single-Vector Bottleneck</text>
+
+        <g font-family="monospace" font-size="11" text-anchor="middle">
+          <!-- Bidirectional Encoder -->
+          <rect x="20" y="144" width="170" height="50" fill="#fff" stroke="#000" stroke-width="1.8"/>
+          <text x="105" y="164" font-weight="bold">Bidirectional Encoder</text>
+          <text x="105" y="181" font-size="10">Reads source x_1..x_S</text>
+
+          <path d="M 190 169 L 222 169" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <!-- Encoder Memory H^enc -->
+          <rect x="226" y="144" width="150" height="50" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="301" y="164" font-weight="bold">Encoder States H^enc</text>
+          <text x="301" y="181" font-size="10">Keys K, Values V (S&times;d)</text>
+
+          <path d="M 376 169 L 408 169" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <!-- Causal Decoder -->
+          <rect x="412" y="144" width="172" height="50" fill="#000" stroke="#000" stroke-width="1.8"/>
+          <text x="498" y="164" fill="#fff" font-weight="bold">Causal Decoder</text>
+          <text x="498" y="181" fill="#fff" font-size="10">Queries Q (T&times;d) &rarr; y_t</text>
+        </g>
+
+        <!-- Feedback loop on decoder -->
+        <path d="M 498 194 L 498 225 L 301 225 L 301 196" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="3,2" marker-end="url(#arr)"/>
+        <text x="400" y="244" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">At every target token y_t, Decoder Query Q looks up all S source tokens in H^enc via Cross-Attention</text>
+      </svg>
+    </div>
+
+    <h2>1. Autoencoders and the Hourglass Bottleneck ($x \to z \to \hat{x}$)</h2>
+    <p>
+      Suppose each input <span class="term" data-term="sym-x">$x \in \mathbb{R}^D$</span> is a vector of $D$ features, and you have zero human labels. An <span class="term" data-term="undercomplete-ae">undercomplete autoencoder</span> passes $x$ through an encoder <span class="term" data-term="sym-fphi">$f_\phi(x)$</span> that squeezes it down to a compact latent code <span class="term" data-term="sym-z">$z \in \mathbb{R}^d$</span> (with $d \ll D$), and then passes $z$ through a decoder <span class="term" data-term="sym-gtheta">$g_\theta(z)$</span> that tries to reconstruct <span class="term" data-term="sym-xhat">$\hat{x} \in \mathbb{R}^D$</span> as closely as possible:
+    </p>
+
+    <div class="math-block">
+      $$z = f_\phi(x) \in \mathbb{R}^d, \qquad \hat{x} = g_\theta(z) \in \mathbb{R}^D, \qquad \mathcal{L}_{\text{rec}} = \frac{1}{D}\sum_{i=1}^{D}(x_i - \hat{x}_i)^2$$
+    </div>
+
+    <p>
+      Why must the bottleneck dimension $d$ be smaller than $D$? Imagine what happens if you set $d = D$. The network can achieve a perfect <span class="term" data-term="reconstruction-loss">reconstruction loss $\mathcal{L}_{\text{rec}} = 0$</span> by setting both the encoder and decoder to the identity matrix ($z = x$ and $\hat{x} = z$). It copies every coordinate verbatim and learns nothing about the data. When you force $d \ll D$ (say, squeezing 3 correlated sensor readings into $d = 1$ number), the encoder has to find the single underlying axis that explains all three sensors at once.In fact, if $f_\phi$ and $g_\theta$ are purely linear matrices, a trained undercomplete autoencoder spans the exact same subspace as <span class="term" data-term="pca">Principal Component Analysis (PCA)</span>.
+    </p>
+    <p>
+      What if you <em>want</em> a wide latent layer ($d > D$) so each hidden neuron can represent one specific concept? To stop a wide network from trivially copying $x$, you add a different bottleneck constraint: a <span class="term" data-term="dae">Denoising Autoencoder (DAE)</span> corrupts the input with noise ($\tilde{x} = x + \text{noise}$) and forces the decoder to reconstruct the clean original $x$, while a <span class="term" data-term="sparse-ae">Sparse Autoencoder (SAE)</span> adds an $L_1$ sparsity penalty $\lambda \sum_j |z_j|$ so only a tiny handful of latent neurons can fire on any single token—the exact tool researchers use today to unpack superposed features inside LLM residual streams.
+    </p>
+
+    <div class="worked">
+      <p><strong>Worked Example (Compressing $D = 3$ features through a $d = 1$ bottleneck by hand):</strong></p>
+      <p>
+        Suppose an input vector $x = [2,\; 4,\; 6]^\top$ enters a linear autoencoder with bottleneck size $d = 1$:<br>
+        1. <strong>Encode ($D=3 \to d=1$):</strong> Suppose the encoder averages the coordinates with weights $w_{\text{enc}} = [\frac{1}{6},\; \frac{1}{6},\; \frac{1}{6}]$, giving latent code $z = \frac{2 + 4 + 6}{6} = \mathbf{2}$.<br>
+        2. <strong>Decode ($d=1 \to D=3$):</strong> The decoder multiplies $z = 2$ by prototype vector $w_{\text{dec}} = [1,\; 2,\; 3]^\top$, reconstructing $\hat{x} = 2 \times [1,\; 2,\; 3]^\top = \mathbf{[2,\; 4,\; 6]^\top}$ with $\mathcal{L}_{\text{rec}} = 0$.<br>
+        3. <strong>Noise filtering on a corrupted input:</strong> If a noisy sensor sends $x_{\text{noisy}} = [2,\; 4,\; 9]^\top$ and gives $z = 2$, the decoder still outputs $\hat{x} = [2,\; 4,\; 6]^\top$. The per-coordinate squared errors are $(2-2)^2 = 0$, $(4-4)^2 = 0$, and $(9-6)^2 = 9$, so the MSE is $\mathcal{L}_{\text{rec}} = \frac{0 + 0 + 9}{3} = \mathbf{3}$.
+      </p>
+    </div>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: Autoencoder Bottleneck &amp; Reconstruction MSE">
+      <p>A $D = 3 \to d = 1 \to D = 3$ autoencoder uses decoder $\hat{x} = z \cdot [1,\; 2,\; 3]^\top$. If an input $x = [4,\; 8,\; 9]^\top$ is encoded to the single latent number <span class="term" data-term="sym-z">$z = 3$</span>, what is the reconstructed vector <span class="term" data-term="sym-xhat">$\hat{x}$</span> and its mean squared reconstruction loss <span class="term" data-term="reconstruction-loss">$\mathcal{L}_{\text{rec}} = \frac{1}{3}\sum_{i=1}^3 (x_i - \hat{x}_i)^2$</span>?</p>
+      <label class="mcq-option" data-explain="You multiplied [1, 2, 3] by z = 3 correctly to get [3, 6, 9], but forgot to average the squared errors (1 + 4 + 0)/3.">$\hat{x} = [3,\; 6,\; 9]^\top$ and $\mathcal{L}_{\text{rec}} = 5$.</label>
+      <label class="mcq-option" data-explain="Correct. Multiplying [1, 2, 3] by z = 3 gives x-hat = [3, 6, 9]. The squared differences from [4, 8, 9] are (4-3)^2 = 1, (8-6)^2 = 4, and (9-9)^2 = 0, so the mean is (1 + 4 + 0)/3 = 5/3.">$\hat{x} = [3,\; 6,\; 9]^\top$ and $\mathcal{L}_{\text{rec}} = \frac{1^2 + 2^2 + 0^2}{3} = \mathbf{\frac{5}{3}}$.</label>
+      <label class="mcq-option" data-explain="With a 1D bottleneck z = 3 and decoder [1, 2, 3], the decoder can only output multiples of [1, 2, 3], so it cannot copy [4, 8, 9] exactly.">$\hat{x} = [4,\; 8,\; 9]^\top$ and $\mathcal{L}_{\text{rec}} = 0$.</label>
+    </details>
+
+    <h2>2. Why Standard Autoencoders Can't Generate New Data (and How VAEs Fix It)</h2>
+    <p>
+      Once you have trained a standard autoencoder on faces or sentences, it is tempting to skip the encoder, pick a random vector $z$ in the latent space, and feed $z$ into the decoder $g_\theta(z)$ to generate a brand-new sample. If you try this, the decoder usually outputs garbage.
+    </p>
+    <p>
+      Why? Because a deterministic autoencoder only cares about reconstructing the specific points in your training set. It packs training examples into tiny, disconnected islands in latent space and leaves huge empty "dead zones" between them where the decoder has never been trained.
+    </p>
+    <p>
+      A <span class="term" data-term="vae">Variational Autoencoder (VAE)</span> closes those dead zones by turning each input into a fuzzy probability cloud instead of a single sharp point. For every input $x$, the encoder predicts a mean vector <span class="term" data-term="sym-mu">$\mu$</span> and a standard deviation vector <span class="term" data-term="sym-sigma">$\sigma$</span>, and draws a noisy latent sample $z$ using the <span class="term" data-term="reparameterization">reparameterization trick</span> (multiplying standard normal noise <span class="term" data-term="sym-eps">$\epsilon \sim \mathcal{N}(0, I)$</span> by $\sigma$ and adding $\mu$ so backpropagation can still differentiate with respect to $\mu$ and $\sigma$):
+    </p>
+
+    <div class="math-block">
+      $$z = \mu_\phi(x) + \sigma_\phi(x) \odot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I), \qquad \mathcal{L}_{\text{VAE}} = \mathcal{L}_{\text{rec}}(x, \hat{x}) + \beta\, D_{\text{KL}}\bigl(\mathcal{N}(\mu, \sigma^2) \,\|\, \mathcal{N}(0, I)\bigr)$$
+    </div>
+
+    <p>
+      The two terms in $\mathcal{L}_{\text{VAE}}$ play tug-of-war: the reconstruction loss tries to separate different inputs and shrink $\sigma \to 0$ so the decoder doesn't get confused, while the <span class="term" data-term="kl-prior">KL prior penalty</span> pulls every cloud's center $\mu$ back toward the origin $0$ and inflates $\sigma$ toward $1$. Because adjacent probability clouds overlap inside the unit Gaussian ball $\mathcal{N}(0, I)$, every point near the origin is now decodable.
+    </p>
+
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: VAE Reparameterization Trick &amp; KL Tug-of-War">
+      <p>For a 1D latent variable, a <span class="term" data-term="vae">VAE</span> encoder outputs mean <span class="term" data-term="sym-mu">$\mu = 2$</span> and standard deviation <span class="term" data-term="sym-sigma">$\sigma = 0.5$</span>. On the forward pass, the random noise generator draws <span class="term" data-term="sym-eps">$\epsilon = -2$</span>. What latent value <span class="term" data-term="sym-z">$z = \mu + \sigma \epsilon$</span> is fed to the decoder, and why is $\epsilon$ sampled externally instead of calling $z \sim \mathcal{N}(\mu, \sigma^2)$ directly?</p>
+      <label class="mcq-option" data-explain="2 + (0.5)(-2) = 2 - 1 = 1, not 4.">$z = 4$, to reduce the KL divergence to zero.</label>
+      <label class="mcq-option" data-explain="2 + (0.5)(-2) = 1, not -1.">$z = -1$, because the decoder only accepts zero-mean inputs.</label>
+      <label class="mcq-option" data-explain="Correct. z = 2 + 0.5(-2) = 2 - 1 = 1. Moving the randomness into the parameter-free input epsilon makes z = mu + sigma * epsilon a simple linear equation in mu and sigma, allowing gradients dz/dmu = 1 and dz/dsigma = epsilon to flow back into the encoder.">$z = 2 + 0.5(-2) = \mathbf{1}$; keeping randomness in $\epsilon$ makes $z$ a differentiable function of $\mu$ and $\sigma$ ($\frac{\partial z}{\partial \mu} = 1,\; \frac{\partial z}{\partial \sigma} = \epsilon$).</label>
+    </details>
+
+    <h2>3. Sequence-to-Sequence Encoder-Decoders and Cross-Attention</h2>
+    <p>
+      Now shift from reconstructing a fixed-size vector ($x \to \hat{x}$) to translating a source sequence <span class="term" data-term="sym-x">$x_{1:S}$</span> of length $S$ into a target sequence <span class="term" data-term="sym-y">$y_{1:T}$</span> of length $T$. In 2014, the first RNN <span class="term" data-term="seq2seq">Seq2Seq</span> models copied the autoencoder blueprint literally: the encoder read all $S$ input words and compressed the entire sentence into a single final hidden state $z \in \mathbb{R}^d$, and the decoder tried to generate the translation from $z$ alone.
+    </p>
+    <p>
+      That single-vector <span class="term" data-term="info-bottleneck">information bottleneck</span> worked fine for 8-word sentences and collapsed on 40-word sentences. Why force an English-to-French decoder to remember every noun, date, and number inside one fixed vector when the encoded source tokens are sitting right there in memory?
+    </p>
+    <p>
+      Modern Transformer encoder-decoders (like the original 2017 Vaswani Transformer, T5, BART, and Whisper) eliminate the single-vector bottleneck completely. First, a <span class="term" data-term="bidirectional-enc">bidirectional encoder</span> runs full self-attention across the $S$ input tokens and outputs a memory bank of $S$ contextualized vectors <span class="term" data-term="sym-henc">$H^{\text{enc}} \in \mathbb{R}^{S \times d}$</span>. Then, at each layer of the <span class="term" data-term="causal-dec">causal decoder</span>, after the target tokens attend to their own past prefix via causally masked self-attention, they run a <span class="term" data-term="cross-attention">cross-attention</span> sub-layer into the encoder's memory bank:
+    </p>
+
+    <div class="math-block">
+      $$\text{CrossAttn}\bigl(Q_{\text{dec}},\; K_{\text{enc}},\; V_{\text{enc}}\bigr) = \text{softmax}\!\left(\frac{Q_{\text{dec}} K_{\text{enc}}^\top}{\sqrt{d_k}}\right) V_{\text{enc}}$$
+    </div>
+
+    <p>
+      Notice the asymmetry: <span class="term" data-term="sym-qdec">Queries $Q_{\text{dec}} \in \mathbb{R}^{T \times d_k}$</span> come from the <strong>decoder</strong> (what the target token currently being written is looking for), while <span class="term" data-term="sym-kvenc">Keys $K_{\text{enc}} \in \mathbb{R}^{S \times d_k}$ and Values $V_{\text{enc}} \in \mathbb{R}^{S \times d_v}$</span> come from the <strong>encoder</strong> ($H^{\text{enc}}$). Because $H^{\text{enc}}$ doesn't change while the decoder generates token after token, you only run the bidirectional encoder <em>once</em> per prompt—and even reuse its projected $K_{\text{enc}}, V_{\text{enc}}$ tensors across every autoregressive decoding step.
+    </p>
+
+    <div class="worked">
+      <p><strong>Worked Example (One Decoder Step Querying $S = 2$ Encoder Tokens via Cross-Attention):</strong></p>
+      <p>
+        Suppose head dimension is $d_k = 4$ (so $\sqrt{d_k} = \mathbf{2}$) and the encoder produced $S = 2$ source tokens with keys $k_1 = [2, 0, 0, 0]$, $k_2 = [0, 2, 0, 0]$ and scalar values $v_1 = 10$, $v_2 = 50$:<br>
+        1. <strong>Decoder query at step $t$:</strong> The decoder emits $q_t = [1, 1, 0, 0]$.<br>
+        2. <strong>Scaled dot-product scores ($q_t \cdot k_j / \sqrt{4}$):</strong><br>
+        &bull; Source token 1: $\frac{1(2) + 1(0)}{2} = \frac{2}{2} = \mathbf{1}$.<br>
+        &bull; Source token 2: $\frac{1(0) + 1(2)}{2} = \frac{2}{2} = \mathbf{1}$.<br>
+        3. <strong>Cross-attention output:</strong> Equal scores $[1, 1]$ give softmax weights $[\frac{1}{2}, \frac{1}{2}]$, so the decoder pulls $\frac{1}{2}(10) + \frac{1}{2}(50) = \mathbf{30}$ from the encoder memory bank.
+      </p>
+    </div>
+
+    <details class="mcq-box" data-correct="A" data-topic="Check 3: Cross-Attention Matrix Shapes &amp; Q/K/V Origins">
+      <p>A speech-to-text encoder-decoder processes <span class="term" data-term="sym-x">$S = 100$</span> encoded audio frames in the encoder and has generated <span class="term" data-term="sym-y">$T = 6$</span> text tokens so far in the decoder. Inside the <span class="term" data-term="cross-attention">cross-attention</span> layer, where do $Q$, $K$, and $V$ come from, and what is the shape of the attention weight matrix $\text{softmax}(Q_{\text{dec}} K_{\text{enc}}^\top / \sqrt{d_k})$?</p>
+      <label class="mcq-option" data-explain="Correct. The 6 decoder tokens provide the queries Q (6 x d_k), while the 100 encoder frames provide keys K (100 x d_k) and values V (100 x d_v), producing a 6 x 100 attention matrix where each row sums to 1 over the 100 source frames.">$Q$ comes from the decoder ($T = 6$) and $K, V$ come from the encoder ($S = 100$), giving a $\mathbf{6 \times 100}$ attention matrix.</label>
+      <label class="mcq-option" data-explain="If Q came from the encoder and K, V from the decoder, the output would have length 100 instead of matching the 6 decoder token positions.">$Q$ comes from the encoder ($S = 100$) and $K, V$ come from the decoder ($T = 6$), giving a $100 \times 6$ attention matrix.</label>
+      <label class="mcq-option" data-explain="6 x 6 is the shape of the decoder's causal self-attention matrix, not the encoder-decoder cross-attention matrix.">$Q, K, V$ all come from the decoder, giving a $6 \times 6$ causal matrix.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 4: Why Encoder-Decoders Beat Decoder-Only on Long-Input Compression">
+      <p>During inference on a task with a long $S = 2{,}000$-frame input and a short $T = 20$-token output (such as Whisper audio transcription), why is a split <span class="term" data-term="seq2seq">Encoder-Decoder</span> structurally efficient?</p>
+      <label class="mcq-option" data-explain="The encoder runs full bidirectional attention over all S = 2,000 frames, not causal masking.">Because the encoder skips self-attention completely and averages all $2{,}000$ frames into one vector.</label>
+      <label class="mcq-option" data-explain="Correct. The encoder processes all 2,000 source frames once in parallel with full bidirectional context, and the autoregressive loop only steps through the 20 short decoder tokens while reading the pre-computed encoder keys and values.">Because the encoder runs <em>once</em> in parallel over the $2{,}000$ source frames with bidirectional context, while the sequential autoregressive loop only runs on the $20$-token decoder.</label>
+      <label class="mcq-option" data-explain="The encoder only runs once per input prompt, not once per generated target token.">Because the encoder re-encodes all $2{,}000$ source frames from scratch on each of the $20$ decoding steps.</label>
+    </details>
+
+    <h2>4. Comparing Autoencoders &amp; Encoder-Decoder Architectures</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Architecture</th>
+            <th>Latent / Bridge Shape</th>
+            <th>Training Objective</th>
+            <th>Tradeoff / Failure Mode</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="undercomplete-ae">Undercomplete Autoencoder</span></strong></td>
+            <td>Single narrow vector $z \in \mathbb{R}^d$ ($d \ll D$)</td>
+            <td>Reconstruction MSE $\|x - \hat{x}\|_2^2$</td>
+            <td>Copies identity if $d \ge D$; dead zones between latent points prevent random sampling</td>
+            <td>Nonlinear dimensionality reduction, anomaly detection (high MSE = outlier)</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="vae">Variational Autoencoder (VAE)</span></strong></td>
+            <td>Gaussian cloud $z = \mu + \sigma \odot \epsilon \in \mathbb{R}^d$</td>
+            <td>$\mathcal{L}_{\text{rec}} + \beta D_{\text{KL}}(\mathcal{N}(\mu,\sigma^2)\,\|\,\mathcal{N}(0,I))$</td>
+            <td>High $\beta$ causes blurry reconstructions or <span class="term" data-term="posterior-collapse">posterior collapse</span> ($z$ ignored)</td>
+            <td>Smooth latent interpolation, generative sampling, latent diffusion image bottlenecks</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="sparse-ae">Sparse Autoencoder (SAE)</span></strong></td>
+            <td>Overcomplete vector $z \in \mathbb{R}^d$ ($d \gg D$, mostly zeros)</td>
+            <td>$\|x - \hat{x}\|_2^2 + \lambda \|z\|_1$ (or Top-$K$ activation gate)</td>
+            <td>Dead latent neurons if sparsity penalty $\lambda$ is set too high</td>
+            <td>Mechanistic interpretability: decomposing polysemantic LLM hidden states into monosemantic features</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="seq2seq">Seq2Seq Encoder-Decoder</span> (T5 / Whisper)</strong></td>
+            <td>Full token matrix $H^{\text{enc}} \in \mathbb{R}^{S \times d}$ queried via <span class="term" data-term="cross-attention">Cross-Attention</span></td>
+            <td>Next-token cross-entropy $-\sum_t \ln P(y_t \mid y_{&lt;t}, H^{\text{enc}})$</td>
+            <td>Splits parameter budget across two stacks (encoder + decoder) instead of one unified decoder</td>
+            <td>Cross-modal or cross-lingual mapping (speech-to-text, translation, long-input summarization)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'autoencoder': {
+        title: 'Autoencoder',
+        body: 'An unsupervised neural network trained to reconstruct its own input ($\\hat{x} \\approx x$) after passing it through a constrained internal latent representation $z$.'
+      },
+      'undercomplete-ae': {
+        title: 'Undercomplete Autoencoder',
+        body: 'An autoencoder whose bottleneck dimension $d$ is strictly smaller than the input dimension $D$ ($d \\ll D$), forcing the encoder to compress redundant features.'
+      },
+      'sym-x': {
+        title: 'Input $x$ (or Source Sequence $x_{1:S}$)',
+        body: 'In an autoencoder, the $D$-dimensional input vector $x \\in \\mathbb{R}^D$. In a Seq2Seq model, the source sequence of length $S$.'
+      },
+      'sym-xhat': {
+        title: 'Reconstruction $\\hat{x} = g_\\theta(z)$',
+        body: 'The autoencoder decoder\'s estimate of the original input $x$, reconstructed solely from the bottleneck code $z$.'
+      },
+      'sym-y': {
+        title: 'Target Sequence $y_{1:T}$',
+        body: 'The length-$T$ output sequence generated token-by-token by a Seq2Seq decoder.'
+      },
+      'sym-z': {
+        title: 'Latent Code / Bottleneck $z \\in \\mathbb{R}^d$',
+        body: 'The compressed internal vector produced by an autoencoder\'s encoder $z = f_\\phi(x)$.'
+      },
+      'sym-fphi': {
+        title: 'Encoder $f_\\phi(x)$',
+        body: 'The front half of the network (with weights $\\phi$) that maps raw input $x$ into a latent code $z$ or contextual memory bank $H^{\\text{enc}}$.'
+      },
+      'sym-gtheta': {
+        title: 'Decoder $g_\\theta(z)$',
+        body: 'The back half of the network (with weights $\\theta$) that maps the latent representation back to data space $\\hat{x}$ or target tokens $y_{1:T}$.'
+      },
+      'reconstruction-loss': {
+        title: 'Reconstruction Loss $\\mathcal{L}_{\\text{rec}}$',
+        body: 'Measures how far the decoded output $\\hat{x}$ is from the original input $x$, typically Mean Squared Error $\\frac{1}{D}\\sum_i (x_i - \\hat{x}_i)^2$ for continuous vectors.'
+      },
+      'pca': {
+        title: 'Principal Component Analysis (PCA)',
+        body: 'Classical linear dimensionality reduction that projects $D$-dimensional data onto the $d$ orthogonal axes of maximum variance. A linear undercomplete autoencoder trained with MSE spans the exact same $d$-dimensional subspace.'
+      },
+      'dae': {
+        title: 'Denoising Autoencoder (DAE)',
+        body: 'Corrupts the input $x \\to \\tilde{x}$ (via Gaussian noise or token masking) and trains the network to recover the clean original $x$, preventing identity copying even when $d \\ge D$.'
+      },
+      'sparse-ae': {
+        title: 'Sparse Autoencoder (SAE)',
+        body: 'Uses a wide, overcomplete latent layer ($d \\gg D$) paired with an $L_1$ penalty $\\lambda \\|z\\|_1$ or Top-$K$ gate so only a few latent features activate at once.'
+      },
+      'vae': {
+        title: 'Variational Autoencoder (VAE)',
+        body: 'Generative autoencoder whose encoder outputs a Gaussian distribution $\\mathcal{N}(\\mu_\\phi(x), \\sigma_\\phi^2(x))$ regularized toward a smooth $\\mathcal{N}(0, I)$ prior.'
+      },
+      'sym-mu': {
+        title: 'Latent Mean $\\mu_\\phi(x)$',
+        body: 'Center of the probability cloud predicted by a VAE encoder for input $x$.'
+      },
+      'sym-sigma': {
+        title: 'Latent Standard Deviation $\\sigma_\\phi(x)$',
+        body: 'Width of the probability cloud predicted by a VAE encoder for input $x$.'
+      },
+      'sym-eps': {
+        title: 'Standard Normal Noise $\\epsilon \\sim \\mathcal{N}(0, I)$',
+        body: 'Parameter-free random noise vector sampled during a VAE forward pass so gradients can flow through $z = \\mu + \\sigma \\odot \\epsilon$.'
+      },
+      'reparameterization': {
+        title: 'Reparameterization Trick ($z = \\mu + \\sigma \\odot \\epsilon$)',
+        body: 'Rewriting a random draw $z \\sim \\mathcal{N}(\\mu, \\sigma^2)$ as a deterministic transformation of independent noise $\\epsilon \\sim \\mathcal{N}(0, I)$, enabling backpropagation through $\\mu$ and $\\sigma$.'
+      },
+      'kl-prior': {
+        title: 'KL Penalty to Standard Normal Prior',
+        body: '$D_{\\text{KL}}(\\mathcal{N}(\\mu, \\sigma^2) \\,\\|\\, \\mathcal{N}(0, I)) = \\frac{1}{2}\\sum_j (\\mu_j^2 + \\sigma_j^2 - \\ln \\sigma_j^2 - 1)$. Packs latent clouds smoothly around the origin without dead zones.'
+      },
+      'posterior-collapse': {
+        title: 'Posterior Collapse',
+        body: 'Failure mode in VAEs where the KL penalty overpowers reconstruction, causing the encoder to output $\\mu = 0, \\sigma = 1$ for every input and the decoder to ignore $z$.'
+      },
+      'seq2seq': {
+        title: 'Sequence-to-Sequence (Seq2Seq) Encoder-Decoder',
+        body: 'Architecture that maps a variable-length input sequence $x_{1:S}$ to a variable-length output sequence $y_{1:T}$ (used in T5, BART, and Whisper).'
+      },
+      'info-bottleneck': {
+        title: 'Single-Vector Information Bottleneck',
+        body: 'Failure mode of early pre-attention RNN Seq2Seq models that forced an entire source sentence of any length $S$ into one fixed-dimension vector $z$.'
+      },
+      'bidirectional-enc': {
+        title: 'Bidirectional Encoder',
+        body: 'Transformer encoder stack where all $S$ source tokens attend to both left and right neighbors simultaneously, producing $H^{\\text{enc}} \\in \\mathbb{R}^{S \\times d}$.'
+      },
+      'causal-dec': {
+        title: 'Causal Decoder',
+        body: 'Autoregressive Transformer decoder stack that generates target tokens $y_1, \\dots, y_T$ left-to-right using masked self-attention plus cross-attention into $H^{\\text{enc}}$.'
+      },
+      'sym-henc': {
+        title: 'Encoder Memory Bank $H^{\\text{enc}} \\in \\mathbb{R}^{S \\times d}$',
+        body: 'The full sequence of $S$ contextualized source vectors output by the final layer of the bidirectional encoder and queried by the decoder.'
+      },
+      'cross-attention': {
+        title: 'Encoder-Decoder Cross-Attention',
+        body: 'Attention sub-layer inside a Seq2Seq decoder where Queries $Q$ come from the decoder ($T \\times d_k$) and Keys $K$, Values $V$ come from the encoder output $H^{\\text{enc}}$ ($S \\times d_k$).'
+      },
+      'sym-qdec': {
+        title: 'Decoder Queries $Q_{\\text{dec}} \\in \\mathbb{R}^{T \\times d_k}$',
+        body: 'Query vectors projected from the decoder\'s current hidden states in cross-attention.'
+      },
+      'sym-kvenc': {
+        title: 'Encoder Keys $K_{\\text{enc}}$ &amp; Values $V_{\\text{enc}}$',
+        body: 'Key and Value matrices ($S \\times d_k$ and $S \\times d_v$) projected once from the encoder output $H^{\\text{enc}}$ and read at every decoding step.'
+      }
+    };
+
+    var SPACED_CARDS = [
+      {
+        q: 'Why does an undercomplete autoencoder require a bottleneck dimension $d < D$, and how do Denoising or Sparse Autoencoders avoid trivial identity copying when $d \\ge D$?',
+        a: 'If $d \\ge D$ without constraints, the autoencoder can set $\\hat{x} = x$ via an identity map and learn zero structure. Denoising Autoencoders prevent copying by corrupting the input ($\\tilde{x} \\to x$), while Sparse Autoencoders add an $L_1$ or Top-$K$ sparsity penalty so only a few neurons in $z$ can fire.'
+      },
+      {
+        q: 'Why can\'t you generate realistic samples by picking random latent vectors $z$ in a standard deterministic autoencoder, and how does a VAE fix this?',
+        a: 'A deterministic autoencoder packs training points into isolated pockets with empty uncalibrated "dead zones" between them. A VAE encodes each input as a Gaussian cloud $\\mathcal{N}(\\mu, \\sigma^2)$ and adds a KL penalty toward $\\mathcal{N}(0, I)$, forcing the clouds to overlap smoothly around the origin.'
+      },
+      {
+        q: 'What is the Reparameterization Trick ($z = \\mu + \\sigma \\odot \\epsilon$) in a VAE, and why is it needed?',
+        a: 'Instead of sampling $z \\sim \\mathcal{N}(\\mu, \\sigma^2)$ directly (which blocks gradients), it samples parameter-free noise $\\epsilon \\sim \\mathcal{N}(0, I)$ and computes $z = \\mu + \\sigma \\odot \\epsilon$, making $z$ differentiable with respect to $\\mu$ and $\\sigma$.'
+      },
+      {
+        q: 'In a Transformer Encoder-Decoder (like T5 or Whisper), where do $Q$, $K$, and $V$ come from inside the Cross-Attention sub-layer, and what is the shape of the attention matrix?',
+        a: 'Queries $Q$ come from the causal decoder (length $T$), while Keys $K$ and Values $V$ come from the bidirectional encoder output $H^{\\text{enc}}$ (length $S$). The cross-attention weight matrix has shape $T \\times S$.'
+      },
+      {
+        q: 'Why is an Encoder-Decoder architecture broken into a bidirectional encoder and a causal decoder instead of compressing the source sequence into a single bottleneck vector $z$?',
+        a: 'A single fixed-size vector $z$ chokes on long input sequences (the pre-attention Seq2Seq bottleneck). Keeping all $S$ encoded vectors in $H^{\\text{enc}}$ lets the decoder look up any source token on demand via cross-attention, while still running the bidirectional encoder only once per prompt.'
+      }
+    ];
+  </script>
+</body>
+</html>
