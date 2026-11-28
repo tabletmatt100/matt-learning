@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DPO, PPO &amp; GRPO: Three Ways to Align an LLM Without Breaking It</title>
+
+  <link rel="stylesheet" href="katex/katex.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';">
+  <script defer src="katex/katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';"></script>
+  <script defer src="katex/contrib/auto-render.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';"></script>
+  <link rel="stylesheet" href="common.css">
+  <script src="common.js"></script>
+</head>
+<body>
+  <main>
+    <h1>DPO, PPO &amp; GRPO: Three Ways to Align an LLM Without Breaking It</h1>
+
+    <p>
+      After pre-training on trillions of web tokens and running <span class="term" data-term="sft">Supervised Fine-Tuning (SFT)</span> on clean demonstrations, a language model knows how to sound like an assistant. What SFT cannot do is teach the model <em>what not to say</em>, or let it discover a better chain of reasoning than the human annotator wrote down. SFT only clones positive examples token by token; it never compares a good answer against a subtle hallucination or runs live trial-and-error against a test suite.
+    </p>
+    <p>
+      That gap is where post-training reinforcement learning comes in, and almost every modern alignment pipeline boils down to three algorithms: <span class="term" data-term="ppo">PPO (Proximal Policy Optimization)</span>, <span class="term" data-term="dpo">DPO (Direct Preference Optimization)</span>, and <span class="term" data-term="grpo">GRPO (Group Relative Policy Optimization)</span>.
+    </p>
+    <p>
+      All three share the exact same goal: push up the probability of high-scoring responses while anchoring the trained <span class="term" data-term="sym-pi-theta">policy $\pi_\theta$</span> close to a frozen <span class="term" data-term="sym-pi-ref">reference model $\pi_{\text{ref}}$</span> so the model doesn't degenerate into gibberish. Where they differ is how much GPU memory they burn and whether the model learns from live <span class="term" data-term="on-policy">on-policy rollouts</span> or static <span class="term" data-term="off-policy">offline preference pairs</span>.
+    </p>
+
+    <div class="figure-box">
+      <svg viewBox="0 0 600 285" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram comparing PPO (4 models in memory), DPO (2 models on offline preference pairs), and GRPO (2 models with group rollouts)">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#000"/>
+          </marker>
+        </defs>
+
+        <!-- ROW 1: PPO -->
+        <text x="14" y="20" font-family="sans-serif" font-size="12.5" font-weight="bold" fill="#000">1. PPO (Online Actor-Critic): 4 Full LLMs in VRAM</text>
+        <g font-family="monospace" font-size="11" text-anchor="middle">
+          <rect x="14" y="28" width="128" height="44" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="78" y="46" font-weight="bold">Actor Policy &pi;_&theta;</text>
+          <text x="78" y="62" font-size="10">(Trainable weights)</text>
+
+          <rect x="154" y="28" width="128" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/>
+          <text x="218" y="46" font-weight="bold">Reference &pi;_ref</text>
+          <text x="218" y="62" font-size="10">(Frozen KL anchor)</text>
+
+          <rect x="294" y="28" width="136" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/>
+          <text x="362" y="46" font-weight="bold">Reward Model R_&phi;</text>
+          <text x="362" y="62" font-size="10">(Frozen judge)</text>
+
+          <rect x="442" y="28" width="144" height="44" fill="#e8e8e8" stroke="#000" stroke-width="2" stroke-dasharray="4,2"/>
+          <text x="514" y="46" font-weight="bold">Value Critic V_&psi;</text>
+          <text x="514" y="62" font-size="10">(Trainable baseline!)</text>
+        </g>
+        <text x="14" y="88" font-family="sans-serif" font-size="11" fill="#000">Advantage A_t = R_&phi;(x, y) &minus; V_&psi;(s_t) &rarr; Clipped update r_t(&theta;) &isin; [1&minus;&epsilon;, 1+&epsilon;]</text>
+
+        <line x1="14" y1="99" x2="586" y2="99" stroke="#000" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- ROW 2: DPO -->
+        <text x="14" y="117" font-family="sans-serif" font-size="12.5" font-weight="bold" fill="#000">2. DPO (Offline Implicit Reward): Cuts Both Reward &amp; Critic Models (2 LLMs)</text>
+        <g font-family="monospace" font-size="11" text-anchor="middle">
+          <rect x="14" y="125" width="160" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/>
+          <text x="94" y="143" font-weight="bold">Offline Pair (y_w, y_l)</text>
+          <text x="94" y="159" font-size="10">Winner vs. Loser text</text>
+
+          <path d="M 174 147 L 204 147" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <rect x="208" y="125" width="168" height="44" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="292" y="143" font-weight="bold">Policy &pi;_&theta; + &pi;_ref</text>
+          <text x="292" y="159" font-size="10">Implicit reward ln(&pi;_&theta;/&pi;_ref)</text>
+
+          <path d="M 376 147 L 406 147" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <rect x="410" y="125" width="176" height="44" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="498" y="143" fill="#fff" font-weight="bold">Widen Log-Ratio Margin</text>
+          <text x="498" y="159" fill="#fff" font-size="10">&Delta; = r&#770;(y_w) &minus; r&#770;(y_l) &uarr;</text>
+        </g>
+        <text x="14" y="185" font-family="sans-serif" font-size="11" fill="#000">No live generation loop and no Critic V_&psi; &mdash; pure supervised cross-entropy on log-probability ratios.</text>
+
+        <line x1="14" y1="196" x2="586" y2="196" stroke="#000" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- ROW 3: GRPO -->
+        <text x="14" y="214" font-family="sans-serif" font-size="12.5" font-weight="bold" fill="#000">3. GRPO (Online Group Rollouts): Replaces Critic V_&psi; With Group Average &mu;</text>
+        <g font-family="monospace" font-size="11" text-anchor="middle">
+          <rect x="14" y="222" width="146" height="44" fill="#e8e8e8" stroke="#000" stroke-width="2"/>
+          <text x="87" y="240" font-weight="bold">Policy &pi;_&theta; (+ &pi;_ref)</text>
+          <text x="87" y="256" font-size="10">Sample G answers</text>
+
+          <path d="M 160 244 L 190 244" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <rect x="194" y="222" width="176" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/>
+          <text x="282" y="240" font-weight="bold">Group Scores R_1..R_G</text>
+          <text x="282" y="256" font-size="10">Mean &mu;, spread &sigma;</text>
+
+          <path d="M 370 244 L 400 244" fill="none" stroke="#000" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <rect x="404" y="222" width="182" height="44" fill="#000" stroke="#000" stroke-width="1.5"/>
+          <text x="495" y="240" fill="#fff" font-weight="bold">Group Advantage A_i</text>
+          <text x="495" y="256" fill="#fff" font-size="10">A_i = (R_i &minus; &mu;) / &sigma;</text>
+        </g>
+      </svg>
+    </div>
+
+    <h2>1. PPO: Online Trial-and-Error With Four Models in Memory</h2>
+    <p>
+      Classic <span class="term" data-term="rlhf">RLHF</span> treats alignment like a game. First, you train a separate <span class="term" data-term="reward-model">Reward Model $R_\phi(x, y)$</span> on human preference pairs to output a scalar score for any prompt $x$ and response $y$. Then you let your active policy <span class="term" data-term="sym-pi-theta">$\pi_\theta$</span> generate live answers and update its weights to maximize that reward.
+    </p>
+    <p>
+      If you optimize $R_\phi(x, y)$ alone, the LLM quickly discovers <span class="term" data-term="reward-hacking">reward hacking</span>: it finds weird token loops or sycophantic catchphrases that trick $R_\phi$ into outputting huge scores while reading like nonsense to a human. To prevent that, <span class="term" data-term="ppo">PPO</span> subtracts a <span class="term" data-term="kl-penalty">KL-divergence penalty</span> weighted by <span class="term" data-term="sym-beta">$\beta$</span> whenever $\pi_\theta$ drifts away from the frozen SFT <span class="term" data-term="sym-pi-ref">reference policy $\pi_{\text{ref}}$</span>, and clips each token's <span class="term" data-term="sym-rt">probability ratio $r_t(\theta) = \frac{\pi_\theta(y_t \mid x, y_{&lt;t})}{\pi_{\text{old}}(y_t \mid x, y_{&lt;t})}$</span> inside $[1 - \epsilon,\; 1 + \epsilon]$ so no single gradient step can blow up the network:
+    </p>
+
+    <div class="math-block">
+      $$\mathcal{J}_{\text{PPO}}(\theta) = \mathbb{E}_t\Bigl[\min\bigl(r_t(\theta) A_t,\; \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t\bigr)\Bigr] - \beta\, D_{\text{KL}}(\pi_\theta \,\|\, \pi_{\text{ref}})$$
+    </div>
+
+    <p>
+      Here is the catch: to know whether a reward of $+8$ on a prompt is actually good or bad, PPO needs a per-token baseline expectation $V_\psi(s_t)$ so it can compute the centered <span class="term" data-term="sym-at">Advantage $A_t$</span>. That baseline comes from a trainable <span class="term" data-term="value-critic">Value Critic $V_\psi$</span>—typically another full-sized Transformer. Holding four models in GPU memory at once (trainable Actor $\pi_\theta$, trainable Critic $V_\psi$, frozen Reference $\pi_{\text{ref}}$, and frozen Reward Model $R_\phi$) makes PPO notoriously heavy to run at 70B+ scale.
+    </p>
+
+    <details class="mcq-box" data-correct="B" data-topic="Check 1: PPO Clipping and the 4-Model Bottleneck">
+      <p>In a <span class="term" data-term="ppo">PPO</span> step with clip threshold <span class="term" data-term="sym-eps">$\epsilon = 0.20$</span>, a token with positive advantage <span class="term" data-term="sym-at">$A_t = +4$</span> has old probability $\pi_{\text{old}} = 0.20$ and current probability $\pi_\theta = 0.30$. What is the ratio <span class="term" data-term="sym-rt">$r_t(\theta)$</span>, and what does the clipped objective output?</p>
+      <label class="mcq-option" data-explain="0.30 / 0.20 = 1.50, which exceeds 1 + epsilon = 1.20, so the clip activates.">$r_t = 1.50$, and the unclipped product $1.50 \times 4 = 6.0$ is used.</label>
+      <label class="mcq-option" data-explain="Correct. The ratio is 0.30 / 0.20 = 1.50. Because A_t > 0 and 1.50 exceeds 1 + 0.20 = 1.20, min(1.50 * 4, 1.20 * 4) caps the objective at 1.20 * 4 = 4.8, zeroing the gradient so the policy stops leaping further.">$r_t = 1.50$, which gets capped at $1 + \epsilon = 1.20$, yielding $1.20 \times 4 = \mathbf{4.8}$ (zero gradient beyond $1.20$).</label>
+      <label class="mcq-option" data-explain="1 - epsilon = 0.80 only caps tokens with negative advantage (A_t < 0) that shrink too far.">$r_t = 1.50$, which gets clipped down to $1 - \epsilon = 0.80$.</label>
+    </details>
+
+    <h2>2. DPO: Turning the Policy Into Its Own Reward Model</h2>
+    <p>
+      In 2023, Rafael Rafailov and colleagues noticed a mathematical shortcut hidden inside the KL-constrained reward objective. If you write down the exact closed-form equation for the optimal policy $\pi^*$ that maximizes $R(x, y) - \beta D_{\text{KL}}(\pi \,\|\, \pi_{\text{ref}})$ and solve it for the reward $R(x, y)$, you find that <em>any</em> policy $\pi_\theta$ defines its own <span class="term" data-term="implicit-reward">implicit reward $\hat{r}_\theta(x, y)$</span> via the log-ratio against the reference model:
+    </p>
+
+    <div class="math-block">
+      $$\hat{r}_\theta(x, y) = \beta \ln \frac{\pi_\theta(y \mid x)}{\pi_{\text{ref}}(y \mid x)}$$
+    </div>
+
+    <p>
+      Why does this matter? Because when humans label a preference pair with a winning response <span class="term" data-term="sym-yw">$y_w$</span> and a losing response <span class="term" data-term="sym-yl">$y_l$</span>, the <span class="term" data-term="bradley-terry">Bradley-Terry preference model</span> says the probability that $y_w$ beats $y_l$ depends only on the <em>difference</em> between their rewards: $\sigma\bigl(\hat{r}_\theta(x, y_w) - \hat{r}_\theta(x, y_l)\bigr)$.
+    </p>
+    <p>
+      <span class="term" data-term="dpo">DPO (Direct Preference Optimization)</span> plugs $\hat{r}_\theta$ straight into a binary cross-entropy loss over offline $(x, y_w, y_l)$ pairs:
+    </p>
+
+    <div class="math-block">
+      $$\mathcal{L}_{\text{DPO}}(\theta) = -\ln \sigma\!\left(\beta \ln \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} \;-\; \beta \ln \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\right)$$
+    </div>
+
+    <p>
+      In one stroke, DPO deletes both the separate Reward Model $R_\phi$ and the Value Critic $V_\psi$, and removes the slow autoregressive generation loop during training. You only keep two models in memory (trainable $\pi_\theta$ and frozen $\pi_{\text{ref}}$) and train with standard supervised forward passes.
+    </p>
+
+    <div class="worked">
+      <p><strong>Worked Example (DPO Implicit Reward Margin with Base-2 Mental Math):</strong></p>
+      <p>
+        Use $\log_2$ with <span class="term" data-term="sym-beta">$\beta = 1$</span>. For prompt $x$, the frozen reference model assigns probability $\pi_{\text{ref}}(y_w \mid x) = \frac{1}{8}$ to the winner and $\pi_{\text{ref}}(y_l \mid x) = \frac{1}{4}$ to the loser.<br>
+        After a few updates, our policy assigns $\pi_\theta(y_w \mid x) = \frac{1}{2}$ and $\pi_\theta(y_l \mid x) = \frac{1}{8}$:<br>
+        1. <strong>Winner implicit reward $\hat{r}(y_w)$:</strong> $\log_2\!\left(\frac{1/2}{1/8}\right) = \log_2(4) = \mathbf{+2}$.<br>
+        2. <strong>Loser implicit reward $\hat{r}(y_l)$:</strong> $\log_2\!\left(\frac{1/8}{1/4}\right) = \log_2\!\left(\frac{1}{2}\right) = \mathbf{-1}$.<br>
+        3. <strong>DPO preference margin:</strong> $\Delta = \hat{r}(y_w) - \hat{r}(y_l) = 2 - (-1) = \mathbf{+3}$.
+      </p>
+    </div>
+
+    <details class="mcq-box" data-correct="C" data-topic="Check 2: DPO Implicit Reward Mental Math">
+      <p>Using $\log_2$ and <span class="term" data-term="sym-beta">$\beta = 2$</span>, suppose the reference model gives <span class="term" data-term="sym-yw">$y_w$</span> and <span class="term" data-term="sym-yl">$y_l$</span> the same starting probability $\pi_{\text{ref}}(y_w) = \pi_{\text{ref}}(y_l) = \frac{1}{4}$. If the trained policy doubles the winner to $\pi_\theta(y_w) = \frac{1}{2}$ and halves the loser to $\pi_\theta(y_l) = \frac{1}{8}$, what is the DPO margin $\hat{r}_\theta(y_w) - \hat{r}_\theta(y_l)$?</p>
+      <label class="mcq-option" data-explain="0 would mean the policy ratio for y_w and y_l stayed identical.">$0$</label>
+      <label class="mcq-option" data-explain="+2 is the raw log-ratio difference (+1 - (-1) = 2) before multiplying by beta = 2.">$+2$</label>
+      <label class="mcq-option" data-explain="Correct. log_2((1/2)/(1/4)) = log_2(2) = +1, and log_2((1/8)/(1/4)) = log_2(1/2) = -1. Multiplying by beta = 2 gives r(y_w) = +2 and r(y_l) = -2, so the margin is 2 - (-2) = +4.">$\mathbf{+4}$ (since $\hat{r}(y_w) = 2(+1) = +2$ and $\hat{r}(y_l) = 2(-1) = -2$)</label>
+    </details>
+
+    <h2>3. GRPO: Online Exploration Without the Critic Network</h2>
+    <p>
+      If DPO is so cheap and stable, why did labs switch back to online RL for reasoning models like DeepSeek-R1? Because DPO is typically <span class="term" data-term="off-policy">off-policy</span>: it trains on a fixed dataset of pre-collected $(y_w, y_l)$ pairs. When a model is learning multi-step math or code synthesis, it needs to generate its own chains of thought, hit compiler or math errors, and learn from live <span class="term" data-term="verifiable-reward">verifiable rewards</span> on the exact distribution it currently speaks.
+    </p>
+    <p>
+      To get PPO's live on-policy exploration without paying for a 70B <span class="term" data-term="value-critic">Value Critic $V_\psi$</span>, DeepSeek introduced <span class="term" data-term="grpo">GRPO (Group Relative Policy Optimization)</span>. For every prompt $x$, GRPO samples a small group of <span class="term" data-term="sym-g">$G$</span> candidate completions $\{y_1, y_2, \dots, y_G\}$ from the current policy, scores each one with a reward function or deterministic verifier ($R_1, \dots, R_G$), and uses the group's own mean <span class="term" data-term="sym-mu">$\mu$</span> and standard deviation <span class="term" data-term="sym-sigma">$\sigma$</span> as the baseline:
+    </p>
+
+    <div class="math-block">
+      $$A_i = \frac{R_i - \mu}{\sigma}, \qquad \text{where }\; \mu = \frac{1}{G}\sum_{j=1}^{G} R_j,\quad \sigma = \sqrt{\frac{1}{G}\sum_{j=1}^{G}(R_j - \mu)^2}$$
+    </div>
+
+    <p>
+      Every token inside completion $y_i$ receives that normalized group advantage $A_i$ inside the familiar PPO clipped objective (with the <span class="term" data-term="kl-penalty">KL penalty</span> against $\pi_{\text{ref}}$ added directly to the loss). By replacing a neural network Critic $V_\psi$ with a 4-line group average over $G$ parallel rollouts, GRPO cuts peak memory nearly in half compared to PPO while still letting the LLM invent new reasoning strategies on the fly.
+    </p>
+
+    <div class="worked">
+      <p><strong>Worked Example (GRPO Group-Relative Advantages for $G = 4$ Rollouts):</strong></p>
+      <p>
+        Suppose a math prompt generates $G = 4$ candidate solutions with verifier scores $R = [2,\; 4,\; 4,\; 10]$:<br>
+        1. <strong>Group mean ($\mu$):</strong> $\mu = \frac{2 + 4 + 4 + 10}{4} = \frac{20}{4} = \mathbf{5}$.<br>
+        2. <strong>Group standard deviation ($\sigma$):</strong> Squared deviations from $5$ are $(-3)^2, (-1)^2, (-1)^2, (+5)^2 = 9, 1, 1, 25$, whose average is $\frac{36}{4} = 9$, so $\sigma = \sqrt{9} = \mathbf{3}$.<br>
+        3. <strong>Normalized advantages ($A_i = (R_i - 5)/3$):</strong><br>
+        &bull; Rollout 1 ($R_1 = 2$): $A_1 = \frac{2 - 5}{3} = \mathbf{-1.0}$ (pushed down).<br>
+        &bull; Rollouts 2 &amp; 3 ($R = 4$): $A_{2,3} = \frac{4 - 5}{3} = \mathbf{-\frac{1}{3}}$ (slightly nudged down).<br>
+        &bull; Rollout 4 ($R_4 = 10$): $A_4 = \frac{10 - 5}{3} = \mathbf{+\frac{5}{3}}$ (strongly reinforced).
+      </p>
+    </div>
+
+    <details class="mcq-box" data-correct="A" data-topic="Check 3: GRPO Group-Relative Advantage Calculation">
+      <p>For a coding prompt, <span class="term" data-term="grpo">GRPO</span> samples <span class="term" data-term="sym-g">$G = 3$</span> solutions that pass $R_1 = 3$, $R_2 = 6$, and $R_3 = 9$ unit tests, giving a group standard deviation of <span class="term" data-term="sym-sigma">$\sigma = 2.45$</span>. What is the group mean <span class="term" data-term="sym-mu">$\mu$</span>, and what is the advantage $A_2$ of the middle solution ($R_2 = 6$)?</p>
+      <label class="mcq-option" data-explain="Correct. The group mean is (3 + 6 + 9)/3 = 6. Because R_2 = 6 equals the group mean exactly, its centered advantage is (6 - 6) / 2.45 = 0.0.">&mu; $= 6$ and $A_2 = \mathbf{0}$ (it matched the group average exactly, so it gets neither boosted nor penalized).</label>
+      <label class="mcq-option" data-explain="Raw reward is +6, but GRPO subtracts the group mean mu = 6 before updating.">&mu; $= 6$ and $A_2 = +6$ (positive raw reward is always reinforced).</label>
+      <label class="mcq-option" data-explain="Only R_1 = 3 has a negative advantage ((3 - 6)/2.45 = -1.22).">&mu; $= 5$ and $A_2 = -1.0$.</label>
+    </details>
+
+    <details class="mcq-box" data-correct="C" data-topic="Check 4: Choosing Between DPO, PPO, and GRPO">
+      <p>Why does <span class="term" data-term="grpo">GRPO</span> outperform offline <span class="term" data-term="dpo">DPO</span> when training a model to solve competition math or pass unit tests?</p>
+      <label class="mcq-option" data-explain="DPO also uses a frozen reference model pi_ref via the log-ratio ln(pi_theta / pi_ref).">Because DPO cannot enforce a KL constraint against $\pi_{\text{ref}}$.</label>
+      <label class="mcq-option" data-explain="GRPO eliminates the Value Critic V_psi; PPO is the algorithm that trains a separate token-level Value Critic.">Because GRPO trains a separate 70B Value Critic network $V_\psi$ to score each token.</label>
+      <label class="mcq-option" data-explain="Correct. Math and code have verifiable rewards (exact answer or unit test pass/fail), and sampling live on-policy groups lets the model explore new reasoning paths and learn from its own current mistakes.">Because GRPO samples live on-policy rollouts and checks them against a deterministic verifier, whereas offline DPO is restricted to static pre-collected pairs.</label>
+    </details>
+
+    <h2>4. Comparing PPO, DPO, and GRPO</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Algorithm</th>
+            <th>LLMs in VRAM</th>
+            <th>Data &amp; Baseline</th>
+            <th>Tradeoff / Failure Mode</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><span class="term" data-term="ppo">PPO</span></strong></td>
+            <td><strong>4</strong> ($\pi_\theta, \pi_{\text{ref}}, R_\phi, V_\psi$)</td>
+            <td>Live rollouts; learned <span class="term" data-term="value-critic">Value Critic $V_\psi(s_t)$</span> gives per-token baseline</td>
+            <td>Massive VRAM &amp; communication overhead; fragile hyperparameter tuning</td>
+            <td>Fine-grained token-level credit assignment when compute budget is large</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="dpo">DPO</span></strong></td>
+            <td><strong>2</strong> ($\pi_\theta, \pi_{\text{ref}}$)</td>
+            <td>Offline pairs $(y_w, y_l)$; <span class="term" data-term="implicit-reward">implicit reward</span> margin $\hat{r}(y_w) - \hat{r}(y_l)$</td>
+            <td>No live exploration; can overfit static pairs or drop absolute likelihood of $y_w$</td>
+            <td>Fast, low-VRAM chat style, tone, and safety alignment from preference logs</td>
+          </tr>
+          <tr>
+            <td><strong><span class="term" data-term="grpo">GRPO</span></strong></td>
+            <td><strong>2</strong> ($\pi_\theta, \pi_{\text{ref}}$) + verifier</td>
+            <td>Live group of $G$ rollouts; group mean <span class="term" data-term="sym-mu">$\mu$</span> &amp; std <span class="term" data-term="sym-sigma">$\sigma$</span> replace Critic</td>
+            <td>Costs $G$ generations per prompt; zero gradient if all $G$ rollouts tie ($R_1 = \dots = R_G$)</td>
+            <td>Reasoning, math, and code RL with rule-based or test-suite verifiers</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="score-bar"></div>
+
+    <div class="interactive-card" id="spaced-widget"></div>
+  </main>
+
+  <script>
+    var GLOSSARY = {
+      'sft': {
+        title: 'Supervised Fine-Tuning (SFT)',
+        body: 'Training an LLM with standard next-token cross-entropy loss on curated prompt-response demonstrations before running RL or preference alignment.'
+      },
+      'ppo': {
+        title: 'Proximal Policy Optimization (PPO)',
+        body: 'Online Actor-Critic RL algorithm that clips the probability ratio $r_t(\\theta) \\in [1-\\epsilon, 1+\\epsilon]$ and uses a learned <span class="term" data-term="value-critic">Value Critic $V_\\psi$</span> to compute advantages.'
+      },
+      'dpo': {
+        title: 'Direct Preference Optimization (DPO)',
+        body: 'Alignment method that reparameterizes the reward function directly in terms of the policy log-ratio $\\beta \\ln(\\pi_\\theta / \\pi_{\\text{ref}})$, training on offline $(y_w, y_l)$ pairs without a reward model or critic.'
+      },
+      'grpo': {
+        title: 'Group Relative Policy Optimization (GRPO)',
+        body: 'Online RL algorithm (used in DeepSeekMath and DeepSeek-R1) that removes the Value Critic $V_\\psi$ by sampling $G$ responses per prompt and normalizing rewards against the group mean $\\mu$ and std $\\sigma$.'
+      },
+      'rlhf': {
+        title: 'Reinforcement Learning from Human Feedback (RLHF)',
+        body: 'Two-stage alignment pipeline: fit a <span class="term" data-term="reward-model">Reward Model $R_\\phi$</span> on human preference comparisons, then optimize the LLM policy against $R_\\phi$ using RL.'
+      },
+      'sym-pi-theta': {
+        title: 'Active Policy $\\pi_\\theta(y \\mid x)$',
+        body: 'The trainable language model whose weights $\\theta$ are being updated during alignment.'
+      },
+      'sym-pi-ref': {
+        title: 'Reference Policy $\\pi_{\\text{ref}}(y \\mid x)$',
+        body: 'A frozen copy of the SFT model used as a <span class="term" data-term="kl-penalty">KL-divergence</span> anchor so the active policy $\\pi_\\theta$ does not collapse or drift into unreadable text.'
+      },
+      'on-policy': {
+        title: 'On-Policy Learning',
+        body: 'Training on fresh responses sampled live from the model\'s current weights $\\pi_\\theta$ (used by PPO and GRPO).'
+      },
+      'off-policy': {
+        title: 'Off-Policy / Offline Learning',
+        body: 'Training on a static dataset of pre-recorded responses $(y_w, y_l)$ collected earlier or from other models (standard DPO).'
+      },
+      'reward-model': {
+        title: 'Reward Model $R_\\phi(x, y)$',
+        body: 'A separate neural network trained on human preference pairs to output a scalar quality score for a prompt $x$ and completion $y$.'
+      },
+      'reward-hacking': {
+        title: 'Reward Hacking',
+        body: 'When an RL policy exploits flaws in a learned Reward Model $R_\\phi$ (such as length bias or repetitive flattery) to achieve high scores with low-quality text.'
+      },
+      'kl-penalty': {
+        title: 'KL-Divergence Penalty $D_{\\text{KL}}(\\pi_\\theta \\,\\|\\, \\pi_{\\text{ref}})$',
+        body: 'Measures how far the trained policy\'s token distribution has drifted from the frozen reference model: $\\mathbb{E}_{y \\sim \\pi_\\theta}[\\ln(\\pi_\\theta(y\\mid x)/\\pi_{\\text{ref}}(y\\mid x))]$.'
+      },
+      'sym-beta': {
+        title: 'KL Temperature / Strength $\\beta$',
+        body: 'Hyperparameter controlling how tightly $\\pi_\\theta$ is tethered to $\\pi_{\\text{ref}}$. Higher $\\beta$ penalizes drift more heavily.'
+      },
+      'sym-rt': {
+        title: 'Probability Ratio $r_t(\\theta)$',
+        body: '$r_t(\\theta) = \\frac{\\pi_\\theta(y_t \\mid x, y_{<t})}{\\pi_{\\text{old}}(y_t \\mid x, y_{<t})}$. Measures how much the new weights changed token $y_t$\'s probability relative to the rollout snapshot.'
+      },
+      'sym-eps': {
+        title: 'Clipping Range $\\epsilon$',
+        body: 'Trust-region bound in PPO and GRPO (typically $\\epsilon = 0.20$), limiting effective probability ratio updates to $[1-\\epsilon,\\; 1+\\epsilon]$.'
+      },
+      'sym-at': {
+        title: 'Advantage $A_t$',
+        body: 'How much better an action or completion scored compared to the baseline expectation ($R - V_\\psi$ in PPO, or $(R_i - \\mu)/\\sigma$ in GRPO).'
+      },
+      'value-critic': {
+        title: 'Value Critic $V_\\psi(s_t)$',
+        body: 'A trainable network in PPO that predicts the expected cumulative return from prefix $s_t$, serving as a variance-reducing baseline.'
+      },
+      'implicit-reward': {
+        title: 'DPO Implicit Reward $\\hat{r}_\\theta(x, y)$',
+        body: '$\\hat{r}_\\theta(x, y) = \\beta \\ln \\frac{\\pi_\\theta(y \\mid x)}{\\pi_{\\text{ref}}(y \\mid x)}$. How much more likely the aligned policy makes response $y$ compared to the frozen reference policy.'
+      },
+      'bradley-terry': {
+        title: 'Bradley-Terry Preference Model',
+        body: 'Models the probability that response $y_w$ is preferred over $y_l$ as a logistic sigmoid of their reward difference: $P(y_w \\succ y_l \\mid x) = \\sigma(r(x, y_w) - r(x, y_l))$.'
+      },
+      'sym-yw': {
+        title: 'Winning Response $y_w$',
+        body: 'The preferred completion in a pairwise comparison $(x, y_w, y_l)$.'
+      },
+      'sym-yl': {
+        title: 'Losing Response $y_l$',
+        body: 'The rejected completion in a pairwise comparison $(x, y_w, y_l)$.'
+      },
+      'verifiable-reward': {
+        title: 'Verifiable Reward',
+        body: 'A deterministic, rule-based score (such as checking whether a final math answer matches the ground truth or code passes unit tests) that cannot be easily reward-hacked.'
+      },
+      'sym-g': {
+        title: 'Group Size $G$',
+        body: 'Number of parallel completions sampled for the same prompt $x$ in GRPO (commonly $G \\in [4, 64]$).'
+      },
+      'sym-mu': {
+        title: 'Group Mean Reward $\\mu$',
+        body: 'Average reward across the $G$ completions for a single prompt: $\\mu = \\frac{1}{G}\\sum_{j=1}^G R_j$. Acts as GRPO\'s critic-free baseline.'
+      },
+      'sym-sigma': {
+        title: 'Group Standard Deviation $\\sigma$',
+        body: 'Spread of rewards across the $G$ completions for a prompt, used to normalize group advantages $A_i = (R_i - \\mu)/\\sigma$.'
+      }
+    };
+
+    var SPACED_CARDS = [
+      {
+        q: 'Why does standard RLHF with PPO require holding 4 models in GPU memory at once?',
+        a: 'PPO holds the trainable Actor policy $\\pi_\\theta$, the trainable Value Critic $V_\\psi$ (for the advantage baseline), the frozen Reference policy $\\pi_{\\text{ref}}$ (for the KL penalty), and the frozen Reward Model $R_\\phi$.'
+      },
+      {
+        q: 'How does DPO (Direct Preference Optimization) eliminate the separate Reward Model and Value Critic?',
+        a: 'It solves the KL-constrained reward maximization problem in closed form so the policy defines its own implicit reward $\\hat{r}_\\theta(x,y) = \\beta \\ln\\frac{\\pi_\\theta(y\\mid x)}{\\pi_{\\text{ref}}(y\\mid x)}$, and trains directly on offline $(y_w, y_l)$ pairs with a binary cross-entropy loss.'
+      },
+      {
+        q: 'How does GRPO (Group Relative Policy Optimization) compute advantages $A_i$ without a Value Critic network $V_\\psi$?',
+        a: 'For each prompt, GRPO samples a group of $G$ completions from $\\pi_\\theta$, scores them ($R_1, \\dots, R_G$), and normalizes each score against the group mean $\\mu$ and standard deviation $\\sigma$: $A_i = (R_i - \\mu)/\\sigma$.'
+      },
+      {
+        q: 'What happens in GRPO if all $G$ sampled completions for a prompt receive the exact same reward ($R_1 = R_2 = \\dots = R_G$)?',
+        a: 'Every completion equals the group mean $\\mu$, so all advantages $A_i = 0$ and that prompt contributes zero policy gradient (signal requires variance within the group).'
+      },
+      {
+        q: 'When should you prefer GRPO over offline DPO?',
+        a: 'When training reasoning, math, or coding models where a deterministic verifier exists and the model needs live on-policy trial-and-error rollouts to discover multi-step reasoning paths.'
+      }
+    ];
+  </script>
+</body>
+</html>

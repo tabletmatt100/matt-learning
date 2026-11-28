@@ -4,7 +4,7 @@
    plus dynamically discovers any new articles listed in index.html.
    ========================================================================== */
 
-var CACHE_NAME = 'matt-learning-v50';
+var CACHE_NAME = 'matt-learning-v51';
 
 var CORE_ASSETS = [
   './',
@@ -22,6 +22,7 @@ var CORE_ASSETS = [
   './calibration.html',
   './class-imbalance.html',
   './deepconf.html',
+  './dpo-ppo-grpo.html',
   './feature-engineering.html',
   './fill-in-the-middle.html',
   './funnel-transformer.html',
